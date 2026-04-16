@@ -644,9 +644,9 @@ function AnalysisPageContent() {
 
               <button
                 onClick={handleSubmit}
-                disabled={submitting || !project}
+                disabled={submitting || !project || (step.id === "qc" && !uploadedFile)}
                 className="w-full py-2.5 text-white font-semibold rounded text-sm transition-all duration-300 shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
-                style={{ background: submitting || !project ? "var(--clr-dark-light)" : "var(--clr-amber)" }}
+                style={{ background: submitting || !project || (step.id === "qc" && !uploadedFile) ? "var(--clr-dark-light)" : "var(--clr-amber)" }}
               >
                 {submitting ? (
                   <><svg className="w-4 h-4" viewBox="0 0 24 24" style={{ animation: "spin 1s linear infinite" }}><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> 提交中...</>
@@ -656,6 +656,7 @@ function AnalysisPageContent() {
               </button>
 
               {!project && <p className="text-[10px] text-center" style={{ color: "var(--clr-text-faint)" }}>请先在顶部选择一个项目</p>}
+              {project && step.id === "qc" && !uploadedFile && <p className="text-[10px] text-center" style={{ color: "var(--clr-warn)" }}>请先上传 .rds 数据文件</p>}
             </div>
           </div>
 
