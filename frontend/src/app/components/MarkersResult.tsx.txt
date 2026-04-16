@@ -1,0 +1,280 @@
+function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<string, unknown> | null; taskCache?: Record<string, Task> }) {
+  type GeneRow = { gene?: string; avg_log2FC?: number; p_val_adj?: number; pct1?: number; pct2?: number };
+  const topGenes = (data?.top_genes ?? []) as GeneRow[];
+  const stats    = data?.stats as { total_deg?: number; clusters_analyzed?: string } | undefined;
+
+  const dotplotSrc = task ? `/api/tasks/${task.id}/plot?name=plot_markers_dotplot.png` : null;
+  const heatmapSrc = task ? `/api/tasks/${task.id}/plot?name=plot_markers_heatmap.png` : null;
+
+  const [activeTab, setActiveTab] = useState(0);
+  const TABS = ["全局差异表", "大盘基因图", "单簇特征分布图", "双簇对比表"];
+
+  // 提取 Cluster levels
+  const clusterTask = taskCache?.["cluster"];
+  const [clusterLevels, setClusterLevels] = useState<string[]>([]);
+  
+  useEffect(() => {
+    if (clusterTask) {
+      if (clusterTask.status === "completed" && clusterTask.result_path) {
+          fetchTaskResult(clusterTask.id).then(d => {
+             if (d?.stats?.cluster_levels) {
+                 setClusterLevels(d.stats.cluster_levels as string[]);
+             }
+          });
+      }
+    }
+  }, [clusterTask?.id]);
+
+  // Tab 3 State
+  const [tab3Cluster, setTab3Cluster] = useState<string>("");
+  const [tab3TaskId, setTab3TaskId] = useState<string | null>(null);
+  const [tab3Loading, setTab3Loading] = useState(false);
+  const [tab3Error, setTab3Error] = useState<string | null>(null);
+
+  // Tab 4 State
+  const [tab4C1, setTab4C1] = useState<string>("");
+  const [tab4C2, setTab4C2] = useState<string>("");
+  const [tab4TaskId, setTab4TaskId] = useState<string | null>(null);
+  const [tab4Data, setTab4Data] = useState<GeneRow[] | null>(null);
+  const [tab4Loading, setTab4Loading] = useState(false);
+  const [tab4Error, setTab4Error] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (clusterLevels.length > 0) {
+       if (!tab3Cluster) setTab3Cluster(clusterLevels[0]);
+       if (!tab4C1) setTab4C1(clusterLevels[0]);
+       if (!tab4C2) setTab4C2(clusterLevels.length > 1 ? clusterLevels[1] : clusterLevels[0]);
+    }
+  }, [clusterLevels]);
+
+  const pollTask = async (taskId: string) => {
+     const token = getToken();
+     while (true) {
+       await new Promise(r => setTimeout(r, 2000));
+       const res = await fetch(`/api/tasks/${taskId}`, { headers: { Authorization: `Bearer ${token}` }});
+       if (!res.ok) throw new Error("获取任务状态失败");
+       const t = await res.json();
+       if (t.status === "completed") return t;
+       if (t.status === "failed") throw new Error(t.error_msg || "任务执行失败");
+     }
+  };
+
+  const runSubTask = async (step: string, params: any, setLoader: any, setError: any, onSuccess: any) => {
+    setLoader(true); setError(null);
+    try {
+      const token = getToken();
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ project_id: task.project_id, step, params })
+      });
+      if (!res.ok) throw new Error(`提交失败: ${res.statusText}`);
+      const t = await res.json();
+      const finalTask = await pollTask(t.id);
+      
+      const rRes = await fetch(`/api/tasks/${t.id}/result`, { headers: { Authorization: `Bearer ${token}` } });
+      const finalResult = await rRes.json();
+      onSuccess(t.id, finalResult);
+    } catch(err: any) {
+      setError(err.message);
+    } finally {
+      setLoader(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex border-b" style={{ borderColor: 'var(--clr-border)' }}>
+        {TABS.map((t, i) => (
+          <button
+            key={i}
+            onClick={() => setActiveTab(i)}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2`}
+            style={{ 
+              borderColor: activeTab === i ? 'var(--clr-amber)' : 'transparent',
+              color: activeTab === i ? 'var(--clr-amber-dark)' : 'var(--clr-text-muted)'
+            }}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      <div className="pt-2">
+        {/* Tab 1: 全局差异表 */}
+        {activeTab === 0 && (
+          <div className="space-y-3 animate-fade-in">
+             {stats && (
+              <div className="flex gap-4 text-xs" style={{ color: "var(--clr-text-faint)" }}>
+                <span>共 <strong style={{ color: "var(--clr-amber)" }}>{stats.total_deg}</strong> 个差异基因</span>
+                <span>分析聚类：<strong style={{ color: "var(--clr-text)" }}>{stats.clusters_analyzed}</strong></span>
+              </div>
+            )}
+            {topGenes.length > 0 ? (
+              <div className="table-wrap max-h-96 overflow-y-auto">
+                <table className="w-full">
+                  <thead className="sticky top-0 bg-stone-50 shadow-sm z-10">
+                    <tr>
+                      <th className="py-2 px-3 text-left">Gene</th>
+                      <th className="py-2 px-3 text-right">avg_log2FC</th>
+                      <th className="py-2 px-3 text-right">p_val_adj</th>
+                      <th className="py-2 px-3 text-right">pct.1</th>
+                      <th className="py-2 px-3 text-right">pct.2</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topGenes.map((row, i) => (
+                      <tr key={i} className="border-t border-stone-100 hover:bg-stone-50">
+                        <td className="py-2 px-3 font-mono font-semibold" style={{ color: "var(--clr-amber-dark)" }}>{row.gene ?? "—"}</td>
+                        <td className="py-2 px-3 text-right">{row.avg_log2FC?.toFixed(3) ?? "—"}</td>
+                        <td className="py-2 px-3 text-right font-mono text-xs">{row.p_val_adj !== undefined ? row.p_val_adj.toExponential(2) : "—"}</td>
+                        <td className="py-2 px-3 text-right">{row.pct1?.toFixed(2) ?? "—"}</td>
+                        <td className="py-2 px-3 text-right">{row.pct2?.toFixed(2) ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="callout text-xs">差异基因表数据暂未返回</div>
+            )}
+            <div className="mt-4">
+              <AuthDownloadLink 
+                url={`/api/tasks/${task.id}/plot?name=diff_genes.csv`} 
+                filename="diff_genes.csv"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white"
+                style={{ background: "var(--clr-amber)" }}
+              >
+                下载完整差异基因表 (.csv)
+              </AuthDownloadLink>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 2: 大盘基因图 */}
+        {activeTab === 1 && (
+          <div className="space-y-6 animate-fade-in flex flex-col items-center">
+            <div className="w-full flex-col flex items-center">
+              <p className="text-sm font-semibold mb-2 self-start" style={{ color: 'var(--clr-text)' }}>各聚类显著差异基因点图 (DotPlot)</p>
+              {dotplotSrc && <AuthImg src={dotplotSrc} alt="DotPlot" className="w-full max-w-4xl border rounded shadow-sm" style={{ borderColor: 'var(--clr-border)' }} />}
+            </div>
+            <div className="w-full h-px" style={{ background: 'var(--clr-border)' }}></div>
+            <div className="w-full flex-col flex items-center">
+              <p className="text-sm font-semibold mb-2 self-start" style={{ color: 'var(--clr-text)' }}>各聚类显著差异基因热图 (Heatmap) (需要 ntop 增加才有明显表现)</p>
+              {heatmapSrc && <AuthImg src={heatmapSrc} alt="Heatmap" className="w-full max-w-4xl border rounded shadow-sm" style={{ borderColor: 'var(--clr-border)' }} />}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 3: 单簇特征图 */}
+        {activeTab === 2 && (
+          <div className="space-y-4 animate-fade-in">
+             <div className="flex items-center gap-4 bg-stone-50 p-3 rounded border" style={{ borderColor: 'var(--clr-border)' }}>
+               <label className="text-sm font-medium" style={{ color: 'var(--clr-text-muted)' }}>选择聚类群:</label>
+               <select 
+                 value={tab3Cluster} 
+                 onChange={e => setTab3Cluster(e.target.value)}
+                 className="px-2 py-1 text-sm border rounded focus:outline-none"
+                 style={{ borderColor: 'var(--clr-border)' }}
+               >
+                 {clusterLevels.map(c => <option key={c} value={c}>Cluster {c}</option>)}
+               </select>
+               <button 
+                 onClick={() => runSubTask("plot_markers", { cluster: tab3Cluster, ...task.params }, setTab3Loading, setTab3Error, (tid: string) => setTab3TaskId(tid))}
+                 disabled={tab3Loading}
+                 className="px-3 py-1 text-white text-sm rounded shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50"
+                 style={{ background: 'var(--clr-amber)' }}
+               >
+                 {tab3Loading ? "计算中..." : "生成表达特征图"}
+               </button>
+             </div>
+             
+             {tab3Error && <div className="callout callout-danger text-xs">{tab3Error}</div>}
+             
+             {tab3TaskId && !tab3Loading && !tab3Error && (
+               <div className="mt-4 flex flex-col items-center">
+                 <AuthImg 
+                   src={`/api/tasks/${tab3TaskId}/plot?name=${encodeURIComponent(`plot_markers_${tab3Cluster}.png`)}`} 
+                   alt={`Marker Plot ${tab3Cluster}`} 
+                   className="w-full max-w-4xl border rounded shadow-sm bg-white" 
+                 />
+               </div>
+             )}
+          </div>
+        )}
+
+        {/* Tab 4: 二簇对比 */}
+        {activeTab === 3 && (
+          <div className="space-y-4 animate-fade-in">
+             <div className="flex items-center gap-4 bg-stone-50 p-3 rounded border" style={{ borderColor: 'var(--clr-border)' }}>
+               <label className="text-sm font-medium" style={{ color: 'var(--clr-text-muted)' }}>组一 (Group 1):</label>
+               <select value={tab4C1} onChange={e => setTab4C1(e.target.value)} className="px-2 py-1 text-sm border rounded">
+                 {clusterLevels.map(c => <option key={c} value={c}>{c}</option>)}
+               </select>
+               <span className="text-stone-400 font-bold">vs</span>
+               <label className="text-sm font-medium" style={{ color: 'var(--clr-text-muted)' }}>组二 (Group 2):</label>
+               <select value={tab4C2} onChange={e => setTab4C2(e.target.value)} className="px-2 py-1 text-sm border rounded">
+                 {clusterLevels.map(c => <option key={c} value={c}>{c}</option>)}
+               </select>
+               <button 
+                 onClick={() => runSubTask("markers_pairwise", { cluster_1: tab4C1, cluster_2: tab4C2, ...task.params }, setTab4Loading, setTab4Error, (tid: string, res: any) => {
+                     setTab4TaskId(tid);
+                     setTab4Data((res.top_genes ?? []) as GeneRow[]);
+                 })}
+                 disabled={tab4Loading || tab4C1 === tab4C2}
+                 className="px-3 py-1 text-white text-sm rounded shadow-sm hover:opacity-90 disabled:opacity-50"
+                 style={{ background: 'var(--clr-amber)' }}
+               >
+                 {tab4Loading ? "对比计算中..." : "进行成对差异分析"}
+               </button>
+             </div>
+             
+             {tab4Error && <div className="callout callout-danger text-xs">{tab4Error}</div>}
+             {tab4C1 === tab4C2 && <div className="text-xs text-stone-500">（请选择两个不同的组进行对比）</div>}
+             
+             {tab4TaskId && !tab4Loading && !tab4Error && tab4Data && (
+               <div className="animate-fade-in">
+                 <div className="flex gap-4 text-xs mb-3" style={{ color: "var(--clr-text-faint)" }}>
+                   <span>分析对：<strong style={{ color: "var(--clr-text)" }}>{tab4C1} vs {tab4C2}</strong></span>
+                 </div>
+                 <div className="table-wrap max-h-96 overflow-y-auto mb-4">
+                   <table className="w-full">
+                     <thead className="sticky top-0 bg-stone-50 shadow-sm z-10">
+                       <tr>
+                         <th className="py-2 px-3 text-left">Gene</th>
+                         <th className="py-2 px-3 text-right">avg_log2FC</th>
+                         <th className="py-2 px-3 text-right">p_val_adj</th>
+                         <th className="py-2 px-3 text-right">pct.1</th>
+                         <th className="py-2 px-3 text-right">pct.2</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {tab4Data.map((row, i) => (
+                         <tr key={i} className="border-t border-stone-100 hover:bg-stone-50">
+                           <td className="py-2 px-3 font-mono font-semibold" style={{ color: "var(--clr-amber-dark)" }}>{row.gene ?? "—"}</td>
+                           <td className="py-2 px-3 text-right">{row.avg_log2FC?.toFixed(3) ?? "—"}</td>
+                           <td className="py-2 px-3 text-right font-mono text-xs">{row.p_val_adj !== undefined ? row.p_val_adj.toExponential(2) : "—"}</td>
+                           <td className="py-2 px-3 text-right">{row.pct1?.toFixed(2) ?? "—"}</td>
+                           <td className="py-2 px-3 text-right">{row.pct2?.toFixed(2) ?? "—"}</td>
+                         </tr>
+                       ))}
+                     </tbody>
+                   </table>
+                 </div>
+                 <AuthDownloadLink 
+                   url={`/api/tasks/${tab4TaskId}/plot?name=${encodeURIComponent(`diff_genes_${tab4C1}_vs_${tab4C2}.csv`)}`} 
+                   filename={`diff_genes_${tab4C1}_vs_${tab4C2}.csv`}
+                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white"
+                   style={{ background: "var(--clr-amber)" }}
+                 >
+                   下载成对差异基因表 (.csv)
+                 </AuthDownloadLink>
+               </div>
+             )}
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}

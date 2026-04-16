@@ -1,0 +1,74 @@
+# scCloud v2 — Docker Compose 基础配置
+# 开发: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# 生产: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  # ---- 前端 (Next.js) ----
+  frontend:
+    build: ./frontend
+    ports: ["3000:3000"]
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_WS_URL: ws://localhost:8000
+    depends_on: [backend]
+
+  # ---- API 网关 (FastAPI) ----
+  backend:
+    build: ./backend
+    ports: ["8000:8000"]
+    env_file: .env
+    depends_on: [db, redis]
+    environment:
+      DATABASE_URL: "mysql+pymysql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+      REDIS_URL: "${REDIS_URL}"
+      R_ENGINE_URL: "${R_ENGINE_URL}"
+      JWT_SECRET: "${JWT_SECRET}"
+      JWT_ALGORITHM: "${JWT_ALGORITHM}"
+      PROJECTS_ROOT: "${PROJECTS_ROOT}"
+    volumes:
+      - projects_data:${PROJECTS_ROOT:-/data/projects}
+
+  # ---- R 计算引擎 (Plumber) ----
+  r-engine:
+    build: ./r-engine
+    ports: ["8787:8787"]
+    environment:
+      REDIS_URL: "${REDIS_URL}"
+    volumes:
+      - projects_data:${PROJECTS_ROOT:-/data/projects}
+      - ./r-engine/data:/app/data
+    deploy:
+      resources:
+        limits:
+          memory: 16G
+
+  # ---- 数据库 (MariaDB) ----
+  db:
+    image: mariadb:11
+    ports: ["3306:3306"]
+    environment:
+      MYSQL_ROOT_PASSWORD: "${DB_ROOT_PASS}"
+      MYSQL_DATABASE: "${DB_NAME}"
+      MYSQL_USER: "${DB_USER}"
+      MYSQL_PASSWORD: "${DB_PASS}"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- 消息队列 (Redis) ----
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  db_data:
+  projects_data:

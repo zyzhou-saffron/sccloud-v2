@@ -1,0 +1,111 @@
+# scCloud v2 — GPU 服务器完整部署 (host 网络模式)
+# 端口规划: Nginx 9000 / Frontend 3000 / Backend 8000 / R 8787 / DB 3307 / Redis 6380
+#
+# 部署: docker compose -f docker-compose.server.yml --env-file .env.server up -d
+# 查看: docker compose -f docker-compose.server.yml logs -f
+# 停止: docker compose -f docker-compose.server.yml --env-file .env.server down
+# 访问: http://<server-ip>:9000
+
+services:
+  # ---- Nginx 反向代理 (统一入口 :9000) ----
+  nginx:
+    image: nginx:alpine
+    network_mode: host
+    restart: unless-stopped
+    depends_on: [frontend, backend]
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  # ---- 前端 (Next.js :3000) ----
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: "/api"
+        NEXT_PUBLIC_WS_URL: "/ws"
+    network_mode: host
+    restart: unless-stopped
+    depends_on: [backend]
+    environment:
+      HOSTNAME: "0.0.0.0"
+      PORT: "3001"
+
+  # ---- API 网关 (FastAPI :8000) ----
+  backend:
+    build: ./backend
+    network_mode: host
+    env_file: .env.server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "mysql+pymysql://${DB_USER}:${DB_PASS}@127.0.0.1:3307/${DB_NAME}"
+      REDIS_URL: "redis://127.0.0.1:6380/0"
+      R_ENGINE_URL: "http://127.0.0.1:8787"
+      R_ENGINE_TIMEOUT: "3600"
+      JWT_SECRET: "${JWT_SECRET}"
+      JWT_ALGORITHM: "HS256"
+      PROJECTS_ROOT: "/data/projects"
+      ENVIRONMENT: "production"
+    volumes:
+      - projects_data:/data/projects
+
+  # ---- R 计算引擎 (Plumber :8787) ----
+  r-engine:
+    image: sccloud-r-engine
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      REDIS_URL: "redis://127.0.0.1:6380/0"
+    volumes:
+      - projects_data:/data/projects
+      - ./r-engine/data:/app/data
+      - ./plumber.R:/app/plumber.R
+      - ./R:/app/R
+    deploy:
+      resources:
+        limits:
+          memory: 16G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8787/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ---- 数据库 (MariaDB :3307) ----
+  db:
+    image: mariadb:11
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "${DB_ROOT_PASS}"
+      MYSQL_DATABASE: "${DB_NAME}"
+      MYSQL_USER: "${DB_USER}"
+      MYSQL_PASSWORD: "${DB_PASS}"
+      MYSQL_TCP_PORT: "3307"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb -h 127.0.0.1 -P 3307 -u root -p$$MYSQL_ROOT_PASSWORD -e 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---- 消息队列 (Redis :6380) ----
+  redis:
+    image: redis:7-alpine
+    network_mode: host
+    restart: unless-stopped
+    command: redis-server --port 6380
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6380", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  db_data:
+  projects_data:

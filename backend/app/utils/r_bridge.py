@@ -1,0 +1,120 @@
+"""
+scCloud v2 — R 引擎桥接模块
+FastAPI 通过 HTTP 调用 R Plumber API，异步非阻塞。
+替代旧系统中的同步 R 调用 (导致 UI 阻塞的根源)。
+"""
+
+import json
+import os
+import uuid
+from datetime import datetime, timezone
+
+import httpx
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
+from app.db.models import Task
+
+
+async def call_r_engine(
+    endpoint: str,
+    payload: dict,
+    task: Task,
+    db: Session,
+) -> dict:
+    """
+    异步调用 R Plumber API。
+
+    流程:
+    1. 更新 task 状态为 running
+    2. POST 到 R 引擎对应端点
+    3. 根据结果更新 task 状态为 completed/failed
+
+    与旧系统的区别:
+    - 旧: withProgress({ Sys.sleep(1) }) → 阻塞 Shiny 事件循环
+    - 新: httpx.AsyncClient → 非阻塞，其他用户正常操作
+    """
+    settings = get_settings()
+
+    # 更新任务状态
+    task.status = "running"
+    task.started_at = datetime.now(timezone.utc)
+    db.commit()
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                connect=10.0,
+                read=float(settings.r_engine_timeout),
+                write=30.0,
+                pool=10.0,
+            )
+        ) as client:
+            response = await client.post(
+                f"{settings.r_engine_url}/{endpoint}",
+                json=payload,
+            )
+
+        if response.status_code != 200:
+            raise Exception(
+                f"R 引擎返回错误 {response.status_code}: {response.text}"
+            )
+
+        result = response.json()
+
+        # 保存完整结果数据到项目目录 (QC 表格等大数据)
+        result_data_path = None
+        if "project_path" in payload:
+            project_dir = payload["project_path"]
+            result_data_path = os.path.join(
+                project_dir, f"{endpoint}_result.json"
+            )
+            try:
+                with open(result_data_path, "w") as f:
+                    json.dump(result, f, ensure_ascii=False)
+            except Exception:
+                result_data_path = None
+
+        # 更新任务: 完成
+        task.status = "completed"
+        task.progress = 100
+        task.result_path = result.get("result_path")
+        task.completed_at = datetime.now(timezone.utc)
+        db.commit()
+
+        return result
+
+    except Exception as e:
+        # 更新任务: 失败
+        task.status = "failed"
+        task.error_msg = str(e)[:1000]
+        task.completed_at = datetime.now(timezone.utc)
+        db.commit()
+        raise
+
+
+def create_task(
+    db: Session,
+    project_id: int,
+    user_id: int,
+    step: str,
+    params: dict | None = None,
+) -> Task:
+    """
+    创建分析任务记录。
+    每个分析步骤都会在 tasks 表中留下记录，
+    刷新页面后状态不会丢失 (解决 BUG-T2)。
+    """
+    task = Task(
+        id=str(uuid.uuid4()),
+        project_id=project_id,
+        user_id=user_id,
+        step=step,
+        status="pending",
+        params=params,
+        progress=0,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task

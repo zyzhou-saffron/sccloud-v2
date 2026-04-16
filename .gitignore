@@ -1,0 +1,35 @@
+# Environment
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+out/
+
+# R
+.Rhistory
+.RData
+renv/library/
+renv/staging/
+
+# Data
+*.rds
+*.h5ad
+*.h5seurat
+user_projects/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
