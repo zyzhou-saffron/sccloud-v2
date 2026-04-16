@@ -388,6 +388,21 @@ function(req) {
   print(my_distPlot7(pro, min_pct, logfc, test_use, only_pos, ntop))
   dev.off()
 
+  report(80, "生成 Heatmap...")
+
+  # 保存 Heatmap (调用 my_distPlot8)
+  heatmap_path <- file.path(project_path, "plot_markers_heatmap.png")
+  tryCatch({
+    heatmap_plot <- my_distPlot8(pro, min_pct, logfc, test_use, only_pos, ntop)
+    n_clusters <- length(levels(pro))
+    heatmap_h <- max(800, 120 * n_clusters)
+    png(heatmap_path, width = 1600, height = heatmap_h, res = 150)
+    print(heatmap_plot)
+    dev.off()
+  }, error = function(e) {
+    message("Heatmap generation failed: ", e$message)
+  })
+
   report(85, "保存结果...")
 
   # 保存差异基因表
