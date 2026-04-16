@@ -15,6 +15,7 @@ import { type Task } from "../lib/api";
 import QCResultTabs from "./QCResultTabs";
 import {
   ScatterPlot,
+  DeckScatterPlot,
   ViolinPlot,
   EnrichBubble,
   type ScatterData,
@@ -341,21 +342,20 @@ function NormalizeResult({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-/** 降维结果 — R 原版 ggplot2 PNG 优先，Plotly 散点图备用 */
+/** 降维结果 — deck.gl 交互式散点图（主），R PNG 可下载 */
 function ReduceResult({ data, taskId }: { data: Record<string, unknown> | null; taskId?: string }) {
   const stats   = data?.stats as { method?: string; cells?: number; n_dims?: number } | undefined;
   const method  = (safeString(stats?.method) ?? "UMAP").toUpperCase();
 
-  // 安全提取 plot_path：R jsonlite 单元素向量可能序列化为 ["path"] 数组
+  // R 原版 PNG（保留为可下载备选）
   const plotPath    = safeString(data?.plot_path);
   const plotFileName = plotPath ? plotPath.split("/").pop() : null;
   const plotSrc     = plotFileName && taskId
     ? `/api/tasks/${taskId}/plot?name=${encodeURIComponent(plotFileName)}`
     : null;
 
-  // Plotly 备用散点图（如果 PNG 不可用）
+  // deck.gl 交互式散点图数据（主展示）
   const rawScatter = useMemo(() => safeScatter(data?.scatter_data), [data]);
-  const scatter    = useMemo(() => rawScatter ? downsampleScatter(rawScatter) : undefined, [rawScatter]);
 
   return (
     <div className="space-y-3">
@@ -367,8 +367,18 @@ function ReduceResult({ data, taskId }: { data: Record<string, unknown> | null; 
           {stats.n_dims && <span>PCA 维数：<strong style={{ color: "var(--clr-text)" }}>{stats.n_dims}</strong></span>}
         </div>
       )}
-      {/* R 原版 ggplot2 PNG（主展示） */}
-      {plotSrc ? (
+      {/* deck.gl 交互式散点图（主展示） */}
+      {rawScatter ? (
+        <div className="space-y-1">
+          <p className="text-xs font-medium" style={{ color: "var(--clr-amber-dark)" }}>
+            {method} 可视化
+            <span className="font-normal ml-1" style={{ color: "var(--clr-text-faint)" }}>
+              — WebGL 交互式 · {rawScatter.x.length.toLocaleString()} 个细胞
+            </span>
+          </p>
+          <DeckScatterPlot data={rawScatter} method={method as "UMAP" | "tSNE" | "PCA"} height={520} />
+        </div>
+      ) : plotSrc ? (
         <div className="space-y-1">
           <p className="text-xs font-medium" style={{ color: "var(--clr-amber-dark)" }}>
             {method} 可视化
@@ -381,19 +391,20 @@ function ReduceResult({ data, taskId }: { data: Record<string, unknown> | null; 
             style={{ border: "1px solid var(--clr-border)", background: "#fff" }}
           />
         </div>
-      ) : scatter ? (
-        <div>
-          <p className="text-xs mb-2 font-medium" style={{ color: "var(--clr-amber-dark)" }}>
-            {method} 可视化
-            <span className="font-normal ml-1" style={{ color: "var(--clr-text-faint)" }}>
-              — {rawScatter!.x.length.toLocaleString()} 个细胞
-              {rawScatter!.x.length > 3000 ? `（已降采样至 ${scatter.x.length.toLocaleString()} 个点）` : ""}
-            </span>
-          </p>
-          <ScatterPlot data={scatter} method={method} />
-        </div>
       ) : (
         <div className="callout text-xs">降维完成，但坐标数据暂未返回</div>
+      )}
+      {/* R PNG 下载按钮 */}
+      {plotSrc && rawScatter && (
+        <AuthDownloadLink
+          url={plotSrc}
+          filename={plotFileName || "reduce_plot.png"}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors"
+          style={{ background: "var(--clr-bg-alt)", color: "var(--clr-amber-dark)", border: "1px solid var(--clr-border)" }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          下载 R 原版高清图 (.png)
+        </AuthDownloadLink>
       )}
     </div>
   );
@@ -415,15 +426,19 @@ function ClusterResult({ data, taskId }: { data: Record<string, unknown> | null;
   const clusterNum = (data?.cluster_num ?? []) as FreqRow[];
   const freqTable  = (data?.freq_table   ?? []) as FreqRow[];
 
+  // ── deck.gl 交互式散点图数据 ──
+  const rawScatter = useMemo(() => safeScatter(data?.scatter_data), [data]);
+
   // ── Tab 状态 ──
-  type TabId = "stats" | "sankey" | "umap" | "group" | "subtype";
-  const [activeTab, setActiveTab] = useState<TabId>("stats");
+  type TabId = "interactive" | "stats" | "sankey" | "umap" | "group" | "subtype";
+  const [activeTab, setActiveTab] = useState<TabId>("interactive");
   const tabs: { id: TabId; label: string }[] = [
+    { id: "interactive", label: "🔬 交互式 UMAP" },
     { id: "stats",   label: "结果统计" },
-    { id: "sankey",  label: "样本 Cluster 占比图" },
-    { id: "umap",    label: "Cluster UMAP 图" },
-    { id: "group",   label: "分组 Cluster UMAP 图" },
-    { id: "subtype", label: "细胞亚类结果" },
+    { id: "sankey",  label: "样本占比图" },
+    { id: "umap",    label: "R 原版 UMAP" },
+    { id: "group",   label: "分组 UMAP" },
+    { id: "subtype", label: "细胞亚类" },
   ];
 
   // ── 子标题工具 ──
@@ -458,6 +473,25 @@ function ClusterResult({ data, taskId }: { data: Record<string, unknown> | null;
           >{t.label}</button>
         ))}
       </div>
+
+      {/* ── Tab 0: 交互式 UMAP（deck.gl WebGL） ── */}
+      {activeTab === "interactive" && (
+        <div className="space-y-1 animate-fade-in">
+          {rawScatter ? (
+            <>
+              <p className="text-xs font-medium" style={{ color: "var(--clr-amber-dark)" }}>
+                Cluster UMAP 图
+                <span className="font-normal ml-1" style={{ color: "var(--clr-text-faint)" }}>
+                  — WebGL 交互式 · {rawScatter.x.length.toLocaleString()} 个细胞
+                </span>
+              </p>
+              <DeckScatterPlot data={rawScatter} method="UMAP" height={560} />
+            </>
+          ) : (
+            <div className="callout text-xs">散点数据未返回，请查看"R 原版 UMAP"标签页</div>
+          )}
+        </div>
+      )}
 
       {/* ── Tab 1: 结果统计 ── */}
       {activeTab === "stats" && (

@@ -3,6 +3,7 @@
  */
 
 export { default as ScatterPlot } from "./ScatterPlot";
+export { default as DeckScatterPlot } from "./DeckScatterPlot";
 export type { ScatterData } from "./ScatterPlot";
 
 export { default as ViolinPlot } from "./ViolinPlot";
