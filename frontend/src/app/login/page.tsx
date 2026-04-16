@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import GridTransition from "../components/GridTransition";
 
 /**
  * 登录页面 — ComputaBio 暖色学术风格
@@ -51,7 +50,6 @@ export default function LoginPage() {
 
   return (
     <>
-      <GridTransition isActive={false} revealOnMount={true} color="#c86019" />
       <main className="flex-1 flex items-center justify-center p-4" style={{ background: "var(--clr-bg)" }}>
         <div className="w-full max-w-md animate-fade-in">
           <div className="card p-8">
