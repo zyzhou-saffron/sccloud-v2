@@ -55,7 +55,9 @@ export default function ProgressTracker({
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
       wsRef.current?.close();
       const t = task ?? await getTask(taskId).catch(() => null);
-      if (t) onCompleteRef.current?.(t);
+      // 即使 getTask 失败，也必须通知父组件任务完成，
+      // 否则 ResultViewer 会永远卡在 "正在执行" 转圈。
+      onCompleteRef.current?.(t ?? { id: taskId, status: "completed", progress: 100 } as Task);
     };
 
     const fireError = (msg: string) => {

@@ -18,7 +18,7 @@ import {
   IconMicroscope, IconBarChart, IconAxis, IconCluster,
   IconTestTube, IconPathway, IconWaveform, IconTag, IconUpload, IconQuestion
 } from "../../components/Icons";
-import { submitTask, type Project, type Task } from "../../lib/api";
+import { getTask, submitTask, type Project, type Task } from "../../lib/api";
 
 /* ===== 步骤定义 ===== */
 
@@ -170,6 +170,29 @@ function AnalysisPageContent() {
   /** params / uploadedFile 变更时持久化 */
   useEffect(() => { saveSession({ params }); }, [params]);
   useEffect(() => { saveSession({ uploadedFile }); }, [uploadedFile]);
+
+  /**
+   * 安全回退轮询：独立检测当前步骤任务的终态。
+   * 防止 ProgressTracker 的 onComplete/onError 回调因竞态条件
+   * （如 WebSocket 先到但 getTask 失败）未能更新父组件 taskCache，
+   * 导致 ResultViewer 永久卡在 "正在执行" 转圈的问题。
+   */
+  useEffect(() => {
+    if (!currentTask?.id) return;
+    if (currentTask.status === "completed" || currentTask.status === "failed" || currentTask.status === "cancelled") return;
+
+    const interval = setInterval(async () => {
+      try {
+        const fresh = await getTask(currentTask.id);
+        if (fresh.status === "completed" || fresh.status === "failed") {
+          updateTaskCache(step.id, fresh);
+          clearInterval(interval);
+        }
+      } catch { /* 静默忽略，下次重试 */ }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [currentTask?.id, currentTask?.status, step.id, updateTaskCache]);
 
   const stepParams = params[step.id] || {};
 
