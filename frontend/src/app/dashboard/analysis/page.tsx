@@ -288,7 +288,7 @@ function AnalysisPageContent() {
       {/* 标题 + 项目选择器 */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-serif)", color: "var(--clr-dark-deep)" }}>
-          分析流程
+          scRNA分析
         </h1>
         <div className="w-72">
           <ProjectSelector
