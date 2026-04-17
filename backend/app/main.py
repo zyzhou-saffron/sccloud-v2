@@ -1,7 +1,4 @@
-"""
-scCloud v2 — FastAPI 主入口
-挂载所有路由模块，配置 CORS 和健康检查。
-"""
+import asyncio
 
 from contextlib import asynccontextmanager
 
@@ -10,13 +7,18 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.db.models import Base, engine
+from app.utils.progress_syncer import ProgressSyncer
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期 — 启动时创建数据库表。"""
+    """应用生命周期 — 启动时创建数据库表并启动进度同步器。"""
     Base.metadata.create_all(bind=engine)
+    # 启动 Redis → DB 进度同步器 (后台协程)
+    syncer = ProgressSyncer()
+    syncer_task = asyncio.create_task(syncer.run())
     yield
+    syncer_task.cancel()
 
 
 # ===== 创建应用 =====

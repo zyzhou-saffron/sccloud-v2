@@ -77,7 +77,10 @@ export default function ProgressTracker({
       setProgress(task.progress ?? 0);
       if (task.status === "completed") fireDone(task);
       else if (task.status === "failed") fireError(task.error_msg || "任务失败");
-      else if (task.status === "running") setMessage(`正在执行 ${stepLabel}... (${task.progress}%)`);
+      else if (task.status === "running") {
+        const desc = task.progress_message || `正在执行 ${stepLabel}...`;
+        setMessage(`${desc} (${task.progress}%)`);
+      }
     }).catch(() => { /* 忽略初始检查错误 */ });
 
     // 尝试 WebSocket 连接
@@ -106,7 +109,10 @@ export default function ProgressTracker({
         if (doneRef.current) return;
         setStatus(task.status);
         setProgress(task.progress ?? 0);
-        if (task.status === "running") setMessage(`正在执行 ${stepLabel}... (${task.progress}%)`);
+        if (task.status === "running") {
+          const desc = task.progress_message || `正在执行 ${stepLabel}...`;
+          setMessage(`${desc} (${task.progress}%)`);
+        }
         else if (task.status === "completed") await fireDone(task);
         else if (task.status === "failed") fireError(task.error_msg || "任务失败");
       } catch { /* 忽略轮询错误 */ }

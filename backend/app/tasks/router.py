@@ -36,6 +36,7 @@ class TaskResponse(BaseModel):
     step: str
     status: str
     progress: int
+    progress_message: str | None
     params: dict | None
     result_path: str | None
     error_msg: str | None

@@ -148,6 +148,7 @@ class Task(Base):
     )
     params = Column(JSON, nullable=True)  # 分析参数
     progress = Column(Integer, default=0)  # 0-100
+    progress_message = Column(String(256), nullable=True)  # R 引擎实时报告的阶段描述
     result_path = Column(String(512), nullable=True)
     error_msg = Column(Text, nullable=True)
     started_at = Column(DateTime, nullable=True)

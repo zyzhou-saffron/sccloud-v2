@@ -135,6 +135,7 @@ export interface Task {
   step: string;
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   progress: number;
+  progress_message: string | null;
   params: Record<string, unknown> | null;
   result_path: string | null;
   error_msg: string | null;

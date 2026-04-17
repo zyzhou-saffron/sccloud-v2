@@ -239,7 +239,7 @@ export default function ResultViewer({ task, stepLabel, StepIcon, taskCache }: R
           />
         </div>
         <p className="text-sm font-medium" style={{ color: "var(--clr-amber)" }}>正在执行 {stepLabel}...</p>
-        <p className="text-xs mt-2" style={{ color: "var(--clr-text-faint)" }}>{task.progress > 0 ? `进度: ${task.progress}%` : "初始化中..."}</p>
+        <p className="text-xs mt-2" style={{ color: "var(--clr-text-faint)" }}>{task.progress > 0 ? (task.progress_message || `进度: ${task.progress}%`) : "初始化中..."}</p>
       </div>
     );
   }
