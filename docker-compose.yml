@@ -39,6 +39,8 @@ services:
     volumes:
       - projects_data:${PROJECTS_ROOT:-/data/projects}
       - ./r-engine/data:/app/data
+      - ./r-engine/plumber.R:/app/plumber.R:ro
+      - ./r-engine/R:/app/R:ro
     deploy:
       resources:
         limits:

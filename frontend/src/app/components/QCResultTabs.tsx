@@ -75,6 +75,39 @@ function plotUrl(taskId: string, plotPath: unknown): string | null {
   return `/api/tasks/${taskId}/plot?name=${encodeURIComponent(name)}`;
 }
 
+/**
+ * 带认证的图片组件 — 通过 fetch + Bearer token 加载受保护的图片资源。
+ * 浏览器 <img> 标签无法传 Authorization header，
+ * 改用 fetch 拉取 blob 后转为对象 URL 注入 <img>。
+ */
+function AuthImg({ src, alt, token, className, style }: {
+  src: string | null;
+  alt: string;
+  token: string;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!src) return;
+    let objectUrl = "";
+    setFailed(false);
+    setBlobUrl(null);
+    fetch(src, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.blob(); })
+      .then((blob) => { objectUrl = URL.createObjectURL(blob); setBlobUrl(objectUrl); })
+      .catch(() => setFailed(true));
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [src, token]);
+
+  if (!src || failed) return <div className="callout text-xs py-6 text-center" style={{ color: "var(--clr-text-faint)" }}>图片暂不可用</div>;
+  if (!blobUrl) return <div className="flex justify-center py-8"><div className="w-5 h-5 border-2 rounded-full border-t-transparent animate-spin" style={{ borderColor: "var(--clr-amber)", borderTopColor: "transparent" }} /></div>;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={blobUrl} alt={alt} className={className} style={style} />;
+}
+
 // ===== Tab 定义 =====
 
 const TABS = [
@@ -144,8 +177,8 @@ export default function QCResultTabs({ taskId, token }: QCResultTabsProps) {
       {/* Tab 内容 */}
       <div className="animate-fade-in-fast">
         {activeTab === "filter" && <FilterResultTab data={data} />}
-        {activeTab === "corr" && <CorrTab data={data} taskId={taskId} />}
-        {activeTab === "qc" && <SampleQCTab data={data} taskId={taskId} />}
+        {activeTab === "corr" && <CorrTab data={data} taskId={taskId} token={token} />}
+        {activeTab === "qc" && <SampleQCTab data={data} taskId={taskId} token={token} />}
         {activeTab === "mito" && <MitoTab data={data} />}
         {activeTab === "umi" && <UmiTab data={data} />}
       </div>
@@ -213,7 +246,7 @@ function FilterResultTab({ data }: { data: QCResult }) {
 
 // ===== Tab 2: 样本相关性 =====
 
-function CorrTab({ data, taskId }: { data: QCResult; taskId: string }) {
+function CorrTab({ data, taskId, token }: { data: QCResult; taskId: string; token: string }) {
   const src = plotUrl(taskId, data.corr_plot_path);
 
   return (
@@ -224,9 +257,10 @@ function CorrTab({ data, taskId }: { data: QCResult; taskId: string }) {
 
       {src ? (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-          <img
+          <AuthImg
             src={src}
             alt="样本相关性散点图 — nCount_RNA vs percent.mt / nFeature_RNA"
+            token={token}
             className="w-full h-auto"
             style={{ display: "block" }}
           />
@@ -244,7 +278,7 @@ function CorrTab({ data, taskId }: { data: QCResult; taskId: string }) {
 
 // ===== Tab 3: 样本质控 =====
 
-function SampleQCTab({ data, taskId }: { data: QCResult; taskId: string }) {
+function SampleQCTab({ data, taskId, token }: { data: QCResult; taskId: string; token: string }) {
   const vlnSrc = plotUrl(taskId, data.violin_plot_path);
 
   return (
@@ -257,9 +291,10 @@ function SampleQCTab({ data, taskId }: { data: QCResult; taskId: string }) {
       {/* VlnPlot 可视化 */}
       {vlnSrc ? (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-          <img
+          <AuthImg
             src={vlnSrc}
             alt="过滤前后 VlnPlot — nCount_RNA / nFeature_RNA / percent.mt"
+            token={token}
             className="w-full h-auto"
             style={{ display: "block" }}
           />
