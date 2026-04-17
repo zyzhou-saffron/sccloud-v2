@@ -282,6 +282,17 @@ function AnalysisPageContent() {
 
   const inputCls = "w-full px-3 py-2 bg-white border rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#C86019]/30 transition-colors";
   const inputStyle = { borderColor: "var(--clr-border)", color: "var(--clr-text)" };
+  /* 跨浏览器统一 select 样式：移除原生箭头，用自定义 SVG chevron */
+  const selectCls = inputCls + " cursor-pointer";
+  const selectStyle: React.CSSProperties = {
+    ...inputStyle,
+    appearance: "none",
+    WebkitAppearance: "none",
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 10px center",
+    paddingRight: "32px",
+  };
 
   return (
     <div className="animate-fade-in">
@@ -466,7 +477,7 @@ function AnalysisPageContent() {
                         <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                       </Tooltip>
                     </label>
-                    <select value={stepParams.method as string} onChange={(e) => updateParam("method", e.target.value)} className={inputCls} style={inputStyle}>
+                    <select value={stepParams.method as string} onChange={(e) => updateParam("method", e.target.value)} className={selectCls} style={selectStyle}>
                       <option value="umap">UMAP</option><option value="tsne">t-SNE</option><option value="pca">PCA</option>
                     </select>
                   </div>
@@ -502,7 +513,7 @@ function AnalysisPageContent() {
                         <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                       </Tooltip>
                     </label>
-                    <select value={stepParams.method as string} onChange={(e) => updateParam("method", e.target.value)} className={inputCls} style={inputStyle}><option value="harmony">Harmony</option></select>
+                    <select value={stepParams.method as string} onChange={(e) => updateParam("method", e.target.value)} className={selectCls} style={selectStyle}><option value="harmony">Harmony</option></select>
                   </div>
                   <div>
                     <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
@@ -566,7 +577,7 @@ function AnalysisPageContent() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>检验方法</label>
-                    <select value={stepParams.test_use as string} onChange={(e) => updateParam("test_use", e.target.value)} className={inputCls} style={inputStyle}>
+                    <select value={stepParams.test_use as string} onChange={(e) => updateParam("test_use", e.target.value)} className={selectCls} style={selectStyle}>
                       <option value="wilcox">Wilcoxon</option><option value="t">t-test</option><option value="bimod">Bimod</option><option value="roc">ROC</option>
                     </select>
                   </div>
@@ -591,7 +602,7 @@ function AnalysisPageContent() {
                         <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                       </Tooltip>
                     </label>
-                    <select value={stepParams.pathway as string} onChange={(e) => updateParam("pathway", e.target.value)} className={inputCls} style={inputStyle}>
+                    <select value={stepParams.pathway as string} onChange={(e) => updateParam("pathway", e.target.value)} className={selectCls} style={selectStyle}>
                       <option value="GO">GO</option><option value="KEGG">KEGG</option><option value="GSEA">GSEA</option>
                     </select>
                   </div>
@@ -633,7 +644,7 @@ function AnalysisPageContent() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
-                    <select value={stepParams.group_by as string} onChange={(e) => updateParam("group_by", e.target.value)} className={inputCls} style={inputStyle}>
+                    <select value={stepParams.group_by as string} onChange={(e) => updateParam("group_by", e.target.value)} className={selectCls} style={selectStyle}>
                       <option value="Sample">Sample</option><option value="Group">Group</option><option value="CellType">CellType</option>
                     </select>
                   </div>
