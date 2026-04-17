@@ -182,14 +182,13 @@ async function fetchTaskResult(taskId: string): Promise<Record<string, unknown> 
   }
 }
 
-// normalize 只有统计数字，无大图表，自动加载不需要按钮
-// 其他有图表或 PNG 的步骤用懒加载（用户点击才触发）
-const AUTO_LOAD_STEPS = ["normalize"];
+// 由于 WebGL 重构提升了性能，现在所有有步骤均自动加载结果数据
+// 不再需要显式点击加载图表按钮。
 
 export default function ResultViewer({ task, stepLabel, StepIcon, taskCache }: ResultViewerProps) {
   const [resultData, setResultData] = useState<Record<string, unknown> | null>(null);
   const [loadingResult, setLoadingResult] = useState(false);
-  // 懒加载：只有用户主动点击（或自动触发）后才拉取大数据，防止页面恢复时崩溃
+  // 自动加载：任务完成后触发
   const [resultRequested, setResultRequested] = useState(false);
 
   useEffect(() => {
@@ -198,9 +197,9 @@ export default function ResultViewer({ task, stepLabel, StepIcon, taskCache }: R
     setResultRequested(false);
   }, [task?.id]);
 
-  // 无需按钮的步骤（normalize）自动触发
+  // 所有完成的任务自动加载结果数据
   useEffect(() => {
-    if (task?.status === "completed" && task.step && AUTO_LOAD_STEPS.includes(task.step)) {
+    if (task?.status === "completed" && task.step) {
       setResultRequested(true);
     }
   }, [task?.id, task?.status, task?.step]);
@@ -263,7 +262,6 @@ export default function ResultViewer({ task, stepLabel, StepIcon, taskCache }: R
 
   /* ── 任务完成 ── */
   const needsResultData = !["qc"].includes(task.step);
-  const needsLazyButton = needsResultData && !AUTO_LOAD_STEPS.includes(task.step);
 
   return (
     <ResultErrorBoundary>
@@ -271,27 +269,6 @@ export default function ResultViewer({ task, stepLabel, StepIcon, taskCache }: R
         {/* QC 步骤直接渲染 tabs，不需要懒加载按钮 */}
         {task.step === "qc" && (
           <QCResultTabs taskId={task.id} token={getToken()} />
-        )}
-
-        {/* 需要懒加载的步骤：显示按钮 */}
-        {needsLazyButton && !resultRequested && (
-          <div className="flex flex-col items-center justify-center py-16 gap-4">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(200,96,25,0.08)", border: "1.5px solid var(--clr-amber)" }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--clr-amber)" strokeWidth="2" strokeLinecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            </div>
-            <div className="text-center">
-              <p className="text-sm font-medium mb-1" style={{ color: "var(--clr-dark)" }}>分析已完成</p>
-              <p className="text-xs mb-4" style={{ color: "var(--clr-text-faint)" }}>点击下方按钮加载可视化结果（可能需要几秒）</p>
-            </div>
-            <button
-              onClick={() => setResultRequested(true)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded text-sm font-semibold text-white transition-all duration-200 hover:shadow-md"
-              style={{ background: "var(--clr-amber)" }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.18-6"/></svg>
-              加载可视化结果
-            </button>
-          </div>
         )}
 
         {needsResultData && resultRequested && loadingResult && (
