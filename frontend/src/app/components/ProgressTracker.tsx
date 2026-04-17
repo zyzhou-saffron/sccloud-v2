@@ -36,17 +36,34 @@ export default function ProgressTracker({
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // doneRef 用 ref 确保跨 effect 清理时仍能正确读写
   const doneRef = useRef(false);
+  // 单调递增保护：防止轮询返回旧 DB 值导致进度回退
+  const maxProgressRef = useRef(0);
+
+  /** 只允许进度单调递增，防止 WS 和轮询竞态导致回退 */
+  const safeSetProgress = (p: number) => {
+    if (p > maxProgressRef.current) {
+      maxProgressRef.current = p;
+      setProgress(p);
+    }
+  };
 
   useEffect(() => {
     if (!taskId) return;
 
     // 每次 taskId 变化时完整重置
     doneRef.current = false;
+    maxProgressRef.current = 0;
     setProgress(0);
     setMessage("正在连接...");
     setStatus("pending");
 
-    const fireDone = async (task?: Task) => {
+    /**
+     * fireDone 必须是同步的（不含 await）:
+     * 如果 setStatus("completed") 先执行导致 ProgressTracker 返回 null，
+     * 而 onComplete 延后到 await 之后才调用，父组件就会出现
+     * "进度条消失但 spinner 还在" 的中间态闪烁。
+     */
+    const fireDone = (task?: Task) => {
       if (doneRef.current) return;
       doneRef.current = true;
       setStatus("completed");
@@ -54,10 +71,8 @@ export default function ProgressTracker({
       setProgress(100);
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
       wsRef.current?.close();
-      const t = task ?? await getTask(taskId).catch(() => null);
-      // 即使 getTask 失败，也必须通知父组件任务完成，
-      // 否则 ResultViewer 会永远卡在 "正在执行" 转圈。
-      onCompleteRef.current?.(t ?? { id: taskId, status: "completed", progress: 100 } as Task);
+      // 同步通知父组件 — 与 setStatus("completed") 在同一 React batch
+      onCompleteRef.current?.(task ?? { id: taskId, status: "completed", progress: 100 } as Task);
     };
 
     const fireError = (msg: string) => {
@@ -74,7 +89,7 @@ export default function ProgressTracker({
     getTask(taskId).then((task) => {
       if (doneRef.current) return;
       setStatus(task.status);
-      setProgress(task.progress ?? 0);
+      safeSetProgress(task.progress ?? 0);
       if (task.status === "completed") fireDone(task);
       else if (task.status === "failed") fireError(task.error_msg || "任务失败");
       else if (task.status === "running") {
@@ -89,7 +104,7 @@ export default function ProgressTracker({
         taskId,
         (data) => {
           if (doneRef.current) return;
-          setProgress(data.progress);
+          safeSetProgress(data.progress);
           setMessage(data.message || `进度 ${data.progress}%`);
           if (data.progress > 0) setStatus("running");
         },
@@ -108,12 +123,12 @@ export default function ProgressTracker({
         const task = await getTask(taskId);
         if (doneRef.current) return;
         setStatus(task.status);
-        setProgress(task.progress ?? 0);
+        safeSetProgress(task.progress ?? 0);
         if (task.status === "running") {
           const desc = task.progress_message || `正在执行 ${stepLabel}...`;
           setMessage(`${desc} (${task.progress}%)`);
         }
-        else if (task.status === "completed") await fireDone(task);
+        else if (task.status === "completed") fireDone(task);
         else if (task.status === "failed") fireError(task.error_msg || "任务失败");
       } catch { /* 忽略轮询错误 */ }
     }, 2000);
