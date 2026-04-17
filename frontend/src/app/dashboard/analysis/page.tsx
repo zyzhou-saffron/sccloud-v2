@@ -172,10 +172,9 @@ function AnalysisPageContent() {
   useEffect(() => { saveSession({ uploadedFile }); }, [uploadedFile]);
 
   /**
-   * 安全回退轮询：独立检测当前步骤任务的终态。
-   * 防止 ProgressTracker 的 onComplete/onError 回调因竞态条件
-   * （如 WebSocket 先到但 getTask 失败）未能更新父组件 taskCache，
-   * 导致 ResultViewer 永久卡在 "正在执行" 转圈的问题。
+   * 安全回退轮询：同步当前步骤任务的最新状态到 taskCache。
+   * 1. 防止 ProgressTracker 回调失败导致 UI 卡死（终态保护）
+   * 2. 同步中间进度，让 ResultViewer 的 spinner 也显示真实进度描述
    */
   useEffect(() => {
     if (!currentTask?.id) return;
@@ -184,8 +183,9 @@ function AnalysisPageContent() {
     const interval = setInterval(async () => {
       try {
         const fresh = await getTask(currentTask.id);
+        // 始终同步最新状态（包括中间进度），让 ResultViewer 也能读到
+        updateTaskCache(step.id, fresh);
         if (fresh.status === "completed" || fresh.status === "failed") {
-          updateTaskCache(step.id, fresh);
           clearInterval(interval);
         }
       } catch { /* 静默忽略，下次重试 */ }
