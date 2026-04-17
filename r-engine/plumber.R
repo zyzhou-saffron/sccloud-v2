@@ -84,11 +84,18 @@ function(req) {
     exp[["percent.mt"]] <- PercentageFeatureSet(exp, pattern = "^MT-|^mt-")
   }
 
-  report(40, "生成 QC 统计...")
+  report(35, "生成 QC 统计...")
 
   # 调用原始函数
   totalMT <- totalMT_result(exp)
   umiGene <- umiGene_result(exp)
+
+  # ---- 生成样本相关性散点图 (my_distPlot1) ----
+  report(40, "生成样本相关性图...")
+  corr_plot_path <- file.path(project_path, "plot_qc_correlation.png")
+  png(corr_plot_path, width = 1400, height = 600, res = 150)
+  print(my_distPlot1(exp))
+  dev.off()
 
   report(60, "过滤细胞...")
 
@@ -116,7 +123,14 @@ function(req) {
   totalMT1 <- totalMT1_result(pro)
   umiGene1 <- umiGene1_result(pro)
 
-  report(80, "保存结果...")
+  # ---- 生成过滤前后 VlnPlot 对比 (my_distPlot2) ----
+  report(70, "生成质控小提琴图...")
+  vln_plot_path <- file.path(project_path, "plot_qc_violin.png")
+  png(vln_plot_path, width = 1400, height = 1000, res = 150)
+  print(my_distPlot2(exp, pro))
+  dev.off()
+
+  report(85, "保存结果...")
 
   output_path <- file.path(project_path, "seurat_qc.rds")
   saveRDS(pro, output_path)
@@ -135,7 +149,9 @@ function(req) {
     mito_table_before = totalMT,
     mito_table_after = totalMT1,
     umi_gene_before = umiGene,
-    umi_gene_after = umiGene1
+    umi_gene_after = umiGene1,
+    corr_plot_path = corr_plot_path,
+    violin_plot_path = vln_plot_path
   )
 }
 

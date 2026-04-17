@@ -2,7 +2,8 @@
  * scCloud v2 — QC 结果 Tab 展示组件
  * ComputaBio 暖色学术风格
  *
- * 对应旧系统的 Tab: 过滤结果 / 样本质控 / 样本线粒体基因占比 / 样本UMI基因统计
+ * 对应旧系统的 Tab:
+ *   过滤结果 / 样本相关性 / 样本质控 / 样本线粒体基因占比 / 样本UMI基因统计
  */
 "use client";
 
@@ -45,6 +46,10 @@ interface QCResult {
   mito_table_after: MitoRow[];
   umi_gene_before: UmiRow[];
   umi_gene_after: UmiRow[];
+  /** R 引擎生成的样本相关性散点图路径 */
+  corr_plot_path?: string | string[];
+  /** R 引擎生成的过滤前后 VlnPlot 路径 */
+  violin_plot_path?: string | string[];
 }
 
 interface QCResultTabsProps {
@@ -52,10 +57,29 @@ interface QCResultTabsProps {
   token: string;
 }
 
+// ===== 工具函数 =====
+
+/** 安全提取字符串 — R jsonlite 有时将单元素向量序列化为数组 */
+function safeString(v: unknown): string | null {
+  if (typeof v === "string") return v;
+  if (Array.isArray(v) && typeof v[0] === "string") return v[0];
+  return null;
+}
+
+/** 从 plot_path 提取文件名，构造 /api/tasks/{id}/plot?name= URL */
+function plotUrl(taskId: string, plotPath: unknown): string | null {
+  const p = safeString(plotPath);
+  if (!p) return null;
+  const name = p.split("/").pop();
+  if (!name) return null;
+  return `/api/tasks/${taskId}/plot?name=${encodeURIComponent(name)}`;
+}
+
 // ===== Tab 定义 =====
 
 const TABS = [
   { id: "filter", label: "过滤结果" },
+  { id: "corr", label: "样本相关性" },
   { id: "qc", label: "样本质控" },
   { id: "mito", label: "样本线粒体基因占比" },
   { id: "umi", label: "样本UMI基因统计" },
@@ -120,7 +144,8 @@ export default function QCResultTabs({ taskId, token }: QCResultTabsProps) {
       {/* Tab 内容 */}
       <div className="animate-fade-in-fast">
         {activeTab === "filter" && <FilterResultTab data={data} />}
-        {activeTab === "qc" && <SampleQCTab data={data} />}
+        {activeTab === "corr" && <CorrTab data={data} taskId={taskId} />}
+        {activeTab === "qc" && <SampleQCTab data={data} taskId={taskId} />}
         {activeTab === "mito" && <MitoTab data={data} />}
         {activeTab === "umi" && <UmiTab data={data} />}
       </div>
@@ -186,24 +211,75 @@ function FilterResultTab({ data }: { data: QCResult }) {
   );
 }
 
-// ===== Tab 2: 样本质控 =====
+// ===== Tab 2: 样本相关性 =====
 
-function SampleQCTab({ data }: { data: QCResult }) {
+function CorrTab({ data, taskId }: { data: QCResult; taskId: string }) {
+  const src = plotUrl(taskId, data.corr_plot_path);
+
   return (
     <div className="space-y-4">
       <div className="callout text-xs">
-        上传 RDS 文件中样本的相关性。如果 nCount_RNA 和线粒体基因间没有相关性，
-        表明测序得到的 Count 基本都是细胞的功能基因；nCount_RNA 和 nFeature_RNA
-        强相关的话，符合逻辑。
+        上传rds文件中样本的相关性,如果nCount_RNA和线粒体基因间没有相关性,表明测序得到的Count基本都是细胞的功能基因,nCount_RNA和nFeature_RNA强相关的话,符合逻辑
       </div>
 
+      {src ? (
+        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+          <img
+            src={src}
+            alt="样本相关性散点图 — nCount_RNA vs percent.mt / nFeature_RNA"
+            className="w-full h-auto"
+            style={{ display: "block" }}
+          />
+        </div>
+      ) : (
+        <div className="card text-center py-12">
+          <p className="text-sm" style={{ color: "var(--clr-text-faint)" }}>
+            样本相关性图暂不可用（仅在新提交的 QC 任务中生成）
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===== Tab 3: 样本质控 =====
+
+function SampleQCTab({ data, taskId }: { data: QCResult; taskId: string }) {
+  const vlnSrc = plotUrl(taskId, data.violin_plot_path);
+
+  return (
+    <div className="space-y-4">
+      <div className="callout text-xs">
+        过滤前后的小提琴图对比 (nCount_RNA、nFeature_RNA、percent.mt)。
+        上方为过滤前，下方为过滤后，可直观观察过滤效果。
+      </div>
+
+      {/* VlnPlot 可视化 */}
+      {vlnSrc ? (
+        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+          <img
+            src={vlnSrc}
+            alt="过滤前后 VlnPlot — nCount_RNA / nFeature_RNA / percent.mt"
+            className="w-full h-auto"
+            style={{ display: "block" }}
+          />
+        </div>
+      ) : (
+        <div className="card text-center py-8">
+          <p className="text-sm" style={{ color: "var(--clr-text-faint)" }}>
+            小提琴图暂不可用（仅在新提交的 QC 任务中生成）
+          </p>
+        </div>
+      )}
+
+      {/* 过滤前后线粒体分布表 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <div className="card-label">过滤前 · 线粒体基因分布</div>
           <MitoTable rows={data.mito_table_before} />
         </div>
         <div>
-          <div className="card-label">过滤后 · 线粒体基因分布</div>
+          <div className="card-label" style={{ color: "var(--clr-success)" }}>过滤后 · 线粒体基因分布</div>
           <MitoTable rows={data.mito_table_after} />
         </div>
       </div>
@@ -211,7 +287,7 @@ function SampleQCTab({ data }: { data: QCResult }) {
   );
 }
 
-// ===== Tab 3: 样本线粒体基因占比 =====
+// ===== Tab 4: 样本线粒体基因占比 =====
 
 function MitoTab({ data }: { data: QCResult }) {
   return (
@@ -226,7 +302,7 @@ function MitoTab({ data }: { data: QCResult }) {
   );
 }
 
-// ===== Tab 4: 样本UMI基因统计 =====
+// ===== Tab 5: 样本UMI基因统计 =====
 
 function UmiTab({ data }: { data: QCResult }) {
   return (
