@@ -93,10 +93,8 @@ export default function ProgressTracker({
       if (task.status === "completed") fireDone(task);
       else if (task.status === "failed") fireError(task.error_msg || "任务失败");
       else if (task.status === "running") {
-        // 仅当 DB 中有真实描述时才更新文字，避免覆盖 WS 已推送的详细消息
-        if (task.progress_message) {
-          setMessage(`${task.progress_message} (${task.progress}%)`);
-        }
+        const desc = task.progress_message || `正在执行 ${stepLabel}...`;
+        setMessage(`${desc} (${task.progress}%)`);
       }
     }).catch(() => { /* 忽略初始检查错误 */ });
 
@@ -127,10 +125,8 @@ export default function ProgressTracker({
         setStatus(task.status);
         safeSetProgress(task.progress ?? 0);
         if (task.status === "running") {
-          // 仅当 DB 中有真实描述时才更新文字，避免覆盖 WS 已推送的详细消息
-          if (task.progress_message) {
-            setMessage(`${task.progress_message} (${task.progress}%)`);
-          }
+          const desc = task.progress_message || `正在执行 ${stepLabel}...`;
+          setMessage(`${desc} (${task.progress}%)`);
         }
         else if (task.status === "completed") fireDone(task);
         else if (task.status === "failed") fireError(task.error_msg || "任务失败");

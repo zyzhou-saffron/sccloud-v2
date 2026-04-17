@@ -33,7 +33,7 @@ class ProgressSyncer:
     """
 
     # 同一 task 两次 DB 写入的最小间隔 (秒)
-    THROTTLE_INTERVAL = 1.0
+    THROTTLE_INTERVAL = 0.3
 
     def __init__(self):
         self._last_write: Dict[str, float] = {}

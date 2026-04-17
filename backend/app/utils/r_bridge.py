@@ -78,6 +78,7 @@ async def call_r_engine(
         # 更新任务: 完成
         task.status = "completed"
         task.progress = 100
+        task.progress_message = "✅ 分析完成"
         task.result_path = result.get("result_path")
         task.completed_at = datetime.now(timezone.utc)
         db.commit()
