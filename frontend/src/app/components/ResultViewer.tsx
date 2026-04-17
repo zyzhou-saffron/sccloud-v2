@@ -407,13 +407,12 @@ function ClusterResult({ data, taskId }: { data: Record<string, unknown> | null;
   const rawScatter = useMemo(() => safeScatter(data?.scatter_data), [data]);
 
   // ── Tab 状态 ──
-  type TabId = "interactive" | "stats" | "sankey" | "umap" | "group" | "subtype";
+  type TabId = "interactive" | "stats" | "sankey" | "group" | "subtype";
   const [activeTab, setActiveTab] = useState<TabId>("interactive");
   const tabs: { id: TabId; label: string }[] = [
-    { id: "interactive", label: "🔬 交互式 UMAP" },
+    { id: "interactive", label: "Cluster UMAP图" },
     { id: "stats",   label: "结果统计" },
     { id: "sankey",  label: "样本占比图" },
-    { id: "umap",    label: "R 原版 UMAP" },
     { id: "group",   label: "分组 UMAP" },
     { id: "subtype", label: "细胞亚类" },
   ];
@@ -465,7 +464,7 @@ function ClusterResult({ data, taskId }: { data: Record<string, unknown> | null;
               <DeckScatterPlot data={rawScatter} method="UMAP" height={560} />
             </>
           ) : (
-            <div className="callout text-xs">散点数据未返回，请查看"R 原版 UMAP"标签页</div>
+            <div className="callout text-xs">散点数据未返回，暂不可用</div>
           )}
         </div>
       )}
@@ -526,15 +525,6 @@ function ClusterResult({ data, taskId }: { data: Record<string, unknown> | null;
         <div className="space-y-1">
           <SectionTitle>样本 Cluster 占比图 — Fraction of cell populations (%)</SectionTitle>
           <AuthImg src={sankeySrc} alt="Sample Cluster Proportion"
-            className="w-full rounded border" style={{ border: "1px solid var(--clr-border)", background: "#fff" }} />
-        </div>
-      )}
-
-      {/* ── Tab 3: Cluster UMAP 图（my_distPlot5） ── */}
-      {activeTab === "umap" && (
-        <div className="space-y-1">
-          <SectionTitle>Cluster UMAP 图</SectionTitle>
-          <AuthImg src={umapSrc} alt="Cluster UMAP"
             className="w-full rounded border" style={{ border: "1px solid var(--clr-border)", background: "#fff" }} />
         </div>
       )}
