@@ -21,10 +21,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const API = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
-      const loginPath = "/api/auth/login";
-      const normalizedPath = API.endsWith("/api") && loginPath.startsWith("/api/") ? loginPath.slice(4) : loginPath;
-      const res = await fetch(`${API}${normalizedPath}`, {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ username, password }),

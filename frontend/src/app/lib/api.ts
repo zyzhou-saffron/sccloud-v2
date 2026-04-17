@@ -1,9 +1,14 @@
 /**
  * scCloud v2 — API 调用工具库
  * 统一封装所有后端 API 调用，自动注入 JWT + 错误处理。
+ *
+ * 所有请求均使用相对路径 (/api/...)
+ * 本地开发: Next.js rewrites 代理至后端
+ * 生产环境: Nginx 反代 /api/* → backend:8000
  */
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+/** API 基地址 — 空字符串表示同源相对路径 */
+const API_BASE = "";
 
 /** 通用 fetch 封装 — 自动注入 auth header */
 async function apiFetch<T>(
@@ -28,13 +33,7 @@ async function apiFetch<T>(
     headers["Content-Type"] = "application/json";
   }
 
-  // 防止双重前缀：若 API_BASE 以 /api 结尾且 path 以 /api/ 开头，去掉 path 中的前导 /api
-  const normalizedPath =
-    API_BASE.endsWith("/api") && path.startsWith("/api/")
-      ? path.slice(4) // 去掉前导 "/api"
-      : path;
-
-  const res = await fetch(`${API_BASE}${normalizedPath}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers,
   });
@@ -72,10 +71,7 @@ export async function login(
   username: string,
   password: string
 ): Promise<AuthResponse> {
-  const loginPath = "/api/auth/login";
-  const normalizedLoginPath = API_BASE.endsWith("/api") && loginPath.startsWith("/api/")
-    ? loginPath.slice(4) : loginPath;
-  const res = await fetch(`${API_BASE}${normalizedLoginPath}`, {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ username, password }),
@@ -193,8 +189,11 @@ export function connectTaskWS(
   onComplete?: () => void,
   onError?: (msg: string) => void
 ): WebSocket {
-  const wsBase = API_BASE.replace(/^http/, "ws");
-  const ws = new WebSocket(`${wsBase}/ws/tasks/${taskId}`);
+  /* 从当前页面 URL 自动推导 WebSocket 地址（同源） */
+  const loc = typeof window !== "undefined" ? window.location : null;
+  const wsProto = loc?.protocol === "https:" ? "wss:" : "ws:";
+  const wsHost = loc?.host || "localhost:8000";
+  const ws = new WebSocket(`${wsProto}//${wsHost}/ws/tasks/${taskId}`);
 
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);

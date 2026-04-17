@@ -13,11 +13,9 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# 构建时环境变量 (会被 Nginx 反代后的实际地址替代)
-ARG NEXT_PUBLIC_API_URL=/api
-ARG NEXT_PUBLIC_WS_URL=/ws
-ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+# 构建时注入后端地址 — Next.js rewrites 在 build 阶段读取
+ARG BACKEND_URL=http://localhost:8000
+ENV BACKEND_URL=${BACKEND_URL}
 
 RUN npm run build
 

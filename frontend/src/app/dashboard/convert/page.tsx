@@ -11,7 +11,7 @@
 
 import { useState } from "react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 
 const FORMATS = [
   { id: "rds", label: "RDS", desc: "R/Seurat 原生格式", ext: ".rds" },
@@ -56,7 +56,7 @@ export default function ConvertPage() {
         setProgress((p) => Math.min(p + 5, 90));
       }, 800);
 
-      const res = await fetch(`${API}/api/convert`, {
+      const res = await fetch("/api/convert", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

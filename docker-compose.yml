@@ -5,11 +5,12 @@
 services:
   # ---- 前端 (Next.js) ----
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # 构建时注入 — Next.js rewrites 代理目标
+        BACKEND_URL: http://backend:8000
     ports: ["3000:3000"]
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
-      NEXT_PUBLIC_WS_URL: ws://localhost:8000
     depends_on: [backend]
 
   # ---- API 网关 (FastAPI) ----
@@ -30,7 +31,8 @@ services:
 
   # ---- R 计算引擎 (Plumber) ----
   r-engine:
-    build: ./r-engine
+    image: sccloud-r-engine:latest
+    # build: ./r-engine
     ports: ["8787:8787"]
     environment:
       REDIS_URL: "${REDIS_URL}"
@@ -53,6 +55,7 @@ services:
       MYSQL_PASSWORD: "${DB_PASS}"
     volumes:
       - db_data:/var/lib/mysql
+      - ./data/sccloud_v2_dump.sql:/docker-entrypoint-initdb.d/dump.sql:ro
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s

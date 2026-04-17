@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { healthCheck } from "../../lib/api";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 
 interface Health {
   status: string;
@@ -36,7 +36,7 @@ export default function SettingsPage() {
     setSaving(true); setPwdMsg(null);
     try {
       const token = localStorage.getItem("access_token");
-      const res = await fetch(`${API}/api/auth/change-password`, {
+      const res = await fetch("/api/auth/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }),

@@ -72,11 +72,8 @@ export default function QCResultTabs({ taskId, token }: QCResultTabsProps) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const rawAPI = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    const API = rawAPI.replace(/\/+$/, "");
     const path = `/api/tasks/${taskId}/result`;
-    const normalizedPath = API.endsWith("/api") && path.startsWith("/api/") ? path.slice(4) : path;
-    fetch(`${API}${normalizedPath}`, {
+    fetch(path, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => {
