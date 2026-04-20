@@ -8,7 +8,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState, type ComponentType } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import ProjectSelector from "../../components/ProjectSelector";
 import ProgressTracker from "../../components/ProgressTracker";
 import ResultViewer from "../../components/ResultViewer";
@@ -98,6 +98,7 @@ function AnalysisPageContent() {
   );
   // 上传进度（0-100）
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const step = STEPS[activeStep];
   // 当前步骤的 task（来自 cache）
@@ -283,7 +284,7 @@ function AnalysisPageContent() {
       setActiveStep(idx);
     }
   };
-  const handleProjectSelect = (p: Project) => {
+  const handleProjectSelect = (p: Project | null) => {
     // 切换项目时重置所有与项目绑定的状态，避免旧数据泄漏
     setProject(p);
     setUploadedFile(null);
@@ -389,9 +390,18 @@ function AnalysisPageContent() {
                     <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>上传原始 RDS 文件</label>
 
                     {/* 上传按钮 — 始终显示 */}
-                    <label
-                      className="flex items-center justify-center gap-2 w-full py-2 bg-white cursor-pointer hover:shadow-sm transition-all text-xs border border-dashed rounded mb-1.5"
+                    <div
+                      onClick={() => {
+                        if (!project) {
+                          setError("请先选择项目再上传文件");
+                          window.dispatchEvent(new CustomEvent("open-project-selector"));
+                          return;
+                        }
+                        fileInputRef.current?.click();
+                      }}
+                      className="flex items-center justify-center gap-2 w-full py-2 bg-white hover:shadow-sm transition-all text-xs border border-dashed rounded mb-1.5"
                       style={{
+                        cursor: "pointer",
                         borderColor: uploadedFile ? "#C86019" : "var(--clr-border)",
                         color: uploadedFile ? "#C86019" : "var(--clr-text-muted)",
                         background: uploadedFile ? "rgba(200,96,25,0.04)" : undefined,
@@ -401,13 +411,14 @@ function AnalysisPageContent() {
                     >
                       <IconUpload size={14} className="text-[#C86019]" />
                       <span>{uploadedFile ? "重新上传" : "点击上传 .rds 文件"}</span>
-                      <input
-                        type="file"
-                        accept=".rds,.h5seurat,.h5ad,.rdata"
-                        className="hidden"
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); }}
-                      />
-                    </label>
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".rds,.h5seurat,.h5ad,.rdata"
+                      className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = ''; }}
+                    />
 
                     {/* 上传进度条 */}
                     {uploadProgress !== null && (

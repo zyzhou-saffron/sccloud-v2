@@ -16,7 +16,7 @@ import {
 
 interface ProjectSelectorProps {
   selectedId: number | null;
-  onSelect: (project: Project) => void;
+  onSelect: (project: Project | null) => void;
 }
 
 export default function ProjectSelector({
@@ -35,6 +35,7 @@ export default function ProjectSelector({
   const [error, setError] = useState<string | null>(null);
   const [guest, setGuest] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [showSpeciesDropdown, setShowSpeciesDropdown] = useState(false);
 
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -51,6 +52,16 @@ export default function ProjectSelector({
 
   useEffect(() => { fetchProjects(); setGuest(isGuest()); }, [fetchProjects]);
 
+  /** 项目列表加载完成后，若 selectedId 与任何项目都不匹配，主动清除过期选择 */
+  useEffect(() => {
+    if (!loading && selectedId !== null && projects.length >= 0) {
+      const match = projects.find((p) => p.id === selectedId);
+      if (!match) {
+        onSelect(null);
+      }
+    }
+  }, [loading, selectedId, projects, onSelect]);
+
   /** 游客是否已达到 1 个项目限制 */
   const guestLimitReached = guest && projects.length >= 1;
 
@@ -58,11 +69,18 @@ export default function ProjectSelector({
     const handleClick = (e: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         setOpen(false); setShowNew(false); setError(null); setDeletingId(null);
+        setShowSpeciesDropdown(false);
       }
     };
     if (open) document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
+
+  useEffect(() => {
+    const handleOpen = () => setOpen(true);
+    window.addEventListener("open-project-selector", handleOpen);
+    return () => window.removeEventListener("open-project-selector", handleOpen);
+  }, []);
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
@@ -83,7 +101,11 @@ export default function ProjectSelector({
       await fetchProjects();
       if (id === selectedId) {
         const remaining = projects.filter((p) => p.id !== id);
-        if (remaining.length > 0) onSelect(remaining[0]);
+        if (remaining.length > 0) {
+          onSelect(remaining[0]);
+        } else {
+          onSelect(null);
+        }
       }
       setDeletingId(null);
     } catch (e) {
@@ -108,9 +130,20 @@ export default function ProjectSelector({
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--clr-text-faint)", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9" /></svg>
       </button>
 
-      {/* 弹出管理面板 */}
-      {open && (
-        <div className="absolute top-full right-0 mt-2 w-96 z-50 animate-fade-in rounded-lg overflow-hidden" style={{ background: "var(--clr-bg-card)", border: "1px solid var(--clr-border)", boxShadow: "var(--shadow-lg)" }}>
+      {/* 弹出管理面板 — 始终挂载，通过 CSS transition 实现从顶部滑下动画 */}
+      <div
+        className="absolute top-full right-0 mt-2 w-96 z-50 rounded-lg overflow-hidden"
+        style={{
+          background: "var(--clr-bg-card)",
+          border: open ? "1px solid var(--clr-border)" : "1px solid transparent",
+          boxShadow: open ? "var(--shadow-lg)" : "none",
+          maxHeight: open ? 600 : 0,
+          opacity: open ? 1 : 0,
+          transform: open ? "translateY(0)" : "translateY(-12px)",
+          transition: "max-height 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.25s ease, transform 0.3s cubic-bezier(0.4,0,0.2,1), border-color 0.25s ease, box-shadow 0.25s ease",
+          pointerEvents: open ? "auto" : "none",
+        }}
+      >
           {/* 标题栏 */}
           <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--clr-border)", background: "var(--clr-bg-alt)" }}>
             <h3 className="text-sm font-semibold" style={{ fontFamily: "var(--font-serif)", color: "var(--clr-dark)" }}>项目管理</h3>
@@ -126,7 +159,7 @@ export default function ProjectSelector({
           </div>
           {guestLimitReached && (
             <div className="px-4 py-2 text-xs" style={{ background: "var(--clr-gold-soft)", color: "var(--clr-amber-dark)", borderBottom: "1px solid var(--clr-border)" }}>
-              游客限制：最多 1 个项目。注册账号以创建更多。
+              最多 1 个项目。注册账号以创建更多。
             </div>
           )}
 
@@ -138,12 +171,40 @@ export default function ProjectSelector({
                 <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="例: PBMC_3k" className={inputCls} style={{ borderColor: "var(--clr-border)" }} autoFocus onKeyDown={(e) => e.key === "Enter" && handleCreate()} />
               </div>
               <div className="flex gap-2">
-                <div className="flex-1">
+                <div className="flex-1 relative">
                   <label className="block text-[10px] mb-1" style={{ color: "var(--clr-text-muted)" }}>物种</label>
-                  <select value={newSpecies} onChange={(e) => setNewSpecies(e.target.value)} className={inputCls} style={{ borderColor: "var(--clr-border)" }}>
-                    <option value="human">🧬 Human</option>
-                    <option value="mouse">🐭 Mouse</option>
-                  </select>
+                  <button
+                    onClick={() => setShowSpeciesDropdown(!showSpeciesDropdown)}
+                    type="button"
+                    className={`w-full text-left px-3 py-2 bg-white border rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#C86019]/30 flex justify-between items-center transition-colors cursor-pointer ${showSpeciesDropdown ? 'border-[#C86019]' : 'border-[var(--clr-border)]'}`}
+                  >
+                    <span className="text-stone-700 capitalize">{newSpecies === 'mouse' ? 'Mouse' : 'Human'}</span>
+                    <svg className={`w-4 h-4 text-stone-400 transition-transform ${showSpeciesDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                  </button>
+
+                  {/* 自定义下拉菜单 */}
+                  {showSpeciesDropdown && (
+                    <div className="absolute top-full left-0 w-full mt-1 bg-white border rounded-lg shadow-lg z-50 py-1 overflow-hidden" style={{ borderColor: 'var(--clr-border)' }}>
+                      {[
+                        { value: 'human', label: 'Human' },
+                        { value: 'mouse', label: 'Mouse' }
+                      ].map((item) => (
+                        <button
+                          key={item.value}
+                          onClick={() => {
+                            setNewSpecies(item.value);
+                            setShowSpeciesDropdown(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm text-stone-700 hover:bg-[#C86019]/10 transition-colors flex items-center justify-between group"
+                        >
+                          <span className="capitalize">{item.label}</span>
+                          {newSpecies === item.value && (
+                            <svg className="w-4 h-4 text-[#C86019]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1">
                   <label className="block text-[10px] mb-1" style={{ color: "var(--clr-text-muted)" }}>描述 (可选)</label>
@@ -209,8 +270,7 @@ export default function ProjectSelector({
               共 {projects.length} 个项目
             </div>
           )}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

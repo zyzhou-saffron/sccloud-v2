@@ -98,34 +98,45 @@ export default function DashboardLayout({
           </nav>
 
           {/* User area */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
+            {/* Common Icons for both modes */}
+            <div className="flex items-center gap-3 text-white/70 mr-1">
+              {/* Moon Icon */}
+              <button className="hover:text-[#FFD42A] transition-colors cursor-pointer">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+              </button>
+              {/* Lang Icon */}
+              <button className="hover:text-[#FFD42A] transition-colors flex items-center justify-center text-[14px] font-bold cursor-pointer" style={{ fontFamily: "var(--font-sans)" }}>
+                中
+              </button>
+              {/* GitHub Icon */}
+              <a href="https://github.com" target="_blank" rel="noreferrer" className="hover:text-[#FFD42A] transition-colors cursor-pointer">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+              </a>
+            </div>
+
             {guest ? (
-              <>
-                <span className="text-xs text-white/40">游客模式</span>
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => setUpgradeOpen(true)}
-                  className="text-xs px-3 py-1.5 rounded font-medium transition-all duration-200"
-                  style={{
-                    background: "rgba(200,96,25,0.2)",
-                    color: "#FFD42A",
-                    border: "1px solid rgba(255,212,42,0.3)",
-                  }}
+                  className="px-5 py-1 text-[13px] font-medium rounded transition-all duration-200 cursor-pointer"
+                  style={{ background: "rgba(200,96,25,0.1)", color: "var(--clr-amber)" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(200,96,25,0.15)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(200,96,25,0.1)"; }}
                 >
-                  注册账号
+                  Login
                 </button>
-              </>
+              </div>
             ) : (
-              <>
-                <span className="text-sm text-white/50">
-                  <span className="text-white/70">{username}</span>
-                </span>
+              <div className="flex items-center gap-3 pl-2" style={{ borderLeft: "1px solid rgba(255,255,255,0.15)" }}>
+                <span className="text-sm font-medium text-white/90">{username}</span>
                 <button
                   onClick={handleLogout}
-                  className="text-xs px-3 py-1.5 rounded border border-white/20 text-white/50 hover:text-red-300 hover:border-red-400/50 transition-colors"
+                  className="text-xs px-2.5 py-1 rounded border border-white/20 text-white/60 hover:text-red-300 hover:border-red-400/50 transition-colors"
                 >
                   退出
                 </button>
-              </>
+              </div>
             )}
           </div>
         </div>
@@ -141,16 +152,18 @@ export default function DashboardLayout({
             borderBottom: "1px solid rgba(200,96,25,0.15)",
           }}
         >
-          🎉 游客模式：可创建 1 个项目体验全流程分析。
+          <span>🎉 当前只可以创建一个项目。</span>
           <button
             onClick={() => setUpgradeOpen(true)}
-            className="ml-2 underline font-medium"
-            style={{ color: "var(--clr-amber)" }}
+            className="ml-2 underline font-medium hover:text-[var(--clr-amber)] transition-colors"
+            style={{ color: "var(--clr-amber-dark)" }}
           >
             注册以解锁更多
           </button>
         </div>
       )}
+
+
 
       {/* Main */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">

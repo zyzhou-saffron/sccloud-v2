@@ -150,25 +150,24 @@ export default function LandingPage() {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2.5">
                 <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center"
-                  style={{ background: "linear-gradient(135deg, #C2693D, #D4784A)", boxShadow: "0 2px 8px rgba(194,105,61,0.2)" }}
+                  className="w-8 h-8 rounded shrink-0 flex items-center justify-center"
+                  style={{ background: "#C56B3A" }}
                 >
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3" />
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                    <path d="M7 14L12 9L17 14" />
                   </svg>
                 </div>
                 <span
                   className="text-lg font-bold"
-                  style={{ fontFamily: "var(--font-display)", color: "var(--clr-dark-deep)", letterSpacing: "-0.02em" }}
+                  style={{ fontFamily: "var(--font-display)", color: "var(--clr-dark-deep)", letterSpacing: "0.5px" }}
                 >
                   scCloud
                 </span>
               </div>
               {/* Separator */}
-              <div className="hidden md:block w-px h-5" style={{ background: "var(--clr-border)" }} />
+              <div className="hidden md:block w-px h-6 mx-2" style={{ background: "rgba(0,0,0,0.06)" }} />
               {/* Nav links */}
-              <div className="hidden md:flex items-center gap-5">
+              <div className="hidden md:flex items-center gap-6">
                 {[
                   { label: "功能", href: "#features" },
                   { label: "流程", href: "#pipeline" },
@@ -177,8 +176,10 @@ export default function LandingPage() {
                   <a
                     key={item.href}
                     href={item.href}
-                    className="text-[13px] font-medium transition-colors duration-200 hover:text-[var(--clr-amber)]"
-                    style={{ color: "var(--clr-text-muted)" }}
+                    className="text-[13px] transition-colors duration-200"
+                    style={{ color: "rgba(0,0,0,0.55)", fontWeight: 500 }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = "var(--clr-dark-deep)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(0,0,0,0.55)")}
                   >
                     {item.label}
                   </a>
@@ -186,35 +187,64 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <button
-                onClick={openLogin}
-                className="text-[13px] font-medium transition-colors duration-200 hover:text-[var(--clr-amber)]"
-                style={{ color: "var(--clr-text-muted)" }}
-              >
-                登录
-              </button>
-              <button
-                onClick={handleStart}
-                disabled={startLoading}
-                className="px-5 py-2 text-[13px] font-semibold text-white rounded-full transition-all duration-300 disabled:opacity-60"
-                style={{
-                  background: "var(--clr-amber)",
-                  boxShadow: "0 2px 12px rgba(194,105,61,0.25)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--clr-amber-light)";
-                  e.currentTarget.style.boxShadow = "0 4px 20px rgba(194,105,61,0.35)";
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--clr-amber)";
-                  e.currentTarget.style.boxShadow = "0 2px 12px rgba(194,105,61,0.25)";
-                  e.currentTarget.style.transform = "translateY(0)";
-                }}
-              >
-                {startLoading ? "准备中..." : "开始使用"}
-              </button>
+            <div className="flex items-center gap-5">
+              {/* Icons */}
+              <div className="flex items-center gap-4 mr-1" style={{ color: "var(--clr-dark-deep)" }}>
+                {/* Moon Icon */}
+                <button className="hover:opacity-70 transition-opacity cursor-pointer">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                </button>
+                {/* Lang Icon */}
+                <button className="hover:opacity-70 transition-opacity flex items-center justify-center text-[15px] cursor-pointer" style={{ fontFamily: "var(--font-sans)", fontWeight: 400 }}>
+                  中
+                </button>
+                {/* GitHub Icon */}
+                <a href="https://github.com" target="_blank" rel="noreferrer" className="hover:opacity-70 transition-opacity cursor-pointer">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+                </a>
+              </div>
+
+              {/* Get Started (Guest Login) */}
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={handleStart}
+                  disabled={startLoading}
+                  className="px-4 py-[7px] text-[13px] font-medium rounded transition-all duration-300 disabled:opacity-60 cursor-pointer disabled:cursor-not-allowed"
+                  style={{
+                    background: "transparent",
+                    color: "var(--clr-amber)",
+                    border: "1px solid rgba(200,96,25,0.2)",
+                    lineHeight: 1,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "rgba(200,96,25,0.06)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  {startLoading ? "Loading..." : "Get Started"}
+                </button>
+
+                {/* Login */}
+                <button
+                  onClick={openLogin}
+                  className="px-5 py-[8px] text-[13px] font-medium rounded transition-all duration-300 cursor-pointer"
+                  style={{
+                    background: "rgba(200,96,25,0.1)",
+                    color: "var(--clr-amber)",
+                    lineHeight: 1,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "rgba(200,96,25,0.15)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "rgba(200,96,25,0.1)";
+                  }}
+                >
+                  Login
+                </button>
+              </div>
             </div>
           </div>
         </nav>
@@ -256,9 +286,9 @@ export default function LandingPage() {
               >
                 从数据到发现，
                 <br />
-                <span className="gradient-text">单细胞分析</span>
+                <span className="gradient-text">单细胞</span>
                 <br />
-                云端平台
+                云端分析平台
               </h1>
 
               {/* Gold divider */}

@@ -156,20 +156,20 @@ export default function AuthModal({
           {/* Header */}
           <div className="text-center mb-6">
             <h2
-              className="text-xl font-bold"
+              className="text-[22px] font-bold transition-all duration-300"
               style={{ fontFamily: "var(--font-serif)", color: "var(--clr-dark-deep)" }}
             >
-              {upgradeMode ? "注册正式账号" : "scCloud"}
+              {tab === "login" && !upgradeMode ? "scCloud" : "注册正式账号"}
             </h2>
-            {upgradeMode && (
-              <p className="text-xs mt-1" style={{ color: "var(--clr-text-muted)" }}>
+            <div
+              className="w-12 h-[3px] mx-auto mt-3 mb-2 rounded-full"
+              style={{ background: "linear-gradient(90deg, #C86019, #FFD42A)" }}
+            />
+            {(tab === "register" || upgradeMode) && (
+              <p className="text-[13px] mt-3" style={{ color: "var(--clr-text-muted)", animation: "fadeIn 0.3s ease-in-out" }}>
                 注册后保留您所有的分析数据，并解锁更多项目
               </p>
             )}
-            <div
-              className="w-12 h-0.5 mx-auto mt-3"
-              style={{ background: "linear-gradient(90deg, #C86019, #FFD42A)" }}
-            />
           </div>
 
           {/* Tabs (hide in upgrade mode) */}

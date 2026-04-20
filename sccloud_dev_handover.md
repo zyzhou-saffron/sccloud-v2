@@ -60,6 +60,25 @@
 2. WebSockets 一律靠读取浏览器宏环境动态拼装（如：`wss://${window.location.host}/ws/...`）。
 3. 部署时，使用 `BACKEND_URL` 作为 Docker 构建的 `ARG` 来满足 next 服务端组件所需的内网路由通讯。这点 `docker-compose.yml` 层已配置完善，尽量别动。
 
+### 🧊 问题频发 5：sessionStorage 过期状态导致前端守卫逻辑失效
+分析页面 (`analysis/page.tsx`) 使用 `sessionStorage` 持久化 `project`、`uploadedFile`、`taskCache` 等状态，以便刷新后恢复上下文。**陷阱在于：** 当用户此前选择过的项目被删除、或服务端数据清空后，`sessionStorage` 中仍残留旧的 `project` 对象。此时：
+*   `ProjectSelector` 组件从 API 拉取项目列表后找不到匹配项，**UI 正确地显示「选择项目...」**；
+*   但 `page.tsx` 中的 `project` state 却是从 `sessionStorage` 恢复的非 `null` 旧值；
+*   导致 `if (!project)` 的卫语句失效 —— 用户点击上传区时，守卫被绕过，原生文件选择器照常弹出，而不是提示用户先选择项目。
+
+**表象极具迷惑性**：开发者只看到 UI 上显示"选择项目..."，直觉认为 `project === null`，但实际上它非空。这个 bug 反复修了多轮才定位到根因。
+
+👉 **已实施的解决对策**：在 `ProjectSelector.tsx` 中增加了一个 `useEffect` 守卫钩子：
+```tsx
+useEffect(() => {
+  if (!loading && selectedId !== null && projects.length >= 0) {
+    const match = projects.find((p) => p.id === selectedId);
+    if (!match) { onSelect(null); } // 主动通知父组件清除过期选择
+  }
+}, [loading, selectedId, projects, onSelect]);
+```
+**核心原则**：凡是从 `sessionStorage` / `localStorage` 恢复的"引用型"状态（project、task 等），必须在对应数据源(API)加载完毕后做一次 **"存在性校验"**，不匹配则立即清除。切勿盲目信任浏览器端缓存的对象。
+
 ## 4. 特色说明
 *   **设计系统**：UI 的背景色为带点米白质感的暖调，注重阴影层级、微过渡动画（`animate-fade-in`）和圆润边缘。强调极好的 UX 提示文案与响应。图表主要采用 D3.js（部分交互图）、deck.gl WebGL（处理海量散点UMAP图）、及 fallback 供下载的原生 R PNG 图。
 *   **数据通讯机制**：单次任务为异步提交 -> Backend 交给 Celery/Redis -> Plumber 监听响应 -> Redis 发布订阅实时进度 -> FastAPI WebSocket 转发 -> Frontend 显示进度条。
