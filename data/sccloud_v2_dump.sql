@@ -72,6 +72,7 @@ CREATE TABLE `tasks` (
   `status` enum('pending','running','completed','failed','cancelled') DEFAULT NULL,
   `params` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`params`)),
   `progress` int(11) DEFAULT NULL,
+  `progress_message` varchar(255) DEFAULT NULL,
   `result_path` varchar(512) DEFAULT NULL,
   `error_msg` text DEFAULT NULL,
   `started_at` datetime DEFAULT NULL,

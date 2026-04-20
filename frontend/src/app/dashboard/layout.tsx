@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { IconBeaker, IconConvert, IconGear } from "../components/Icons";
+import { isGuest } from "../lib/api";
+import AuthModal from "../components/AuthModal";
 
 /**
  * 仪表盘布局 — ComputaBio 暖色学术风格
  * 深色顶栏 + 暖白内容区
+ * 支持游客模式: 显示"注册"按钮代替用户名
  */
 
 const NAV_ITEMS = [
@@ -24,15 +27,18 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [username, setUsername] = useState("");
+  const [guest, setGuest] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
     const name = localStorage.getItem("username");
     if (!token) {
-      router.push("/login");
+      router.push("/");
       return;
     }
     setUsername(name || "用户");
+    setGuest(isGuest());
     if (pathname === "/dashboard") {
       router.replace("/dashboard/analysis");
     }
@@ -42,7 +48,8 @@ export default function DashboardLayout({
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     localStorage.removeItem("username");
-    router.push("/login");
+    localStorage.removeItem("is_guest");
+    router.push("/");
   };
 
   return (
@@ -54,7 +61,7 @@ export default function DashboardLayout({
       >
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
           {/* Logo */}
-          <Link href="/dashboard" className="flex items-center gap-2.5 group">
+          <Link href="/" className="flex items-center gap-2.5 group">
             <div
               className="w-8 h-8 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform shadow-sm"
               style={{ background: "linear-gradient(135deg, #C86019, #E07828)" }}
@@ -90,25 +97,72 @@ export default function DashboardLayout({
             })}
           </nav>
 
-          {/* User */}
+          {/* User area */}
           <div className="flex items-center gap-3">
-            <span className="text-sm text-white/50">
-              <span className="text-white/70">{username}</span>
-            </span>
-            <button
-              onClick={handleLogout}
-              className="text-xs px-3 py-1.5 rounded border border-white/20 text-white/50 hover:text-red-300 hover:border-red-400/50 transition-colors"
-            >
-              退出
-            </button>
+            {guest ? (
+              <>
+                <span className="text-xs text-white/40">游客模式</span>
+                <button
+                  onClick={() => setUpgradeOpen(true)}
+                  className="text-xs px-3 py-1.5 rounded font-medium transition-all duration-200"
+                  style={{
+                    background: "rgba(200,96,25,0.2)",
+                    color: "#FFD42A",
+                    border: "1px solid rgba(255,212,42,0.3)",
+                  }}
+                >
+                  注册账号
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-sm text-white/50">
+                  <span className="text-white/70">{username}</span>
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="text-xs px-3 py-1.5 rounded border border-white/20 text-white/50 hover:text-red-300 hover:border-red-400/50 transition-colors"
+                >
+                  退出
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
+
+      {/* Guest banner */}
+      {guest && (
+        <div
+          className="text-center py-2 text-xs"
+          style={{
+            background: "var(--clr-gold-soft)",
+            color: "var(--clr-amber-dark)",
+            borderBottom: "1px solid rgba(200,96,25,0.15)",
+          }}
+        >
+          🎉 游客模式：可创建 1 个项目体验全流程分析。
+          <button
+            onClick={() => setUpgradeOpen(true)}
+            className="ml-2 underline font-medium"
+            style={{ color: "var(--clr-amber)" }}
+          >
+            注册以解锁更多
+          </button>
+        </div>
+      )}
 
       {/* Main */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
         {children}
       </main>
+
+      {/* Upgrade Modal */}
+      <AuthModal
+        open={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        upgradeMode={true}
+      />
     </div>
   );
 }

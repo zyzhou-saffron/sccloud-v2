@@ -90,6 +90,44 @@ export async function register(
   });
 }
 
+/**
+ * 游客登录 — 无需用户名密码，后端自动创建临时用户。
+ */
+export async function guestLogin(): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}/api/auth/guest`, { method: "POST" });
+  if (!res.ok) throw new Error("游客登录失败");
+  return res.json();
+}
+
+/**
+ * 游客升级 — 将临时 guest 账号转为正式注册用户。
+ */
+export async function upgradeGuest(
+  username: string,
+  password: string
+): Promise<AuthResponse> {
+  return apiFetch<AuthResponse>("/api/auth/upgrade", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+/**
+ * 保存认证数据到 localStorage。
+ */
+export function saveAuthData(data: AuthResponse, guest = false): void {
+  localStorage.setItem("access_token", data.access_token);
+  localStorage.setItem("refresh_token", data.refresh_token);
+  localStorage.setItem("username", data.username);
+  localStorage.setItem("is_guest", guest ? "true" : "false");
+}
+
+/**
+ * 检查当前用户是否为游客。
+ */
+export function isGuest(): boolean {
+  return localStorage.getItem("is_guest") === "true";
+}
 /* ===== Projects ===== */
 
 export interface Project {

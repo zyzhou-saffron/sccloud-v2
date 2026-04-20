@@ -6,6 +6,7 @@ scCloud v2 — 数据库连接和 ORM 模型
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Enum,
@@ -70,6 +71,7 @@ class User(Base):
     username = Column(String(100), unique=True, nullable=False, index=True)
     email = Column(String(255), nullable=True)
     password_hash = Column(String(255), nullable=False)  # bcrypt 内置 salt
+    is_guest = Column(Boolean, default=False)  # 游客临时用户标记
     role = Column(
         Enum("admin", "user", name="user_role"),
         default="user",

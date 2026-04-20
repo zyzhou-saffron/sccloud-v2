@@ -9,6 +9,7 @@ import { IconFolder, IconChart, IconDNA } from "./Icons";
 import {
   createProject,
   deleteProject,
+  isGuest,
   listProjects,
   type Project,
 } from "../lib/api";
@@ -32,6 +33,7 @@ export default function ProjectSelector({
   const [newDesc, setNewDesc] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [guest, setGuest] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const panelRef = useRef<HTMLDivElement>(null);
@@ -47,7 +49,10 @@ export default function ProjectSelector({
     }
   }, []);
 
-  useEffect(() => { fetchProjects(); }, [fetchProjects]);
+  useEffect(() => { fetchProjects(); setGuest(isGuest()); }, [fetchProjects]);
+
+  /** 游客是否已达到 1 个项目限制 */
+  const guestLimitReached = guest && projects.length >= 1;
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -109,14 +114,21 @@ export default function ProjectSelector({
           {/* 标题栏 */}
           <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--clr-border)", background: "var(--clr-bg-alt)" }}>
             <h3 className="text-sm font-semibold" style={{ fontFamily: "var(--font-serif)", color: "var(--clr-dark)" }}>项目管理</h3>
-            <button
-              onClick={() => { setShowNew(!showNew); setError(null); }}
-              className="text-xs px-3 py-1 rounded transition-colors"
-              style={{ background: "rgba(200,96,25,0.1)", color: "var(--clr-amber)" }}
-            >
-              {showNew ? "取消" : "+ 新建"}
-            </button>
+            {!guestLimitReached && (
+              <button
+                onClick={() => { setShowNew(!showNew); setError(null); }}
+                className="text-xs px-3 py-1 rounded transition-colors"
+                style={{ background: "rgba(200,96,25,0.1)", color: "var(--clr-amber)" }}
+              >
+                {showNew ? "取消" : "+ 新建"}
+              </button>
+            )}
           </div>
+          {guestLimitReached && (
+            <div className="px-4 py-2 text-xs" style={{ background: "var(--clr-gold-soft)", color: "var(--clr-amber-dark)", borderBottom: "1px solid var(--clr-border)" }}>
+              游客限制：最多 1 个项目。注册账号以创建更多。
+            </div>
+          )}
 
           {/* 新建项目表单 */}
           {showNew && (
