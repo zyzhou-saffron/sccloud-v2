@@ -275,7 +275,20 @@ function AnalysisPageContent() {
     } finally { setSubmitting(false); }
   };
 
-  const handleTaskComplete = (task: Task) => { updateTaskCache(step.id, task); };
+  /**
+   * 任务完成回调 — 始终从 API 重新获取完整 Task。
+   * ProgressTracker 的 WS 回调可能传入不完整的 mock task（缺少 step/result_path 等），
+   * 直接写入 taskCache 会导致 ResultViewer 渲染分支判断失败（空白结果区域）。
+   */
+  const handleTaskComplete = async (partialTask: Task) => {
+    try {
+      const fresh = await getTask(partialTask.id);
+      updateTaskCache(step.id, fresh);
+    } catch {
+      // API 不可达时降级使用传入的 task（至少保证状态为 completed）
+      updateTaskCache(step.id, partialTask);
+    }
+  };
   const handleTaskError = () => {};
   const handleSelectHistory = (task: Task) => {
     const idx = STEPS.findIndex((s) => s.apiStep === task.step);
@@ -745,7 +758,7 @@ function AnalysisPageContent() {
                 </div>
               )}
 
-              <ResultViewer task={currentTask} stepLabel={step.label} StepIcon={step.Icon} taskCache={taskCache} />
+              <ResultViewer task={currentTask} stepId={step.id} stepLabel={step.label} StepIcon={step.Icon} taskCache={taskCache} />
 
               {/* 底部导航 — 仅在当前步骤有任务时显示 */}
               {hasTaskForStep && (

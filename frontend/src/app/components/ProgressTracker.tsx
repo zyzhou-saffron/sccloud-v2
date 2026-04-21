@@ -71,8 +71,8 @@ export default function ProgressTracker({
       setProgress(100);
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
       wsRef.current?.close();
-      // 同步通知父组件 — 与 setStatus("completed") 在同一 React batch
-      onCompleteRef.current?.(task ?? { id: taskId, status: "completed", progress: 100 } as Task);
+      // 同步通知父组件 — 继承已知信息，防止 step 丢失
+      onCompleteRef.current?.(task ?? { id: taskId, status: "completed", progress: 100, step: "unknown" } as Task);
     };
 
     const fireError = (msg: string) => {

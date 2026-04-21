@@ -158,6 +158,7 @@ function AuthDownloadLink({ url, filename, className, style, children }: { url: 
 
 interface ResultViewerProps {
   task: Task | null;
+  stepId: string;
   stepLabel: string;
   StepIcon: ComponentType<{ className?: string; size?: number }>;
   taskCache?: Record<string, Task>;
@@ -185,7 +186,7 @@ async function fetchTaskResult(taskId: string): Promise<Record<string, unknown> 
 // 由于 WebGL 重构提升了性能，现在所有有步骤均自动加载结果数据
 // 不再需要显式点击加载图表按钮。
 
-export default function ResultViewer({ task, stepLabel, StepIcon, taskCache }: ResultViewerProps) {
+export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCache }: ResultViewerProps) {
   const [resultData, setResultData] = useState<Record<string, unknown> | null>(null);
   const [loadingResult, setLoadingResult] = useState(false);
   // 自动加载：任务完成后触发
@@ -199,22 +200,22 @@ export default function ResultViewer({ task, stepLabel, StepIcon, taskCache }: R
 
   // 所有完成的任务自动加载结果数据
   useEffect(() => {
-    if (task?.status === "completed" && task.step) {
+    if (task?.status === "completed") {
       setResultRequested(true);
     }
-  }, [task?.id, task?.status, task?.step]);
+  }, [task?.id, task?.status]);
 
   useEffect(() => {
     if (!resultRequested) return;
     if (!task || task.status !== "completed") return;
     // QC 步骤由 QCResultTabs 自行管理
-    if (task.step === "qc") return;
+    if (stepId === "qc") return;
     setLoadingResult(true);
     fetchTaskResult(task.id).then((data) => {
       setResultData(data);
       setLoadingResult(false);
     });
-  }, [resultRequested, task?.id, task?.status, task?.step]);
+  }, [resultRequested, task?.id, task?.status, stepId]);
 
   /* ── 没有任务 ── */
   if (!task) {
@@ -261,13 +262,14 @@ export default function ResultViewer({ task, stepLabel, StepIcon, taskCache }: R
   }
 
   /* ── 任务完成 ── */
-  const needsResultData = !["qc"].includes(task.step);
+  const needsResultData = !["qc"].includes(stepId);
 
   return (
     <ResultErrorBoundary>
       <div className="space-y-4 animate-fade-in">
+
         {/* QC 步骤直接渲染 tabs，不需要懒加载按钮 */}
-        {task.step === "qc" && (
+        {stepId === "qc" && (
           <QCResultTabs taskId={task.id} token={getToken()} />
         )}
 
@@ -281,12 +283,12 @@ export default function ResultViewer({ task, stepLabel, StepIcon, taskCache }: R
         {/* ── 非 QC 步骤：数据加载后渲染 ── */}
         {needsResultData && resultRequested && !loadingResult && (
           <>
-            {task.step === "normalize" && resultData && <NormalizeResult data={resultData} />}
-            {task.step === "reduce"    && <ReduceResult data={resultData} taskId={task.id} />}
-            {task.step === "cluster"   && <ClusterResult data={resultData} taskId={task.id} />}
-            {task.step === "markers"   && <MarkersResult data={resultData} task={task} taskCache={taskCache} />}
-            {task.step === "enrich"    && <EnrichResult data={resultData} taskId={task.id} />}
-            {!["qc","normalize","reduce","cluster","markers","enrich"].includes(task.step) && (
+            {stepId === "normalize" && resultData && <NormalizeResult data={resultData} />}
+            {stepId === "reduce"    && <ReduceResult data={resultData} taskId={task.id} />}
+            {stepId === "cluster"   && <ClusterResult data={resultData} taskId={task.id} />}
+            {stepId === "markers"   && <MarkersResult data={resultData} task={task} taskCache={taskCache} />}
+            {stepId === "enrich"    && <EnrichResult data={resultData} taskId={task.id} />}
+            {!["qc","normalize","reduce","cluster","markers","enrich"].includes(stepId) && (
               <div className="callout text-xs">分析完成，详细结果可在输出文件中查看</div>
             )}
           </>

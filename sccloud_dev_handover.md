@@ -79,6 +79,43 @@ useEffect(() => {
 ```
 **核心原则**：凡是从 `sessionStorage` / `localStorage` 恢复的"引用型"状态（project、task 等），必须在对应数据源(API)加载完毕后做一次 **"存在性校验"**，不匹配则立即清除。切勿盲目信任浏览器端缓存的对象。
 
+### 👻 问题频发 6：WebSocket 竞态导致任务完成后结果区域空白
+任务完成后，结果面板一片空白，但状态胶囊正确显示"✅ 完成"。刷新页面后结果正常出现。
+
+**根因链路**：`ProgressTracker` 同时使用 WebSocket + 轮询监控任务。当 WS 先于轮询收到完成信号时：
+1.  WS `onComplete` 回调调用 `fireDone()` **不带** task 参数；
+2.  `fireDone` 构造一个残缺的 mock task：`{ id, status: "completed", progress: 100, step: "unknown" }`，传给父组件的 `handleTaskComplete`；
+3.  `handleTaskComplete` 将此 mock 写入 `taskCache`，`currentTask.status` 变为 `"completed"`；
+4.  `page.tsx` 的回退轮询看到 `status === "completed"` → **立刻停止轮询**，不再从 API 获取完整 Task；
+5.  `ResultViewer` 收到的 task 的 `step` 字段是 `"unknown"`，导致所有 `task.step === "qc"` 等分支判断全部 `false`，结果区域无任何组件渲染。
+
+**表象极具迷惑性**：状态胶囊显示"完成"（因为 `status` 字段确实是 `"completed"`），但子组件选择分支全部落空导致白屏。刷新后 `sessionStorage` 恢复的是 slim 化的缓存（包含正确的 `step` 字段，因为 `updateTaskCache` 的 slim 序列化取的是 `t.step`——但如果写入时 step 就是 "unknown"，sessionStorage 里也会是 "unknown"）。实际上刷新能恢复是因为 `page.tsx` 初始化时会从 API 重新 fetch 最新的 task 状态覆盖缓存。
+
+👉 **已实施的解决对策（双保险）**：
+
+**第一层 — 数据源防护** (`page.tsx`)：`handleTaskComplete` 改为 `async`，始终从 API 重新获取完整 Task，mock 对象永不进入缓存：
+```tsx
+const handleTaskComplete = async (partialTask: Task) => {
+  try {
+    const fresh = await getTask(partialTask.id);
+    updateTaskCache(step.id, fresh);
+  } catch {
+    updateTaskCache(step.id, partialTask); // API 不可达时降级
+  }
+};
+```
+
+**第二层 — 渲染判断防护** (`ResultViewer.tsx`)：步骤匹配改用父组件显式传入的 `stepId` prop，不再依赖 `task.step`：
+```tsx
+// 之前（脆弱）：依赖可能残缺的 task 对象
+{task.step === "qc" && <QCResultTabs />}
+
+// 现在（健壮）：依赖稳定的父组件 prop
+{stepId === "qc" && <QCResultTabs />}
+```
+
+**核心原则**：凡是 callback 传入的对象（特别是 WebSocket / 事件回调），**不要假设其字段完整**。涉及缓存写入前，应从权威数据源（API/DB）重新获取完整数据。渲染逻辑应优先依赖稳定的 props / context，而非易变的嵌套对象属性。
+
 ## 4. 特色说明
 *   **设计系统**：UI 的背景色为带点米白质感的暖调，注重阴影层级、微过渡动画（`animate-fade-in`）和圆润边缘。强调极好的 UX 提示文案与响应。图表主要采用 D3.js（部分交互图）、deck.gl WebGL（处理海量散点UMAP图）、及 fallback 供下载的原生 R PNG 图。
 *   **数据通讯机制**：单次任务为异步提交 -> Backend 交给 Celery/Redis -> Plumber 监听响应 -> Redis 发布订阅实时进度 -> FastAPI WebSocket 转发 -> Frontend 显示进度条。

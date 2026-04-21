@@ -69,15 +69,8 @@ const PIPELINE = [
   { label: "注释", sub: "SingleR", num: "08" },
 ];
 
-/* ===== 抽象细胞粒子配置 ===== */
-const CELLS = [
-  { size: 120, x: "10%", y: "20%", delay: 0, color: "rgba(194,105,61,0.08)", dur: 10 },
-  { size: 80, x: "65%", y: "10%", delay: 2, color: "rgba(255,212,42,0.07)", dur: 12 },
-  { size: 60, x: "80%", y: "55%", delay: 1, color: "rgba(194,105,61,0.06)", dur: 14 },
-  { size: 100, x: "40%", y: "60%", delay: 3, color: "rgba(232,168,130,0.08)", dur: 11 },
-  { size: 45, x: "25%", y: "75%", delay: 4, color: "rgba(255,212,42,0.05)", dur: 13 },
-  { size: 70, x: "75%", y: "80%", delay: 1.5, color: "rgba(194,105,61,0.05)", dur: 15 },
-];
+
+
 
 export default function LandingPage() {
   const router = useRouter();
@@ -85,6 +78,40 @@ export default function LandingPage() {
   const [authTab, setAuthTab] = useState<"login" | "register">("login");
   const [startLoading, setStartLoading] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+
+  /* ── Hero Dashboard 响应式参数（基于视口宽度动态计算） ── */
+  const [heroDash, setHeroDash] = useState({
+    scale: 1.6, width: 1100, marginRight: -200,
+    rotateY: -15, rotateX: 10, textScale: 1,
+  });
+
+  useEffect(() => {
+    const calc = () => {
+      const vw = window.innerWidth;
+      // 基础参数线性插值（1024px → 1680px）
+      const t = Math.max(0, Math.min(1, (vw - 1024) / (1680 - 1024)));
+      const baseWidth = 800 + t * 300;
+      const baseMR = -60 + t * -140;
+
+      // 中线约束：Dashboard 左视觉边缘不超过 vw/2
+      // transformOrigin="right center"，右边缘 ≈ vw + |baseMR|
+      // 左边缘 = 右边缘 - baseWidth * scale >= vw/2
+      // ∴ scale <= (vw/2 + |baseMR|) / baseWidth
+      const maxScale = (vw / 2 + Math.abs(baseMR)) / baseWidth;
+
+      setHeroDash({
+        scale: Math.max(0.7, maxScale),
+        width: baseWidth,
+        marginRight: baseMR,
+        rotateY: -12 + t * -3,
+        rotateX: 8 + t * 2,
+        textScale: Math.min(1, vw / 1680),
+      });
+    };
+    calc();
+    window.addEventListener("resize", calc);
+    return () => window.removeEventListener("resize", calc);
+  }, []);
 
   /* Scroll observer for navbar shadow + reveal animations */
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -136,7 +163,7 @@ export default function LandingPage() {
 
   return (
     <>
-      <div className="noise-overlay min-h-screen flex flex-col" style={{ background: "var(--clr-bg)" }}>
+      <div className="noise-overlay min-h-screen flex flex-col" style={{ background: "var(--clr-bg)", overflowX: "hidden" }}>
         {/* ═══════ Navbar ═══════ */}
         <nav
           className="sticky top-0 z-50 transition-all duration-300"
@@ -146,7 +173,7 @@ export default function LandingPage() {
             boxShadow: scrolled ? "0 1px 12px rgba(45,41,38,0.06)" : "none",
           }}
         >
-          <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="px-8 lg:px-16 h-16 flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2.5">
                 <div
@@ -249,20 +276,27 @@ export default function LandingPage() {
           </div>
         </nav>
 
-        {/* ═══════ Hero — 左文右图 ═══════ */}
-        <section className="relative pt-20 pb-28 md:pt-28 md:pb-36 overflow-hidden">
+        {/* ═══════ Hero — 全宽 flex 布局 ═══════ */}
+        <section className="relative flex items-center min-h-[calc(100vh-80px)] pt-10 pb-20 md:pt-16 md:pb-24 overflow-hidden">
           {/* Warm glow accents */}
           <div className="absolute top-[-100px] left-[-80px] w-[500px] h-[500px] rounded-full pointer-events-none"
             style={{ background: "radial-gradient(circle, rgba(194,105,61,0.06) 0%, transparent 70%)" }} />
           <div className="absolute bottom-[-80px] right-[-60px] w-[400px] h-[400px] rounded-full pointer-events-none"
             style={{ background: "radial-gradient(circle, rgba(255,212,42,0.04) 0%, transparent 70%)" }} />
 
-          <div className="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-12 items-center relative z-10">
-            {/* Left: Text */}
-            <div>
+          {/* 全宽 flex 两栏 */}
+          <div className="relative z-10 w-full flex flex-col md:flex-row items-center" style={{ minHeight: 480 }}>
+            {/* Left: Text — 左侧全宽 padding */}
+            <div
+              className="w-full md:w-[42%] shrink-0 px-8 lg:px-16"
+              style={{
+                transform: "translateY(-40px)",
+                zoom: heroDash.textScale,
+              }}
+            >
               {/* Badge */}
               <div
-                className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-semibold mb-8 tracking-wide uppercase"
+                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[15px] font-semibold mb-8 tracking-wide uppercase"
                 style={{
                   background: "rgba(194,105,61,0.08)",
                   color: "var(--clr-amber)",
@@ -276,15 +310,16 @@ export default function LandingPage() {
 
               {/* Title */}
               <h1
-                className="text-[2.8rem] md:text-[3.5rem] lg:text-[4rem] font-bold leading-[1.1] mb-6"
+                className="text-[3.5rem] md:text-[4rem] lg:text-[5rem] xl:text-[6rem] font-bold leading-[1.05] mb-8"
                 style={{
                   fontFamily: "var(--font-display)",
                   color: "var(--clr-dark-deep)",
                   letterSpacing: "-0.04em",
+                  whiteSpace: "nowrap",
                   animation: "fadeUp 0.6s cubic-bezier(0.22,1,0.36,1) 0.05s both",
                 }}
               >
-                从数据到发现，
+                从数据到发现：
                 <br />
                 <span className="gradient-text">单细胞</span>
                 <br />
@@ -293,7 +328,7 @@ export default function LandingPage() {
 
               {/* Gold divider */}
               <div
-                className="w-16 h-[2px] mb-6"
+                className="w-20 h-[3px] mb-8"
                 style={{
                   background: "linear-gradient(90deg, var(--clr-amber), var(--clr-gold))",
                   animation: "fadeUp 0.6s cubic-bezier(0.22,1,0.36,1) 0.1s both",
@@ -302,7 +337,7 @@ export default function LandingPage() {
 
               {/* Subtitle */}
               <p
-                className="text-base md:text-lg mb-10 max-w-md"
+                className="text-xl md:text-2xl mb-12 max-w-none md:whitespace-nowrap"
                 style={{
                   fontFamily: "var(--font-sans)",
                   color: "var(--clr-text-muted)",
@@ -316,13 +351,13 @@ export default function LandingPage() {
 
               {/* CTA */}
               <div
-                className="flex flex-wrap items-center gap-4"
+                className="flex flex-wrap items-center gap-6"
                 style={{ animation: "fadeUp 0.6s cubic-bezier(0.22,1,0.36,1) 0.2s both" }}
               >
                 <button
                   onClick={handleStart}
                   disabled={startLoading}
-                  className="px-8 py-3 text-white font-semibold rounded-full text-sm transition-all duration-300 disabled:opacity-60"
+                  className="px-10 py-4 text-white font-semibold rounded-xl text-base transition-all duration-300 disabled:opacity-60"
                   style={{
                     background: "var(--clr-amber)",
                     boxShadow: "0 4px 20px rgba(194,105,61,0.3)",
@@ -340,7 +375,7 @@ export default function LandingPage() {
                 </button>
                 <a
                   href="#features"
-                  className="text-sm font-medium transition-colors duration-200"
+                  className="text-base font-medium transition-colors duration-200"
                   style={{ color: "var(--clr-text-muted)" }}
                   onMouseEnter={(e) => (e.currentTarget.style.color = "var(--clr-amber)")}
                   onMouseLeave={(e) => (e.currentTarget.style.color = "var(--clr-text-muted)")}
@@ -350,42 +385,227 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Right: Abstract cell visualization */}
+            {/* Right: Dashboard Preview — flex 子元素，自然溢出右边界 */}
             <div
-              className="relative w-full h-[400px] md:h-[480px] hidden md:block"
-              style={{ animation: "fadeIn 1s cubic-bezier(0.22,1,0.36,1) 0.3s both" }}
+              className="hidden md:flex flex-1 items-center justify-end relative"
+              style={{
+                animation: "fadeIn 1s cubic-bezier(0.22,1,0.36,1) 0.3s both, float-y 6s ease-in-out infinite",
+                perspective: "1500px",
+                marginRight: heroDash.marginRight,
+              }}
             >
-              {CELLS.map((cell, i) => (
-                <div
-                  key={i}
-                  className="absolute rounded-full"
-                  style={{
-                    width: cell.size,
-                    height: cell.size,
-                    left: cell.x,
-                    top: cell.y,
-                    background: `radial-gradient(circle at 35% 35%, ${cell.color.replace(/[\d.]+\)$/, (m) => `${parseFloat(m) * 2.5})`)} , ${cell.color})`,
-                    animation: `float ${cell.dur}s ease-in-out ${cell.delay}s infinite`,
-                    border: `1px solid ${cell.color.replace(/[\d.]+\)$/, (m) => `${parseFloat(m) * 1.5})`)}`,
-                  }}
-                />
-              ))}
-              {/* Center cluster - brighter */}
+              {/* ── 暖色渐变飘带装饰 ── */}
               <div
-                className="absolute rounded-full"
+                className="absolute pointer-events-none"
                 style={{
-                  width: 160,
-                  height: 160,
-                  left: "35%",
-                  top: "30%",
-                  background: "radial-gradient(circle at 40% 40%, rgba(194,105,61,0.12), rgba(255,212,42,0.05))",
-                  animation: "pulse-soft 6s ease-in-out infinite",
-                  border: "1px solid rgba(194,105,61,0.08)",
-                  backdropFilter: "blur(2px)",
+                  width: 500, height: 600,
+                  right: -60, top: -80,
+                  background: "linear-gradient(160deg, rgba(194,105,61,0.15) 0%, rgba(200,96,25,0.08) 40%, rgba(232,168,130,0.06) 100%)",
+                  borderRadius: "40% 60% 60% 40% / 60% 30% 70% 40%",
+                  transform: "rotate(-8deg)",
+                  filter: "blur(2px)",
                 }}
               />
-            </div>
-          </div>
+              <div
+                className="absolute pointer-events-none"
+                style={{
+                  width: 400, height: 500,
+                  right: 80, bottom: -100,
+                  background: "linear-gradient(200deg, rgba(255,212,42,0.08) 0%, rgba(194,105,61,0.05) 60%, transparent 100%)",
+                  borderRadius: "50% 50% 40% 60% / 40% 60% 40% 60%",
+                  transform: "rotate(12deg)",
+                  filter: "blur(3px)",
+                }}
+              />
+
+              <div
+                style={{
+                  transform: `rotateY(${heroDash.rotateY}deg) rotateX(${heroDash.rotateX}deg) scale(${heroDash.scale})`,
+                  transformOrigin: "right center",
+                  transformStyle: "preserve-3d",
+                  width: heroDash.width,
+                  flexShrink: 0,
+                  position: "relative",
+                  zIndex: 5,
+                }}
+              >
+                {/* Frosted glass border — 毛玻璃外框 */}
+                <div
+                  style={{
+                    borderRadius: 22,
+                    padding: 8,
+                    background: "rgba(255,255,255,0.35)",
+                    backdropFilter: "blur(16px) saturate(180%)",
+                    WebkitBackdropFilter: "blur(16px) saturate(180%)",
+                    boxShadow: "0 40px 100px rgba(45,41,38,0.2), 0 15px 40px rgba(45,41,38,0.1), inset 0 1px 0 rgba(255,255,255,0.5)",
+                    border: "1px solid rgba(255,255,255,0.45)",
+                  }}
+                >
+                {/* Main card — 仪表盘预览 */}
+                <div
+                  style={{
+                    background: "#FEFCFA",
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    position: "relative",
+                  }}
+                >
+                  {/* Glass reflection overlay */}
+                  <div style={{
+                    position: "absolute", inset: 0, zIndex: 10, pointerEvents: "none",
+                    background: "linear-gradient(125deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.05) 30%, transparent 60%)",
+                    borderRadius: 14,
+                  }} />
+
+                  {/* Top bar — macOS style */}
+                  <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "18px 28px", borderBottom: "1px solid rgba(0,0,0,0.06)",
+                    background: "rgba(255,255,255,0.6)",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                      <div style={{ width: 16, height: 16, borderRadius: "50%", background: "#FF5F56" }} />
+                      <div style={{ width: 16, height: 16, borderRadius: "50%", background: "#FFBD2E" }} />
+                      <div style={{ width: 16, height: 16, borderRadius: "50%", background: "#27C93F" }} />
+                    </div>
+                    <div style={{
+                      fontSize: 18, color: "#aaa", fontFamily: "var(--font-mono)",
+                      background: "rgba(0,0,0,0.03)", padding: "5px 22px", borderRadius: 7,
+                      letterSpacing: "0.02em",
+                    }}>
+                      sccloud.computabio.com/dashboard
+                    </div>
+                    <div style={{ width: 50 }} />
+                  </div>
+
+                  {/* Body */}
+                  <div style={{ display: "flex", minHeight: 580 }}>
+                    {/* Sidebar */}
+                    <div style={{
+                      width: 260, borderRight: "1px solid rgba(0,0,0,0.05)",
+                      padding: "22px 0", flexShrink: 0, background: "rgba(250,247,244,0.5)",
+                    }}>
+                      <div style={{
+                        padding: "0 22px 20px", fontSize: 22, fontWeight: 700,
+                        color: "#2D2926", fontFamily: "var(--font-sans)",
+                        display: "flex", alignItems: "center", gap: 6,
+                      }}>
+                        <div style={{
+                          width: 34, height: 34, borderRadius: 7,
+                          background: "#C86019", display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>
+                          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><path d="M7 14L12 9L17 14" /></svg>
+                        </div>
+                        scRNA 分析
+                      </div>
+                      {[
+                        { n: "1", label: "数据预处理", sub: "质控过滤", active: true },
+                        { n: "2", label: "数据标准化", sub: "SCTransform", active: false },
+                        { n: "3", label: "数据降维", sub: "PCA/UMAP", active: false },
+                        { n: "4", label: "批次聚类", sub: "Harmony", active: false },
+                        { n: "5", label: "差异基因", sub: "FindMarkers", active: false },
+                        { n: "6", label: "通路富集", sub: "GO/KEGG", active: false },
+                      ].map((s) => (
+                        <div key={s.n} style={{
+                          display: "flex", alignItems: "center", gap: 12,
+                          padding: "11px 22px", fontSize: 18,
+                          color: s.active ? "#C86019" : "#999",
+                          fontWeight: s.active ? 600 : 400,
+                          background: s.active ? "rgba(200,96,25,0.06)" : "transparent",
+                          borderLeft: s.active ? "3px solid #C86019" : "3px solid transparent",
+                        }}>
+                          <span style={{
+                            width: 32, height: 32, borderRadius: 7, fontSize: 16,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            background: s.active ? "#C86019" : "rgba(0,0,0,0.05)",
+                            color: s.active ? "#fff" : "#bbb", fontWeight: 700,
+                            flexShrink: 0,
+                          }}>{s.n}</span>
+                          <div>
+                            <div>{s.label}</div>
+                            <div style={{ fontSize: 14, color: s.active ? "rgba(200,96,25,0.6)" : "#ccc", marginTop: 2 }}>{s.sub}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Main content */}
+                    <div style={{ flex: 1, padding: "26px 32px" }}>
+                      {/* Header */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                          <div style={{
+                            width: 44, height: 44, borderRadius: "50%", background: "#2D2926",
+                            color: "#fff", fontSize: 22, fontWeight: 700,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}>1</div>
+                          <span style={{ fontSize: 24, fontWeight: 700, color: "#2D2926" }}>数据预处理 — 结果</span>
+                        </div>
+                        <span style={{
+                          fontSize: 17, padding: "5px 18px", borderRadius: 16,
+                          background: "rgba(200,96,25,0.08)", color: "#C86019", fontWeight: 600,
+                        }}>✓ 完成</span>
+                      </div>
+
+                      {/* Tabs */}
+                      <div style={{ display: "flex", gap: 0, marginBottom: 22, borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+                        {["过滤结果", "样本相关性", "样本质控", "线粒体基因占比", "UMI 基因统计"].map((t, i) => (
+                          <div key={t} style={{
+                            fontSize: 17, padding: "10px 18px",
+                            color: i === 0 ? "#fff" : "#999",
+                            background: i === 0 ? "#C86019" : "transparent",
+                            borderRadius: i === 0 ? "8px 8px 0 0" : 0,
+                            fontWeight: i === 0 ? 600 : 400,
+                          }}>{t}</div>
+                        ))}
+                      </div>
+
+                      {/* Stats cards */}
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
+                        {[
+                          { value: "1,888", label: "过滤前细胞", color: "#C86019" },
+                          { value: "1,888", label: "过滤后细胞", color: "#2D8A56" },
+                          { value: "0 (0.0%)", label: "过滤掉", color: "#999" },
+                          { value: "38,606", label: "基因数", color: "#2D2926" },
+                        ].map((c) => (
+                          <div key={c.label} style={{
+                            textAlign: "center", padding: "18px 8px",
+                            border: "1px solid rgba(0,0,0,0.06)", borderRadius: 12,
+                            background: "#fff",
+                          }}>
+                            <div style={{ fontSize: 32, fontWeight: 800, color: c.color, fontFamily: "var(--font-mono)", letterSpacing: "-0.02em" }}>{c.value}</div>
+                            <div style={{ fontSize: 15, color: "#999", marginTop: 5 }}>{c.label}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Summary bar */}
+                      <div style={{
+                        background: "rgba(200,96,25,0.04)", borderRadius: 12,
+                        padding: "14px 22px", fontSize: 17, color: "#666", lineHeight: 1.7,
+                        border: "1px solid rgba(200,96,25,0.08)", marginBottom: 22,
+                      }}>
+                        <span style={{ fontWeight: 600, color: "#C86019" }}>数据概览</span>
+                        <span style={{ margin: "0 10px", color: "#ddd" }}>|</span>
+                        样本数: 2
+                        <span style={{ margin: "0 10px", color: "#ddd" }}>|</span>
+                        保留率: <span style={{ color: "#2D8A56", fontWeight: 600 }}>100.0%</span>
+                      </div>
+
+                      {/* Bottom hint text — 模拟说明文字 */}
+                      <div style={{
+                        fontSize: 15, color: "#bbb", lineHeight: 1.6,
+                        padding: "0 2px",
+                      }}>
+                        质控过滤根据设定的线粒体基因占比阈值和最小表达基因数阈值，去除低质量细胞。过滤后的数据将用于后续的标准化和降维分析。
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                </div>{/* close frosted glass border */}
+              </div>
+            </div>{/* close dashboard container */}
+          </div>{/* close flex row */}
         </section>
 
         {/* ═══════ Features — 交错卡片 ═══════ */}
