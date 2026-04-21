@@ -120,5 +120,46 @@ const handleTaskComplete = async (partialTask: Task) => {
 *   **设计系统**：UI 的背景色为带点米白质感的暖调，注重阴影层级、微过渡动画（`animate-fade-in`）和圆润边缘。强调极好的 UX 提示文案与响应。图表主要采用 D3.js（部分交互图）、deck.gl WebGL（处理海量散点UMAP图）、及 fallback 供下载的原生 R PNG 图。
 *   **数据通讯机制**：单次任务为异步提交 -> Backend 交给 Celery/Redis -> Plumber 监听响应 -> Redis 发布订阅实时进度 -> FastAPI WebSocket 转发 -> Frontend 显示进度条。
 
+### 🖥 Landing Page 响应式缩放系统 (Hero 区域)
+
+首页 Hero 区域采用了一套**基于 JavaScript 的动态视口缩放系统**，而非传统的 CSS 媒体查询（后者因 Tailwind/Next.js 构建链的特殊性在生产环境容易失效）。核心架构位于 `page.tsx` 的 `heroDash` state hook 中。
+
+**关键设计决策及原理**：
+
+1.  **JS 视口插值取代 CSS 媒体查询**：通过 `window.innerWidth` 实时计算 Dashboard 的 `scale`、`width`、`marginRight` 和 3D 旋转角度。使用 `resize` 事件监听器保持响应性。
+    ```
+    设计基准: 1680px → 1024px 线性插值
+    t = clamp((vw - 1024) / (1680 - 1024), 0, 1)
+    ```
+
+2.  **中线约束公式**：为防止 Dashboard 的左视觉边缘侵入左侧文字区域，scale 被限制为：
+    ```
+    maxScale = (vw/2 + |marginRight|) / dashboardWidth
+    ```
+    `transformOrigin: "right center"` 意味着缩放从右边展开，左边缘 = 右边缘 – width × scale。该公式确保左边缘永远不越过视口中线。
+
+3.  **左侧文字使用 CSS `zoom` 而非 `transform: scale()`**：
+    *   `transform: scale()` 只影响视觉渲染，**不改变布局盒模型** → 文字仍在原始容器宽度内换行，且受 `transformOrigin` 影响位置偏移。
+    *   `zoom` 同时缩放视觉和布局 → 文字按缩放后的"更宽"容器排版，不会因容器变窄而换行。
+    *   标题 `<h1>` 额外设置 `whiteSpace: "nowrap"`，`<br />` 标签的刻意换行仍生效，但容器宽度不足时不会产生多余折行。
+
+4.  **Flex 对齐使用 `items-center`**：左栏用 `zoom`（缩小布局高度），右栏用 `transform: scale()`（不改变布局高度）。若用 `items-start` 顶端对齐，两边高度差异会导致视觉上下错位。`items-center` 让两栏始终基于同一水平中轴线对齐。
+
+5.  **3D 浮动动画 `float-y`**（定义在 `globals.css`）：仅包含 `translateY` 位移，不含 `scale`，避免与 3D `transform` 冲突产生"呼吸感"缩放。
+
+👉 **核心原则**：在 Next.js + Tailwind 工程中做复杂的响应式 3D 布局时，优先使用 JS 动态计算 + 内联样式，而非依赖 CSS 类/媒体查询。后者在 SSR 构建、CSS 优先级竞争、以及浏览器缓存等环节容易出现样式不生效的问题。
+
+---
+
+## 5. 项目代码量统计 (截至 2026-04-21)
+
+| 模块 | 行数 | 说明 |
+|---|---|---|
+| Frontend (`.tsx/.ts/.css`) | ~7,300 行 | Next.js + React 组件、API 客户端、CSS |
+| Backend (`.py`) | ~1,420 行 | FastAPI 路由、Auth、DB 模型、R 桥接 |
+| **v2 总计** | **~8,720 行** | 不含 node_modules / venv |
+| v1 (app-new.R) | ~3,030 行 | 原始 R Shiny 单文件 |
+| **增幅** | **+5,690 行 (+188%)** | 前后端分离 + UI 精细化 + 用户系统 |
+
 ---
 **接力提示**：在开始接下来的任务前，请用工具分析以上重点并牢记在上下文，继续用优雅、稳健的工程代码为 USER 的平台添砖加瓦！
