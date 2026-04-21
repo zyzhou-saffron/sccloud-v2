@@ -116,6 +116,28 @@ const handleTaskComplete = async (partialTask: Task) => {
 
 **核心原则**：凡是 callback 传入的对象（特别是 WebSocket / 事件回调），**不要假设其字段完整**。涉及缓存写入前，应从权威数据源（API/DB）重新获取完整数据。渲染逻辑应优先依赖稳定的 props / context，而非易变的嵌套对象属性。
 
+### 🎨 问题频发 7：CSS 自定义类 + 媒体查询在 Next.js 生产环境中"静默失效"
+在 `globals.css` 中定义了 `.hero-dashboard-3d` 类并配合 `@media (max-width: 1439px)` 媒体查询调整 3D Dashboard 的 `transform` 和 `width`。**本地开发完全正常，但部署到生产服务器后，媒体查询中的样式完全不生效**——Dashboard 仍然按默认的 `scale(1.6)` 渲染，导致在小屏幕上严重溢出。
+
+**根因分析**：Next.js + Tailwind 的 CSS 构建链中，自定义 CSS 的优先级、Tree Shaking 规则以及浏览器缓存叠加在一起，导致自定义媒体查询在生产 build 中被覆盖或忽略。排查极其困难——通过 SSH 验证服务器上的源文件**确实包含**正确的 CSS 类和媒体查询，但运行时就是不生效。
+
+👉 **解决对策**：**彻底放弃 CSS 类 + 媒体查询方案**，改用 JavaScript `useEffect` + `window.innerWidth` 动态计算所有响应式参数，通过内联 `style` 直接写入。内联样式优先级最高，不受 CSS 构建链影响，且所见即所得。
+👉 **核心原则**：在 Next.js/Tailwind 项目中，涉及 `transform`、`perspective` 等复杂 CSS 属性的响应式调整，**不要依赖 globals.css 中的自定义类 + 媒体查询**，直接用 JS 计算 + 内联样式。这能节省至少 3-4 轮"改 CSS → build → deploy → 发现不生效"的无意义循环。
+
+### 📐 问题频发 8：用 `transform: scale()` 缩放文字容器导致文字仍然换行
+为让左侧标题文字随视口等比缩小，最初使用 `transform: scale(0.6)` 配合 `transformOrigin: "left top"` 缩放整个文字容器。**结果：文字视觉上变小了，但仍然在原始宽度处换行！** 且内容整体往左上角偏移，不再垂直居中。
+
+**根因分析**：`transform: scale()` 是纯视觉变换，**不改变元素的布局盒模型**。浏览器排版引擎计算文字换行时，使用的仍然是 `transform` 之前的容器宽度。所以即使视觉缩到了 60%，文字依然在"100% 宽度"的基准下换行。而 `transformOrigin: "left top"` 让缩小后的内容"贴"在左上角，导致内容不再居中。
+
+👉 **解决对策**：改用 CSS `zoom` 属性。`zoom` 同时缩放视觉渲染**和布局盒模型**——容器在缩放后"变宽"了（以缩放像素计），文字有更多排版空间，不会触发换行。且 `zoom` 不需要 `transformOrigin`，缩放后元素自然保持原有位置。
+👉 **额外保险**：对标题 `<h1>` 添加 `whiteSpace: "nowrap"`。`<br />` 标签的刻意换行仍然生效（`<br>` 是强制换行，不受 `white-space` 限制），但容器宽度不足时绝不会产生多余折行。
+
+### ↕️ 问题频发 9：`zoom` 与 `transform: scale()` 混用时的垂直错位
+左栏用 `zoom` 缩放（影响布局高度），右栏 Dashboard 用 `transform: scale()` 缩放（不影响布局高度）。两栏在 Flex 容器中使用 `items-start`（顶端对齐）时，**左栏缩小后布局高度变小、顶端对齐导致内容"上浮"，而右栏布局高度不变、相对"下沉"**，视觉上左边往上走、右边往下走。
+
+👉 **解决对策**：将 Flex 容器的对齐方式从 `items-start` 改为 **`items-center`**。无论两侧缩放的实现方式不同（zoom vs transform），它们的视觉中心始终对齐在同一水平线上。
+👉 **核心原则**：当 Flex 子元素使用不同的缩放机制（一个影响布局、一个不影响布局）时，**绝对不要用 `items-start` 或 `items-end`**，必须用 `items-center` 才能保持视觉平衡。
+
 ## 4. 特色说明
 *   **设计系统**：UI 的背景色为带点米白质感的暖调，注重阴影层级、微过渡动画（`animate-fade-in`）和圆润边缘。强调极好的 UX 提示文案与响应。图表主要采用 D3.js（部分交互图）、deck.gl WebGL（处理海量散点UMAP图）、及 fallback 供下载的原生 R PNG 图。
 *   **数据通讯机制**：单次任务为异步提交 -> Backend 交给 Celery/Redis -> Plumber 监听响应 -> Redis 发布订阅实时进度 -> FastAPI WebSocket 转发 -> Frontend 显示进度条。
