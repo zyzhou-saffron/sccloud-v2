@@ -854,8 +854,7 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 数据批次校正后细胞群亚类rds文件 (seurat_clustered)
               </AuthDownloadLink>
-            </>
-          )}
+            </>)}
 
           {activeTab === 'sankey' && sankeySrc && (
             <AuthDownloadLink 
@@ -900,47 +899,58 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
 
 /** 差异基因结果 */
 function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<string, unknown> | null; taskCache?: Record<string, Task> }) {
-  type GeneRow = { gene?: string; avg_log2FC?: number; p_val_adj?: number; pct1?: number; pct2?: number };
+  // 动态列表方式（与 meta.data 一致），兼容 R 返回的任意字段名
+  type GeneRow = Record<string, unknown>;
   const topGenes = (data?.top_genes ?? []) as GeneRow[];
   const stats    = data?.stats as { total_deg?: number; clusters_analyzed?: string } | undefined;
+
+  // 动态提取列名（优先排序常用列）
+  const preferredOrder = ["gene", "Cluster", "avg_log2FC", "p_val", "p_val_adj", "pct.1", "pct.2"];
+  const geneCols = useMemo(() => {
+    if (topGenes.length === 0) return [];
+    const allKeys = Array.from(new Set(topGenes.flatMap(row => Object.keys(row))));
+    const ordered = preferredOrder.filter(k => allKeys.includes(k));
+    const rest = allKeys.filter(k => !preferredOrder.includes(k));
+    return [...ordered, ...rest];
+  }, [topGenes]);
+
+  // 分页
+  const [genePage, setGenePage] = useState(0);
+  const genePageSize = 10;
+  const genePageData = topGenes.slice(genePage * genePageSize, (genePage + 1) * genePageSize);
+  const geneTotalPages = Math.ceil(topGenes.length / genePageSize);
 
   // 从 API 响应中动态提取图片文件名
   const dotplotPath = safeString(data?.plot_path);
   const dotplotName = dotplotPath ? dotplotPath.split("/").pop()! : "plot_markers_dotplot.png";
   const heatmapPath = safeString(data?.heatmap_path);
   const heatmapName = heatmapPath ? heatmapPath.split("/").pop()! : "plot_markers_heatmap.png";
-  const csvPath = safeString(data?.result_path);
-  const csvName = csvPath ? csvPath.split("/").pop()! : "diff_genes.csv";
+  const csvPath     = safeString(data?.result_path);
+  const csvName     = csvPath ? csvPath.split("/").pop()! : "diff_genes.csv";
 
   const dotplotSrc = task ? `/api/tasks/${task.id}/plot?name=${encodeURIComponent(dotplotName)}` : null;
   const heatmapSrc = task ? `/api/tasks/${task.id}/plot?name=${encodeURIComponent(heatmapName)}` : null;
 
-  const [activeTab, setActiveTab] = useState(0);
-  const TABS = ["全局差异表", "大盘基因图", "单簇特征分布图", "双簇对比表"];
-
-  // 提取 Cluster levels
-  const clusterTask = taskCache?.["cluster"];
-  const [clusterLevels, setClusterLevels] = useState<string[]>([]);
-  
-  useEffect(() => {
-    if (clusterTask) {
-      if (clusterTask.status === "completed" && clusterTask.result_path) {
-          fetchTaskResult(clusterTask.id).then(d => {
-             if (d?.stats?.cluster_levels) {
-                 setClusterLevels(d.stats.cluster_levels as string[]);
-             }
-          });
-      }
-    }
-  }, [clusterTask?.id]);
-
-  // 限制可选聚类：只显示当前 markers 任务中分析过的聚类
+  // ----- 聚类列表 -----
   const analyzedClusters = useMemo(() => {
-    const paramCluster = task?.params?.cluster as string | undefined;
-    if (!paramCluster || paramCluster === "All") return clusterLevels;
-    const selected = paramCluster.split(",").map(s => s.trim());
-    return clusterLevels.filter(c => selected.includes(c));
-  }, [task?.params?.cluster, clusterLevels]);
+    const raw = safeString(data?.clusters_analyzed);
+    if (!raw || raw === "All" || raw === "所有聚类") {
+      const allC = safeString(data?.cluster_labels);
+      if (allC) return allC.split(/[,·]/).map(s => s.trim()).filter(Boolean);
+      return [];
+    }
+    return raw.split(",").map(s => s.trim()).filter(Boolean);
+  }, [data]);
+
+  // getToken 便捷函数
+  const getToken = () => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("token") ?? sessionStorage.getItem("token") ?? "";
+  };
+
+  // Tab 定义
+  const TABS = ["全局差异表", "大盘基因图", "单簇特征分布图", "双簇对比表"];
+  const [activeTab, setActiveTab] = useState(0);
 
   // Tab 3 State — 多选
   const [tab3Selected, setTab3Selected] = useState<string[]>([]);
@@ -989,25 +999,26 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
     }
   }, [analyzedClusters]);
 
-  /** 多选 toggle 工具函数 */
-  const toggleCluster = (list: string[], item: string): string[] => {
-    return list.includes(item) ? list.filter(c => c !== item) : [...list, item];
+  // 格式化单元格值
+  const fmtCell = (val: unknown): string => {
+    if (val === null || val === undefined) return "";
+    if (typeof val === "number") {
+      if (Math.abs(val) < 0.001 && val !== 0) return val.toExponential(2);
+      return Number.isInteger(val) ? String(val) : val.toFixed(3);
+    }
+    return String(val);
   };
 
-  const pollTask = async (taskId: string) => {
-     const token = getToken();
-     while (true) {
-       await new Promise(r => setTimeout(r, 2000));
-       const res = await fetch(`/api/tasks/${taskId}`, { headers: { Authorization: `Bearer ${token}` }});
-       if (!res.ok) throw new Error("获取任务状态失败");
-       const t = await res.json();
-       if (t.status === "completed") return t;
-       if (t.status === "failed") throw new Error(t.error_msg || "任务执行失败");
-     }
-  };
-
-  const runSubTask = async (step: string, params: any, setLoader: any, setError: any, onSuccess: any) => {
-    setLoader(true); setError(null);
+  /* ========== Sub-task runner ========== */
+  const runSubTask = async (
+    step: string,
+    params: Record<string, unknown>,
+    setLoader: (v: boolean) => void,
+    setError: (v: string | null) => void,
+    onSuccess: (taskId: string, result: any) => void,
+  ) => {
+    setLoader(true);
+    setError(null);
     try {
       const token = getToken();
       const res = await fetch("/api/tasks", {
@@ -1017,7 +1028,17 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
       });
       if (!res.ok) throw new Error(`提交失败: ${res.statusText}`);
       const t = await res.json();
-      const finalTask = await pollTask(t.id);
+      
+      const pollTask = async (id: string): Promise<Task> => {
+        const res = await fetch(`/api/tasks/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+        const fresh = await res.json();
+        if (fresh.status === "failed") throw new Error(fresh.error_msg || "任务失败");
+        if (fresh.status === "completed") return fresh;
+        await new Promise(r => setTimeout(r, 2000));
+        return pollTask(id);
+      };
+
+      await pollTask(t.id);
       
       const rRes = await fetch(`/api/tasks/${t.id}/result`, { headers: { Authorization: `Bearer ${token}` } });
       const finalResult = await rRes.json();
@@ -1048,7 +1069,7 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
       </div>
 
       <div className="pt-2">
-        {/* Tab 1: 全局差异表 */}
+        {/* Tab 1: 全局差异表（动态列 + 分页，同 meta.data 样式） */}
         {activeTab === 0 && (
           <div className="space-y-3 animate-fade-in">
              {stats && (
@@ -1058,29 +1079,59 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
               </div>
             )}
             {topGenes.length > 0 ? (
-              <div className="table-wrap max-h-96 overflow-y-auto">
-                <table className="w-full">
-                  <thead className="sticky top-0 bg-stone-50 shadow-sm z-10">
-                    <tr>
-                      <th className="py-2 px-3 text-left">Gene</th>
-                      <th className="py-2 px-3 text-right">avg_log2FC</th>
-                      <th className="py-2 px-3 text-right">p_val_adj</th>
-                      <th className="py-2 px-3 text-right">pct.1</th>
-                      <th className="py-2 px-3 text-right">pct.2</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {topGenes.map((row, i) => (
-                      <tr key={i} className="border-t border-stone-100 hover:bg-stone-50">
-                        <td className="py-2 px-3 font-mono font-semibold" style={{ color: "var(--clr-amber-dark)" }}>{row.gene ?? "—"}</td>
-                        <td className="py-2 px-3 text-right">{row.avg_log2FC?.toFixed(3) ?? "—"}</td>
-                        <td className="py-2 px-3 text-right font-mono text-xs">{row.p_val_adj !== undefined ? row.p_val_adj.toExponential(2) : "—"}</td>
-                        <td className="py-2 px-3 text-right">{row.pct1?.toFixed(2) ?? "—"}</td>
-                        <td className="py-2 px-3 text-right">{row.pct2?.toFixed(2) ?? "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="space-y-2">
+                <div className="card-label">
+                  差异基因预览
+                  <span className="font-normal ml-1" style={{ color: "var(--clr-text-faint)" }}>
+                    — 显示前 {topGenes.length} 行
+                  </span>
+                </div>
+                <div className="table-wrap" style={{ maxWidth: "100%", overflowX: "auto" }}>
+                  <table style={{ fontSize: "0.7rem" }}>
+                    <thead>
+                      <tr>{geneCols.map(c => <th key={c} style={{ whiteSpace: "nowrap" }}>{c.toUpperCase()}</th>)}</tr>
+                    </thead>
+                    <tbody>
+                      {genePageData.map((row, i) => (
+                        <tr key={i}>
+                          {geneCols.map(c => (
+                            <td key={c} style={{
+                              whiteSpace: "nowrap",
+                              maxWidth: "180px",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              ...(c === "gene_id" ? { fontFamily: "var(--font-mono)", color: "var(--clr-amber-dark)" } : {}),
+                            }}>
+                              {fmtCell(row[c])}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {/* 分页控件 */}
+                {geneTotalPages > 1 && (
+                  <div className="flex items-center justify-center gap-2 text-xs" style={{ color: "var(--clr-text-muted)" }}>
+                    <button
+                      disabled={genePage === 0}
+                      onClick={() => setGenePage(p => p - 1)}
+                      className="px-2 py-1 rounded"
+                      style={{ border: "1px solid var(--clr-border)", opacity: genePage === 0 ? 0.4 : 1 }}
+                    >
+                      ‹ 上一页
+                    </button>
+                    <span>{genePage + 1} / {geneTotalPages}</span>
+                    <button
+                      disabled={genePage >= geneTotalPages - 1}
+                      onClick={() => setGenePage(p => p + 1)}
+                      className="px-2 py-1 rounded"
+                      style={{ border: "1px solid var(--clr-border)", opacity: genePage >= geneTotalPages - 1 ? 0.4 : 1 }}
+                    >
+                      下一页 ›
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="callout text-xs">差异基因表数据暂未返回</div>
