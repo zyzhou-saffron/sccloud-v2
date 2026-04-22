@@ -464,20 +464,19 @@ function ReduceResult({ data, taskId }: { data: Record<string, unknown> | null; 
               — WebGL 交互式 · {rawScatter.x.length.toLocaleString()} 个细胞
             </span>
           </p>
-          <div style={{ position: "relative" }}>
-            <DeckScatterPlot data={rawScatter} method={method as "UMAP" | "tSNE" | "PCA"} height={520} />
+          <DeckScatterPlot data={rawScatter} method={method as "UMAP" | "tSNE" | "PCA"} height={520}>
             {plotSrc && (
               <AuthDownloadLink
                 url={plotSrc}
                 filename={plotFileName || "reduce_plot.png"}
                 title="下载 R 原版高清图 (.png)"
-                className="inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
-                style={{ position: "absolute", bottom: 12, right: 12, background: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", color: "var(--clr-amber)", zIndex: 50 }}
+                className="absolute bottom-2 right-2 z-10 inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
+                style={{ background: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", color: "var(--clr-amber)" }}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               </AuthDownloadLink>
             )}
-          </div>
+          </DeckScatterPlot>
         </div>
       ) : plotSrc ? (
         <div className="space-y-1">
@@ -604,20 +603,19 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
                   — WebGL 交互式 · {rawScatter.x.length.toLocaleString()} 个细胞
                 </span>
               </p>
-              <div style={{ position: "relative" }}>
-                <DeckScatterPlot data={rawScatter} method="UMAP" height={560} />
+              <DeckScatterPlot data={rawScatter} method="UMAP" height={560}>
                 {umapSrc && (
                   <AuthDownloadLink
                     url={umapSrc}
                     filename={umapName}
                     title="下载 R 原版高清图 (.png)"
-                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
-                    style={{ position: "absolute", bottom: 12, right: 12, background: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", color: "var(--clr-amber)", zIndex: 50 }}
+                    className="absolute bottom-2 right-2 z-10 inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
+                    style={{ background: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", color: "var(--clr-amber)" }}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   </AuthDownloadLink>
                 )}
-              </div>
+              </DeckScatterPlot>
             </>
           ) : umapSrc ? (
             <>

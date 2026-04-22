@@ -45,6 +45,7 @@ interface DeckScatterPlotProps {
   data: ScatterData | null;
   method?: "UMAP" | "tSNE" | "PCA";
   height?: number;
+  children?: React.ReactNode;
 }
 
 /** 将平行数组转为点对象数组（deck.gl accessor 需要） */
@@ -65,6 +66,7 @@ export default function DeckScatterPlot({
   data,
   method = "UMAP",
   height = 500,
+  children,
 }: DeckScatterPlotProps) {
   const [hoverInfo, setHoverInfo] = useState<{
     x: number;
@@ -298,6 +300,9 @@ export default function DeckScatterPlot({
           {data.x.length.toLocaleString()} cells
         </span>
       </div>
+
+      {/* 外部注入的额外元素（如下载按钮） */}
+      {children}
     </div>
   );
 }
