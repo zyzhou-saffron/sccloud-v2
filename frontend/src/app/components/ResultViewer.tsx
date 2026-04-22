@@ -1164,11 +1164,33 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
             <div className="w-full flex-col flex items-center">
               <p className="text-sm font-semibold mb-2 self-start" style={{ color: 'var(--clr-text)' }}>各聚类显著差异基因点图 (DotPlot)</p>
               {dotplotSrc && <AuthImg src={dotplotSrc} alt="DotPlot" className="w-full max-w-4xl border rounded shadow-sm" style={{ borderColor: 'var(--clr-border)' }} />}
+              {dotplotSrc && (
+                <AuthDownloadLink
+                  url={dotplotSrc}
+                  filename={dotplotName}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90 mt-2 self-start"
+                  style={{ background: "var(--clr-amber)", boxShadow: "0 2px 4px rgba(200,96,25,0.2)" }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  下载 DotPlot (.png)
+                </AuthDownloadLink>
+              )}
             </div>
             <div className="w-full h-px" style={{ background: 'var(--clr-border)' }}></div>
             <div className="w-full flex-col flex items-center">
               <p className="text-sm font-semibold mb-2 self-start" style={{ color: 'var(--clr-text)' }}>各聚类显著差异基因热图 (Heatmap) (需要 ntop 增加才有明显表现)</p>
               {heatmapSrc && <AuthImg src={heatmapSrc} alt="Heatmap" className="w-full max-w-4xl border rounded shadow-sm" style={{ borderColor: 'var(--clr-border)' }} />}
+              {heatmapSrc && (
+                <AuthDownloadLink
+                  url={heatmapSrc}
+                  filename={heatmapName}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90 mt-2 self-start"
+                  style={{ background: "var(--clr-amber)", boxShadow: "0 2px 4px rgba(200,96,25,0.2)" }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  下载 Heatmap (.png)
+                </AuthDownloadLink>
+              )}
             </div>
           </div>
         )}
@@ -1241,25 +1263,40 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                    ))}
                  </div>
                  {/* 为每个选中的 cluster 渲染图片 */}
-                 {tab3Selected.map(cl => (
+                 {tab3Selected.map(cl => {
+                   const featureName = `plot_markers_feature_${cl}.png`;
+                   const vlnName = `plot_markers_vln_${cl}.png`;
+                   const featureSrc = `/api/tasks/${tab3TaskId}/plot?name=${encodeURIComponent(featureName)}`;
+                   const vlnSrc = `/api/tasks/${tab3TaskId}/plot?name=${encodeURIComponent(vlnName)}`;
+                   return (
                    <div key={cl} className="mb-6">
                      <h4 className="text-xs font-semibold mb-2 px-1" style={{ color: 'var(--clr-text-muted)' }}>Cluster {cl}</h4>
                      {tab3PlotMode === 'feature' && (
-                       <AuthImg 
-                         src={`/api/tasks/${tab3TaskId}/plot?name=${encodeURIComponent(`plot_markers_feature_${cl}.png`)}`} 
-                         alt={`Feature Plot ${cl}`} 
-                         className="w-full max-w-4xl border rounded shadow-sm bg-white mx-auto block" 
-                       />
+                       <>
+                         <AuthImg src={featureSrc} alt={`Feature Plot ${cl}`} className="w-full max-w-4xl border rounded shadow-sm bg-white mx-auto block" />
+                         <AuthDownloadLink url={featureSrc} filename={featureName}
+                           className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90 mt-2"
+                           style={{ background: 'var(--clr-amber)', boxShadow: '0 2px 4px rgba(200,96,25,0.2)' }}
+                         >
+                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                           下载 FeaturePlot Cluster {cl} (.png)
+                         </AuthDownloadLink>
+                       </>
                      )}
                      {tab3PlotMode === 'vln' && (
-                       <AuthImg 
-                         src={`/api/tasks/${tab3TaskId}/plot?name=${encodeURIComponent(`plot_markers_vln_${cl}.png`)}`} 
-                         alt={`Vln Plot ${cl}`} 
-                         className="w-full max-w-4xl border rounded shadow-sm bg-white mx-auto block" 
-                       />
+                       <>
+                         <AuthImg src={vlnSrc} alt={`Vln Plot ${cl}`} className="w-full max-w-4xl border rounded shadow-sm bg-white mx-auto block" />
+                         <AuthDownloadLink url={vlnSrc} filename={vlnName}
+                           className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90 mt-2"
+                           style={{ background: 'var(--clr-amber)', boxShadow: '0 2px 4px rgba(200,96,25,0.2)' }}
+                         >
+                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                           下载 VlnPlot Cluster {cl} (.png)
+                         </AuthDownloadLink>
+                       </>
                      )}
-                   </div>
-                 ))}
+                   </div>);
+                   })}
                </div>
              )}
           </div>
@@ -1324,45 +1361,62 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
              
              {tab4Error && <div className="callout callout-danger text-xs">{tab4Error}</div>}
              
-             {tab4TaskId && !tab4Loading && !tab4Error && tab4Data && (
-               <div className="animate-fade-in">
-                 <div className="flex gap-4 text-xs mb-3" style={{ color: "var(--clr-text-faint)" }}>
-                   <span>分析对：<strong style={{ color: "var(--clr-text)" }}>{tab4G1.join('+')} vs {tab4G2.join('+')}</strong></span>
-                 </div>
-                 <div className="table-wrap max-h-96 overflow-y-auto mb-4">
-                   <table className="w-full">
-                     <thead className="sticky top-0 bg-stone-50 shadow-sm z-10">
-                       <tr>
-                         <th className="py-2 px-3 text-left">Gene</th>
-                         <th className="py-2 px-3 text-right">avg_log2FC</th>
-                         <th className="py-2 px-3 text-right">p_val_adj</th>
-                         <th className="py-2 px-3 text-right">pct.1</th>
-                         <th className="py-2 px-3 text-right">pct.2</th>
-                       </tr>
-                     </thead>
-                     <tbody>
-                       {tab4Data.map((row, i) => (
-                         <tr key={i} className="border-t border-stone-100 hover:bg-stone-50">
-                           <td className="py-2 px-3 font-mono font-semibold" style={{ color: "var(--clr-amber-dark)" }}>{row.gene ?? "—"}</td>
-                           <td className="py-2 px-3 text-right">{row.avg_log2FC?.toFixed(3) ?? "—"}</td>
-                           <td className="py-2 px-3 text-right font-mono text-xs">{row.p_val_adj !== undefined ? row.p_val_adj.toExponential(2) : "—"}</td>
-                           <td className="py-2 px-3 text-right">{row.pct1?.toFixed(2) ?? "—"}</td>
-                           <td className="py-2 px-3 text-right">{row.pct2?.toFixed(2) ?? "—"}</td>
-                         </tr>
-                       ))}
-                     </tbody>
-                   </table>
-                 </div>
-                 <AuthDownloadLink 
-                   url={`/api/tasks/${tab4TaskId}/plot?name=${encodeURIComponent(`diff_genes_${tab4G1.join('+')}_vs_${tab4G2.join('+')}.csv`)}`} 
-                   filename={`diff_genes_${tab4G1.join('+')}_vs_${tab4G2.join('+')}.csv`}
-                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white"
-                   style={{ background: "var(--clr-amber)" }}
-                 >
-                   下载分组差异基因表 (.csv)
-                 </AuthDownloadLink>
-               </div>
-             )}
+             {tab4TaskId && !tab4Loading && !tab4Error && tab4Data && (() => {
+                const tab4Cols = tab4Data.length > 0
+                  ? (() => {
+                      const allKeys = Array.from(new Set(tab4Data.flatMap(row => Object.keys(row))));
+                      const pref = ["gene_id", "avg_log2FC", "p_val", "p_val_adj", "pct.1", "pct.2"];
+                      const ordered = pref.filter(k => allKeys.includes(k));
+                      const rest = allKeys.filter(k => !pref.includes(k));
+                      return [...ordered, ...rest];
+                    })()
+                  : [];
+                return (
+                <div className="animate-fade-in">
+                  <div className="flex gap-4 text-xs mb-3" style={{ color: "var(--clr-text-faint)" }}>
+                    <span>分析对：<strong style={{ color: "var(--clr-text)" }}>{tab4G1.join('+')} vs {tab4G2.join('+')}</strong></span>
+                  </div>
+                  <div className="space-y-2 mb-4">
+                    <div className="card-label">
+                      分组差异基因预览
+                      <span className="font-normal ml-1" style={{ color: "var(--clr-text-faint)" }}>— 显示前 {tab4Data.length} 行</span>
+                    </div>
+                    <div className="table-wrap" style={{ maxWidth: "100%", overflowX: "auto" }}>
+                      <table style={{ fontSize: "0.7rem" }}>
+                        <thead>
+                          <tr>{tab4Cols.map(c => <th key={c} style={{ whiteSpace: "nowrap" }}>{c.toUpperCase()}</th>)}</tr>
+                        </thead>
+                        <tbody>
+                          {tab4Data.map((row, i) => (
+                            <tr key={i}>
+                              {tab4Cols.map(c => (
+                                <td key={c} style={{
+                                  whiteSpace: "nowrap",
+                                  maxWidth: "180px",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  ...(c === "gene_id" ? { fontFamily: "var(--font-mono)", color: "var(--clr-amber-dark)" } : {}),
+                                }}>
+                                  {fmtCell(row[c])}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <AuthDownloadLink 
+                    url={`/api/tasks/${tab4TaskId}/plot?name=${encodeURIComponent(`diff_genes_${tab4G1.join('+')}_vs_${tab4G2.join('+')}.csv`)}`} 
+                    filename={`diff_genes_${tab4G1.join('+')}_vs_${tab4G2.join('+')}.csv`}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90"
+                    style={{ background: "var(--clr-amber)", boxShadow: "0 2px 4px rgba(200,96,25,0.2)" }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    下载分组差异基因表 (.csv)
+                  </AuthDownloadLink>
+                </div>);
+              })()}
           </div>
         )}
 
