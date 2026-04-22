@@ -79,20 +79,10 @@ my_distPlot1 <- function(exp){
   return(plot1 + plot2)
 }
 
-my_distPlot2 <- function(exp, pro) {
-  # 逐 feature 生成 VlnPlot，在首列加行标题区分过滤前/后
-  feats <- c("nCount_RNA", "nFeature_RNA", "percent.mt")
-  make_row <- function(obj, row_label) {
-    plots <- lapply(seq_along(feats), function(i) {
-      p <- VlnPlot(obj, features = feats[i], pt.size = 0) + NoLegend()
-      if (i == 1) p <- p + ggtitle(paste0(row_label, " \u2014 ", feats[i]))
-      p
-    })
-    plots[[1]] | plots[[2]] | plots[[3]]
-  }
-  row1 <- make_row(exp, "Before QC")
-  row2 <- make_row(pro, "After QC")
-  return(row1 / row2)
+my_distPlot2 <- function(exp,pro){
+  plot1 <- VlnPlot(exp, features = c("nCount_RNA", "nFeature_RNA", "percent.mt"), ncol = 3, pt.size = 0)+ NoLegend()
+  plot2 <- VlnPlot(pro, features = c("nCount_RNA", "nFeature_RNA", "percent.mt"), ncol = 3, pt.size = 0)+ NoLegend()
+  return(plot1/plot2)
 }
 
 my_distPlot3 <- function(sctpro,redu,group,nPCA){

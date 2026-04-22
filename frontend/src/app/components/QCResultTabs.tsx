@@ -324,7 +324,7 @@ function SampleQCTab({ data, taskId, token, onDownload }: { data: QCResult; task
   return (
     <div className="space-y-4">
       <div className="callout text-xs" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
-        <span>过滤前后 nCount_RNA / nFeature_RNA / percent.mt 小提琴图对比。</span>
+        <span><strong>过滤前（上）/ 过滤后（下）</strong> nCount_RNA / nFeature_RNA / percent.mt 小提琴图对比。</span>
         <button
           style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", flexShrink: 0, color: "var(--clr-amber)", transition: "color 0.2s" }}
           onClick={() => onDownload(data.violin_plot_path, "qc_violin.png")}
