@@ -1116,39 +1116,26 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
         {/* Tab 3: 聚类特征分布图（多选下拉 + 自定义基因） */}
         {activeTab === 2 && (
           <div className="space-y-4 animate-fade-in">
-             <div className="bg-stone-50 p-3 rounded border space-y-3" style={{ borderColor: 'var(--clr-border)' }}>
-               {/* 第一行：聚类选择 + 生成按钮 */}
-               <div className="flex items-end gap-3">
-                 <div className="flex-1">
-                   <label className="text-xs font-medium flex items-baseline gap-1.5 mb-1.5" style={{ color: 'var(--clr-text-muted)' }}>
-                     <span className="shrink-0">选择聚类群</span>
-                     {tab3Selected.length > 0 && (
-                       <span>{tab3Selected.map(c => `Cluster ${c}`).join(', ')}</span>
-                     )}
-                   </label>
-                   <MultiSelectDropdown
-                     options={analyzedClusters}
-                     selected={tab3Selected}
-                     onChange={setTab3Selected}
-                     renderLabel={c => `Cluster ${c}`}
-                     placeholder="点击选择聚类…"
-                   />
-                 </div>
-                 <button 
-                   onClick={() => {
-                     const clusterStr = tab3Selected.join(',');
-                     const customStr = customGenes.join(',');
-                     runSubTask("plot_markers", { ...task.params, cluster: clusterStr, custom_genes: customStr }, setTab3Loading, setTab3Error, (tid: string) => setTab3TaskId(tid));
-                   }}
-                   disabled={tab3Loading || tab3Selected.length === 0}
-                   className="px-3 py-1.5 text-white text-sm rounded shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 shrink-0"
-                   style={{ background: 'var(--clr-amber)' }}
-                 >
-                   {tab3Loading ? "计算中..." : "生成表达特征图"}
-                 </button>
+             <div className="bg-stone-50 p-4 rounded border flex flex-col items-center space-y-4" style={{ borderColor: 'var(--clr-border)' }}>
+               {/* 第一行：聚类选择 */}
+               <div className="w-full max-w-2xl">
+                 <label className="text-xs font-medium flex items-baseline gap-1.5 mb-1.5" style={{ color: 'var(--clr-text-muted)' }}>
+                   <span className="shrink-0">选择聚类群</span>
+                   {tab3Selected.length > 0 && (
+                     <span>{tab3Selected.map(c => `Cluster ${c}`).join(', ')}</span>
+                   )}
+                 </label>
+                 <MultiSelectDropdown
+                   options={analyzedClusters}
+                   selected={tab3Selected}
+                   onChange={setTab3Selected}
+                   renderLabel={c => `Cluster ${c}`}
+                   placeholder="点击选择聚类…"
+                 />
                </div>
+               
                {/* 第二行：自定义基因输入 */}
-               <div>
+               <div className="w-full max-w-2xl">
                  <label className="text-xs font-medium mb-1.5 block" style={{ color: 'var(--clr-text-muted)' }}>
                    自定义关注基因 <span className="font-normal">（可选，会追加到 Top N 结果中）</span>
                  </label>
@@ -1160,6 +1147,20 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
                    placeholder="输入基因名搜索，如 FOXP3, CD4…"
                  />
                </div>
+
+               {/* 按钮 */}
+               <button 
+                 onClick={() => {
+                   const clusterStr = tab3Selected.join(',');
+                   const customStr = customGenes.join(',');
+                   runSubTask("plot_markers", { ...task.params, cluster: clusterStr, custom_genes: customStr }, setTab3Loading, setTab3Error, (tid: string) => setTab3TaskId(tid));
+                 }}
+                 disabled={tab3Loading || tab3Selected.length === 0}
+                 className="px-6 py-2 text-white text-sm rounded shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 mt-2"
+                 style={{ background: 'var(--clr-amber)' }}
+               >
+                 {tab3Loading ? "计算中..." : "生成表达特征图"}
+               </button>
              </div>
              
              {tab3Error && <div className="callout callout-danger text-xs">{tab3Error}</div>}
@@ -1207,8 +1208,8 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
         {/* Tab 4: 分组对比（多选下拉） */}
         {activeTab === 3 && (
           <div className="space-y-4 animate-fade-in">
-             <div className="bg-stone-50 p-3 rounded border" style={{ borderColor: 'var(--clr-border)' }}>
-               <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-end">
+             <div className="bg-stone-50 p-4 rounded border flex flex-col items-center space-y-4" style={{ borderColor: 'var(--clr-border)' }}>
+               <div className="w-full max-w-3xl grid grid-cols-[1fr_auto_1fr] gap-3 items-end">
                  {/* Group 1 */}
                  <div>
                    <label className="text-xs font-medium flex items-baseline gap-1.5 mb-1.5" style={{ color: 'var(--clr-text-muted)' }}>
@@ -1225,7 +1226,7 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
                      placeholder="选择组一聚类…"
                    />
                  </div>
-                 <span className="text-stone-400 font-bold text-lg">vs</span>
+                 <span className="text-stone-400 font-bold text-lg mb-1.5">vs</span>
                  {/* Group 2 */}
                  <div>
                    <label className="text-xs font-medium flex items-baseline gap-1.5 mb-1.5" style={{ color: 'var(--clr-text-muted)' }}>
@@ -1243,6 +1244,7 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
                    />
                  </div>
                </div>
+
                <button 
                  onClick={() => {
                    const g1Str = tab4G1.join(',');
@@ -1253,7 +1255,7 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
                    });
                  }}
                  disabled={tab4Loading || tab4G1.length === 0 || tab4G2.length === 0 || (tab4G1.length === 1 && tab4G2.length === 1 && tab4G1[0] === tab4G2[0])}
-                 className="mt-3 px-3 py-1 text-white text-sm rounded shadow-sm hover:opacity-90 disabled:opacity-50"
+                 className="px-6 py-2 text-white text-sm rounded shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 mt-2"
                  style={{ background: 'var(--clr-amber)' }}
                >
                  {tab4Loading ? "对比计算中..." : "进行分组差异分析"}
