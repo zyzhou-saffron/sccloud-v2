@@ -1458,23 +1458,33 @@ function EnrichResult({ data, taskId }: { data: Record<string, unknown> | null; 
               — R ggplot2 原版输出（{stats?.pathway} {stats?.direction}）
             </span>
           </p>
-          <AuthImg
-            src={plotSrc}
-            alt={`${stats?.pathway} ${stats?.direction} enrichment plot`}
-            className="w-full rounded border"
-            style={{ border: "1px solid var(--clr-border)", background: "#fff" }}
-          />
+          <div className="relative w-full">
+            <AuthImg
+              src={plotSrc}
+              alt={`${stats?.pathway} ${stats?.direction} enrichment plot`}
+              className="w-full rounded border"
+              style={{ border: "1px solid var(--clr-border)", background: "#fff" }}
+            />
+            <AuthDownloadLink
+              url={plotSrc}
+              filename={plotFileName ?? "enrich_plot.png"}
+              className="absolute bottom-3 right-3 inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
+              style={{ background: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", color: "var(--clr-amber)" }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </AuthDownloadLink>
+          </div>
           {/* 下载 CSV 链接 */}
           {csvSrc && (
-            <a
-              href={csvSrc}
-              download={csvFileName ?? "enrich_result.csv"}
+            <AuthDownloadLink
+              url={csvSrc}
+              filename={csvFileName ?? "enrich_result.csv"}
               className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded transition-colors"
               style={{ color: "var(--clr-amber-dark)", border: "1px solid var(--clr-border)", background: "rgba(200,96,25,0.04)" }}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               下载富集结果表 ({csvFileName})
-            </a>
+            </AuthDownloadLink>
           )}
         </div>
       ) : enrichData ? (
