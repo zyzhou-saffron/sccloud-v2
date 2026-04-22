@@ -319,6 +319,29 @@ body {
 .badge-green { background: #E6F6ED; color: var(--clr-success); }
 .badge-red { background: #FFF3F3; color: var(--clr-danger); }
 
+/* ========== Download Button ========== */
+.btn-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--clr-amber-dark);
+  background: rgba(200, 96, 25, 0.06);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-download:hover {
+  background: rgba(200, 96, 25, 0.12);
+  border-color: var(--clr-amber);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
 /* ========== Callout ========== */
 .callout {
   border-left: 3px solid var(--clr-amber);

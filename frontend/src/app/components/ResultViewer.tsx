@@ -283,7 +283,7 @@ export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCa
         {/* ── 非 QC 步骤：数据加载后渲染 ── */}
         {needsResultData && resultRequested && !loadingResult && (
           <>
-            {stepId === "normalize" && resultData && <NormalizeResult data={resultData} />}
+            {stepId === "normalize" && resultData && <NormalizeResult data={resultData} taskId={task.id} />}
             {stepId === "reduce"    && <ReduceResult data={resultData} taskId={task.id} />}
             {stepId === "cluster"   && <ClusterResult data={resultData} taskId={task.id} />}
             {stepId === "markers"   && <MarkersResult data={resultData} task={task} taskCache={taskCache} />}
@@ -303,20 +303,106 @@ export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCa
 =================================================== */
 
 /** 标准化结果 */
-function NormalizeResult({ data }: { data: Record<string, unknown> }) {
+function NormalizeResult({ data, taskId }: { data: Record<string, unknown>; taskId?: string }) {
   const stats = data.stats as { cells?: number; genes?: number; assays?: string[] } | undefined;
+  const inputFile = safeString(data.input_file) ?? "seurat_qc.rds";
+  const resultPath = safeString(data.result_path);
+  const resultFileName = resultPath ? resultPath.split("/").pop() : null;
+
+  // meta.data 表格（前 100 行样本）
+  const metaSample = data.meta_data_sample as Record<string, unknown>[] | undefined;
+  const metaTotalRows = (data.meta_data_total_rows as number) ?? 0;
+  const [metaPage, setMetaPage] = useState(0);
+  const metaPageSize = 10;
+  const metaCols = metaSample && metaSample.length > 0 ? Object.keys(metaSample[0]) : [];
+  const metaPageData = metaSample ? metaSample.slice(metaPage * metaPageSize, (metaPage + 1) * metaPageSize) : [];
+  const metaTotalPages = metaSample ? Math.ceil(metaSample.length / metaPageSize) : 0;
+
   return (
-    <div className="grid grid-cols-3 gap-3">
-      {[
-        { label: "细胞数", value: stats?.cells?.toLocaleString() ?? "—" },
-        { label: "基因数", value: stats?.genes?.toLocaleString() ?? "—" },
-        { label: "Assays", value: (stats?.assays ?? []).join(", ") || "—" },
-      ].map((item) => (
-        <div key={item.label} className="p-3 rounded text-center" style={{ background: "var(--clr-bg-alt)", border: "1px solid var(--clr-border)" }}>
-          <p className="text-lg font-bold" style={{ color: "var(--clr-amber)" }}>{item.value}</p>
-          <p className="text-xs mt-1" style={{ color: "var(--clr-text-faint)" }}>{item.label}</p>
+    <div className="space-y-4">
+      {/* 输入文件提示 */}
+      <div className="callout text-xs flex items-center gap-2">
+        <span>📄</span>
+        <span>输入文件：<strong style={{ color: "var(--clr-amber)" }}>{inputFile}</strong></span>
+      </div>
+
+      {/* 统计卡片 */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: "细胞数", value: stats?.cells?.toLocaleString() ?? "—" },
+          { label: "基因数", value: stats?.genes?.toLocaleString() ?? "—" },
+          { label: "Assays", value: (stats?.assays ?? []).join(", ") || "—" },
+        ].map((item) => (
+          <div key={item.label} className="p-3 rounded text-center" style={{ background: "var(--clr-bg-alt)", border: "1px solid var(--clr-border)" }}>
+            <p className="text-lg font-bold" style={{ color: "var(--clr-amber)" }}>{item.value}</p>
+            <p className="text-xs mt-1" style={{ color: "var(--clr-text-faint)" }}>{item.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* meta.data 表格 */}
+      {metaSample && metaSample.length > 0 && (
+        <div className="space-y-2">
+          <div className="card-label">
+            meta.data 预览
+            <span className="font-normal ml-1" style={{ color: "var(--clr-text-faint)" }}>
+              — 显示前 {Math.min(metaSample.length, 100)} / {metaTotalRows.toLocaleString()} 行
+            </span>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>{metaCols.map(c => <th key={c}>{c}</th>)}</tr>
+              </thead>
+              <tbody>
+                {metaPageData.map((row, i) => (
+                  <tr key={i}>
+                    {metaCols.map(c => (
+                      <td key={c} style={c === "barcode" ? { fontFamily: "var(--font-mono)", color: "var(--clr-amber-dark)" } : {}}>
+                        {String(row[c] ?? "")}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* 分页控件 */}
+          {metaTotalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 text-xs" style={{ color: "var(--clr-text-muted)" }}>
+              <button
+                disabled={metaPage === 0}
+                onClick={() => setMetaPage(p => p - 1)}
+                className="px-2 py-1 rounded"
+                style={{ border: "1px solid var(--clr-border)", opacity: metaPage === 0 ? 0.4 : 1 }}
+              >
+                ‹ 上一页
+              </button>
+              <span>{metaPage + 1} / {metaTotalPages}</span>
+              <button
+                disabled={metaPage >= metaTotalPages - 1}
+                onClick={() => setMetaPage(p => p + 1)}
+                className="px-2 py-1 rounded"
+                style={{ border: "1px solid var(--clr-border)", opacity: metaPage >= metaTotalPages - 1 ? 0.4 : 1 }}
+              >
+                下一页 ›
+              </button>
+            </div>
+          )}
         </div>
-      ))}
+      )}
+
+      {/* RDS 下载按钮 */}
+      {resultFileName && taskId && (
+        <div className="card">
+          <div className="card-label">⬇ 下载结果文件</div>
+          <AuthDownloadLink
+            url={`/api/tasks/${taskId}/plot?name=${encodeURIComponent(resultFileName)}`}
+            filename={resultFileName}
+            label="💾 标准化 RDS"
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -394,11 +480,15 @@ function ClusterResult({ data, taskId }: { data: Record<string, unknown> | null;
   // ── 统计 ──
   const stats = data?.stats as { clusters?: number; cluster_levels?: string[]; cells?: number } | undefined;
 
-  // ── 图片 URL 构建 ──
+  // ── 图片 URL 构建（从 API 响应中动态提取文件名） ──
   const mkSrc = (name: string) => taskId ? `/api/tasks/${taskId}/plot?name=${encodeURIComponent(name)}` : null;
-  const umapSrc   = mkSrc("plot_cluster.png");         // my_distPlot5: Cluster UMAP
-  const sankeySrc = mkSrc("plot_cluster_sankey.png");  // my_distPlot4: 样本 Cluster 占比图
-  const groupSrc  = mkSrc("plot_cluster_group.png");   // my_distPlot6: 分组 UMAP
+  const extractName = (val: unknown) => { const s = safeString(val); return s ? s.split("/").pop()! : null; };
+  const umapName   = extractName(data?.plot_path)  ?? "plot_cluster.png";
+  const sankeyName = extractName(data?.plot_path2) ?? "plot_cluster_sankey.png";
+  const groupName  = extractName(data?.plot_path3) ?? "plot_cluster_group.png";
+  const umapSrc   = mkSrc(umapName);         // my_distPlot5: Cluster UMAP
+  const sankeySrc = mkSrc(sankeyName);       // my_distPlot4: 样本 Cluster 占比图
+  const groupSrc  = mkSrc(groupName);        // my_distPlot6: 分组 UMAP
 
   // ── 表格数据 ──
   type FreqRow = { Cluster?: string; Sample?: string; CellNumber?: number; Freq?: number };
@@ -656,8 +746,16 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
   const topGenes = (data?.top_genes ?? []) as GeneRow[];
   const stats    = data?.stats as { total_deg?: number; clusters_analyzed?: string } | undefined;
 
-  const dotplotSrc = task ? `/api/tasks/${task.id}/plot?name=plot_markers_dotplot.png` : null;
-  const heatmapSrc = task ? `/api/tasks/${task.id}/plot?name=plot_markers_heatmap.png` : null;
+  // 从 API 响应中动态提取图片文件名
+  const dotplotPath = safeString(data?.plot_path);
+  const dotplotName = dotplotPath ? dotplotPath.split("/").pop()! : "plot_markers_dotplot.png";
+  const heatmapPath = safeString(data?.heatmap_path);
+  const heatmapName = heatmapPath ? heatmapPath.split("/").pop()! : "plot_markers_heatmap.png";
+  const csvPath = safeString(data?.result_path);
+  const csvName = csvPath ? csvPath.split("/").pop()! : "diff_genes.csv";
+
+  const dotplotSrc = task ? `/api/tasks/${task.id}/plot?name=${encodeURIComponent(dotplotName)}` : null;
+  const heatmapSrc = task ? `/api/tasks/${task.id}/plot?name=${encodeURIComponent(heatmapName)}` : null;
 
   const [activeTab, setActiveTab] = useState(0);
   const TABS = ["全局差异表", "大盘基因图", "单簇特征分布图", "双簇对比表"];
@@ -794,8 +892,8 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
             )}
             <div className="mt-4">
               <AuthDownloadLink 
-                url={`/api/tasks/${task.id}/plot?name=diff_genes.csv`} 
-                filename="diff_genes.csv"
+                url={`/api/tasks/${task.id}/plot?name=${encodeURIComponent(csvName)}`} 
+                filename={csvName}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white"
                 style={{ background: "var(--clr-amber)" }}
               >

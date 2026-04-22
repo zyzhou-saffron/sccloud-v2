@@ -50,6 +50,12 @@ interface QCResult {
   corr_plot_path?: string | string[];
   /** R 引擎生成的过滤前后 VlnPlot 路径 */
   violin_plot_path?: string | string[];
+  /** QC 后 RDS 的归档路径 */
+  result_path?: string | string[];
+  /** 线粒体统计 CSV 路径 */
+  mito_csv_path?: string | string[];
+  /** UMI/Gene 统计 CSV 路径 */
+  umi_csv_path?: string | string[];
 }
 
 interface QCResultTabsProps {
@@ -141,6 +147,22 @@ export default function QCResultTabs({ taskId, token }: QCResultTabsProps) {
       .catch((e) => { setError(e.message); setLoading(false); });
   }, [taskId, token]);
 
+  const handleDownload = async (plotPath: unknown, fallbackName: string) => {
+    const url = plotUrl(taskId, plotPath);
+    if (!url) return;
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(`${res.status}`);
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      const p = safeString(plotPath);
+      a.download = p ? p.split("/").pop()! : fallbackName;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch { /* 静默失败 */ }
+  };
+
   if (loading) {
     return <div className="text-center py-8 text-sm" style={{ color: "var(--clr-text-muted)" }}>加载分析结果...</div>;
   }
@@ -176,11 +198,11 @@ export default function QCResultTabs({ taskId, token }: QCResultTabsProps) {
 
       {/* Tab 内容 */}
       <div className="animate-fade-in-fast">
-        {activeTab === "filter" && <FilterResultTab data={data} />}
-        {activeTab === "corr" && <CorrTab data={data} taskId={taskId} token={token} />}
-        {activeTab === "qc" && <SampleQCTab data={data} taskId={taskId} token={token} />}
-        {activeTab === "mito" && <MitoTab data={data} />}
-        {activeTab === "umi" && <UmiTab data={data} />}
+        {activeTab === "filter" && <FilterResultTab data={data} onDownload={handleDownload} />}
+        {activeTab === "corr" && <CorrTab data={data} taskId={taskId} token={token} onDownload={handleDownload} />}
+        {activeTab === "qc" && <SampleQCTab data={data} taskId={taskId} token={token} onDownload={handleDownload} />}
+        {activeTab === "mito" && <MitoTab data={data} onDownload={handleDownload} />}
+        {activeTab === "umi" && <UmiTab data={data} onDownload={handleDownload} />}
       </div>
     </div>
   );
@@ -188,7 +210,7 @@ export default function QCResultTabs({ taskId, token }: QCResultTabsProps) {
 
 // ===== Tab 1: 过滤结果 =====
 
-function FilterResultTab({ data }: { data: QCResult }) {
+function FilterResultTab({ data, onDownload }: { data: QCResult; onDownload: (p: unknown, f: string) => void }) {
   const stats = data.stats;
   const before = stats.total_cells_before?.[0] || 0;
   const after = stats.total_cells_after?.[0] || 0;
@@ -199,6 +221,20 @@ function FilterResultTab({ data }: { data: QCResult }) {
 
   return (
     <div className="space-y-4">
+      {/* 说明 + 下载 RDS（按钮嵌入横幅内部右侧） */}
+      <div className="callout text-xs" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+        <span>质控过滤根据设定的线粒体基因占比阈值和最小表达基因数阈值，去除低质量细胞。</span>
+        <button
+          style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", flexShrink: 0, color: "var(--clr-amber)", transition: "color 0.2s" }}
+          onClick={() => onDownload(data.result_path, "seurat_qc.rds")}
+          title="下载 QC 后 RDS"
+          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--clr-amber-dark)")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--clr-amber)")}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+      </div>
+
       {/* 统计卡片 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="stat-card">
@@ -235,24 +271,28 @@ function FilterResultTab({ data }: { data: QCResult }) {
           </div>
         </div>
       </div>
-
-      <div className="callout text-xs">
-        质控过滤根据设定的线粒体基因占比阈值和最小表达基因数阈值，
-        去除低质量细胞。过滤后的数据将用于后续的标准化和降维分析。
-      </div>
     </div>
   );
 }
 
 // ===== Tab 2: 样本相关性 =====
 
-function CorrTab({ data, taskId, token }: { data: QCResult; taskId: string; token: string }) {
+function CorrTab({ data, taskId, token, onDownload }: { data: QCResult; taskId: string; token: string; onDownload: (p: unknown, f: string) => void }) {
   const src = plotUrl(taskId, data.corr_plot_path);
 
   return (
     <div className="space-y-4">
-      <div className="callout text-xs">
-        上传rds文件中样本的相关性,如果nCount_RNA和线粒体基因间没有相关性,表明测序得到的Count基本都是细胞的功能基因,nCount_RNA和nFeature_RNA强相关的话,符合逻辑
+      <div className="callout text-xs" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+        <span>样本间 nCount_RNA / nFeature_RNA / percent.mt 相关性散点图。</span>
+        <button
+          style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", flexShrink: 0, color: "var(--clr-amber)", transition: "color 0.2s" }}
+          onClick={() => onDownload(data.corr_plot_path, "qc_correlation.png")}
+          title="下载相关性图"
+          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--clr-amber-dark)")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--clr-amber)")}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
       </div>
 
       {src ? (
@@ -278,14 +318,22 @@ function CorrTab({ data, taskId, token }: { data: QCResult; taskId: string; toke
 
 // ===== Tab 3: 样本质控 =====
 
-function SampleQCTab({ data, taskId, token }: { data: QCResult; taskId: string; token: string }) {
+function SampleQCTab({ data, taskId, token, onDownload }: { data: QCResult; taskId: string; token: string; onDownload: (p: unknown, f: string) => void }) {
   const vlnSrc = plotUrl(taskId, data.violin_plot_path);
 
   return (
     <div className="space-y-4">
-      <div className="callout text-xs">
-        过滤前后的小提琴图对比 (nCount_RNA、nFeature_RNA、percent.mt)。
-        上方为过滤前，下方为过滤后，可直观观察过滤效果。
+      <div className="callout text-xs" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+        <span>过滤前后 nCount_RNA / nFeature_RNA / percent.mt 小提琴图对比。</span>
+        <button
+          style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", flexShrink: 0, color: "var(--clr-amber)", transition: "color 0.2s" }}
+          onClick={() => onDownload(data.violin_plot_path, "qc_violin.png")}
+          title="下载小提琴图"
+          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--clr-amber-dark)")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--clr-amber)")}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
       </div>
 
       {/* VlnPlot 可视化 */}
@@ -324,12 +372,22 @@ function SampleQCTab({ data, taskId, token }: { data: QCResult; taskId: string; 
 
 // ===== Tab 4: 样本线粒体基因占比 =====
 
-function MitoTab({ data }: { data: QCResult }) {
+function MitoTab({ data, onDownload }: { data: QCResult; onDownload: (p: unknown, f: string) => void }) {
   return (
     <div className="space-y-4">
-      <div className="callout text-xs">
-        各样本在不同线粒体基因占比阈值下的细胞数量及比例。
-        高线粒体占比通常表示细胞应激或凋亡。
+      <div className="callout text-xs" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+        <span>各样本线粒体基因占比分布，高占比通常表示细胞应激或凋亡。</span>
+        {data.mito_csv_path && (
+          <button
+            style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", flexShrink: 0, color: "var(--clr-amber)", transition: "color 0.2s" }}
+            onClick={() => onDownload(data.mito_csv_path, "mito_stats.csv")}
+            title="下载线粒体统计 CSV"
+            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--clr-amber-dark)")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--clr-amber)")}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+        )}
       </div>
       <div><div className="card-label">过滤前 · 各样本线粒体分布</div><MitoTable rows={data.mito_table_before} /></div>
       <div><div className="card-label" style={{ color: "var(--clr-success)" }}>过滤后 · 各样本线粒体分布</div><MitoTable rows={data.mito_table_after} /></div>
@@ -339,11 +397,22 @@ function MitoTab({ data }: { data: QCResult }) {
 
 // ===== Tab 5: 样本UMI基因统计 =====
 
-function UmiTab({ data }: { data: QCResult }) {
+function UmiTab({ data, onDownload }: { data: QCResult; onDownload: (p: unknown, f: string) => void }) {
   return (
     <div className="space-y-4">
-      <div className="callout text-xs">
-        各样本的 UMI 计数和基因数统计（最大值、中位数、最小值）。用于评估测序深度和数据质量。
+      <div className="callout text-xs" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+        <span>各样本 UMI 计数与基因数统计（Max / Median / Min），评估测序深度。</span>
+        {data.umi_csv_path && (
+          <button
+            style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", flexShrink: 0, color: "var(--clr-amber)", transition: "color 0.2s" }}
+            onClick={() => onDownload(data.umi_csv_path, "umi_gene_stats.csv")}
+            title="下载 UMI/Gene 统计 CSV"
+            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--clr-amber-dark)")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--clr-amber)")}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+        )}
       </div>
       <div><div className="card-label">过滤前 · UMI/Gene 统计</div><UmiTable rows={data.umi_gene_before} /></div>
       <div><div className="card-label" style={{ color: "var(--clr-success)" }}>过滤后 · UMI/Gene 统计</div><UmiTable rows={data.umi_gene_after} /></div>

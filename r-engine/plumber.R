@@ -31,6 +31,36 @@ source("R/data_summary.R")
 source("R/data_plot.R")
 
 
+# =====================================================================
+# 文件命名辅助函数
+# 双命名策略：归档名（含项目名+时间戳+步骤）+ 管道链名（固定名）
+# =====================================================================
+
+#' 生成带项目名+时间戳+步骤的归档文件名
+#' @param project_path 项目目录路径（basename 用作项目名）
+#' @param step_num     步骤编号（保留参数兼容性，但不再写入文件名）
+#' @param step_name    步骤名 (如 "qc", "normalize", ...)
+#' @param suffix       后缀描述 (如 "filtered", "SCT", ...)
+#' @param ext          文件扩展名 (如 "rds", "png", ...)
+#' @return 文件名字符串，如 "MyProject_20260422113900.qc_filtered.rds"
+make_output_name <- function(project_path, step_num, step_name, suffix, ext) {
+  proj <- basename(project_path)
+  ts <- format(Sys.time(), "%Y%m%d%H%M%S", tz = "Asia/Shanghai")
+  paste0(proj, "_", ts, ".", step_name, "_", suffix, ".", ext)
+}
+
+#' 保存文件并同时创建管道链名副本
+#' @param archive_path 归档路径（带时间戳的完整路径）
+#' @param canonical_path 管道链路径（固定名称，供下一步读取）
+#' @param object 要保存的 R 对象（NULL 表示文件已存在，只需复制）
+save_with_canonical <- function(archive_path, canonical_path, object = NULL) {
+  if (!is.null(object)) {
+    saveRDS(object, archive_path)
+  }
+  file.copy(archive_path, canonical_path, overwrite = TRUE)
+}
+
+
 #* @apiTitle scCloud v2 R 计算引擎
 #* @apiDescription 无状态 REST API，封装 Seurat/Bioconductor 分析流程
 
@@ -92,7 +122,8 @@ function(req) {
 
   # ---- 生成样本相关性散点图 (my_distPlot1) ----
   report(40, "生成样本相关性图...")
-  corr_plot_path <- file.path(project_path, "plot_qc_correlation.png")
+  corr_archive <- make_output_name(project_path, "1", "qc", "correlation", "png")
+  corr_plot_path <- file.path(project_path, corr_archive)
   png(corr_plot_path, width = 1400, height = 600, res = 150)
   print(my_distPlot1(exp))
   dev.off()
@@ -125,21 +156,40 @@ function(req) {
 
   # ---- 生成过滤前后 VlnPlot 对比 (my_distPlot2) ----
   report(70, "生成质控小提琴图...")
-  vln_plot_path <- file.path(project_path, "plot_qc_violin.png")
+  vln_archive <- make_output_name(project_path, "1", "qc", "violin", "png")
+  vln_plot_path <- file.path(project_path, vln_archive)
   png(vln_plot_path, width = 1400, height = 1000, res = 150)
   print(my_distPlot2(exp, pro))
   dev.off()
 
   report(85, "保存结果...")
 
-  output_path <- file.path(project_path, "seurat_qc.rds")
-  saveRDS(pro, output_path)
+  # 双命名：归档名 + 管道链名
+  rds_archive <- make_output_name(project_path, "1", "qc", "filtered", "rds")
+  archive_path <- file.path(project_path, rds_archive)
+  canonical_path <- file.path(project_path, "seurat_qc.rds")
+  save_with_canonical(archive_path, canonical_path, pro)
+
+  # 保存 QC 统计 CSV（归档名）
+  mito_csv_archive <- make_output_name(project_path, "1", "qc", "mito_stats", "csv")
+  mito_csv_path <- file.path(project_path, mito_csv_archive)
+  write.csv(rbind(
+    data.frame(stage = "before", totalMT),
+    data.frame(stage = "after", totalMT1)
+  ), mito_csv_path, row.names = FALSE)
+
+  umi_csv_archive <- make_output_name(project_path, "1", "qc", "umi_gene_stats", "csv")
+  umi_csv_path <- file.path(project_path, umi_csv_archive)
+  write.csv(rbind(
+    data.frame(stage = "before", umiGene),
+    data.frame(stage = "after", umiGene1)
+  ), umi_csv_path, row.names = FALSE)
 
   report(100, "质控完成")
 
   list(
     status = "success",
-    result_path = output_path,
+    result_path = archive_path,
     stats = list(
       total_cells_before = ncol(exp),
       total_cells_after = ncol(pro),
@@ -151,7 +201,9 @@ function(req) {
     umi_gene_before = umiGene,
     umi_gene_after = umiGene1,
     corr_plot_path = corr_plot_path,
-    violin_plot_path = vln_plot_path
+    violin_plot_path = vln_plot_path,
+    mito_csv_path = mito_csv_path,
+    umi_csv_path = umi_csv_path
   )
 }
 
@@ -183,19 +235,33 @@ function(req) {
 
   report(80, "保存标准化结果...")
 
-  output_path <- file.path(project_path, "seurat_normalized.rds")
-  saveRDS(pro, output_path)
+  # 双命名：归档名 + 管道链名
+  rds_archive <- make_output_name(project_path, "2", "normalize", "SCT", "rds")
+  archive_path <- file.path(project_path, rds_archive)
+  canonical_path <- file.path(project_path, "seurat_normalized.rds")
+  save_with_canonical(archive_path, canonical_path, pro)
+
+  report(90, "提取 meta.data 样本...")
+
+  # 提取前 100 行 meta.data 供前端表格展示
+  meta_sample <- head(pro@meta.data, 100)
+  meta_sample$barcode <- rownames(meta_sample)
+  # 将 barcode 移到第一列
+  meta_sample <- meta_sample[, c("barcode", setdiff(colnames(meta_sample), "barcode"))]
 
   report(100, "标准化完成")
 
   list(
     status = "success",
-    result_path = output_path,
+    result_path = archive_path,
+    input_file = "seurat_qc.rds",
     stats = list(
       cells = ncol(pro),
       genes = nrow(pro),
       assays = names(pro@assays)
-    )
+    ),
+    meta_data_sample = meta_sample,
+    meta_data_total_rows = nrow(pro@meta.data)
   )
 }
 
@@ -237,16 +303,19 @@ function(req) {
 
   report(70, "生成降维图...")
 
-  # 保存图片 (调用原始函数逻辑)
-  plot_path <- file.path(project_path, paste0("plot_reduce_", method, ".png"))
+  # 双命名：归档名 + 管道链名
+  plot_archive <- make_output_name(project_path, "3", "reduce", method, "png")
+  plot_path <- file.path(project_path, plot_archive)
   png(plot_path, width = 1200, height = 800, res = 150)
   my_distPlot3(pro, method, group_by, n_dims)
   dev.off()
 
   report(85, "保存数据...")
 
-  output_path <- file.path(project_path, "seurat_reduced.rds")
-  saveRDS(pro, output_path)
+  rds_archive <- make_output_name(project_path, "3", "reduce", method, "rds")
+  archive_path <- file.path(project_path, rds_archive)
+  canonical_path <- file.path(project_path, "seurat_reduced.rds")
+  save_with_canonical(archive_path, canonical_path, pro)
 
   report(100, "降维完成")
 
@@ -261,7 +330,7 @@ function(req) {
 
   list(
     status = "success",
-    result_path = output_path,
+    result_path = archive_path,
     plot_path = plot_path,
     stats = list(
       cells = ncol(pro),
@@ -305,28 +374,32 @@ function(req) {
 
   report(70, "生成聚类图...")
 
-  # 保存 UMAP 图 (调用原始函数)
-  plot_path <- file.path(project_path, "plot_cluster.png")
+  # 双命名：归档名（3张图）
+  umap_archive <- make_output_name(project_path, "4", "cluster", "umap", "png")
+  plot_path <- file.path(project_path, umap_archive)
   png(plot_path, width = 1200, height = 800, res = 150)
   print(my_distPlot5(pro))
   dev.off()
 
-  # 保存 Sankey 图
-  plot_path2 <- file.path(project_path, "plot_cluster_sankey.png")
+  sankey_archive <- make_output_name(project_path, "4", "cluster", "sankey", "png")
+  plot_path2 <- file.path(project_path, sankey_archive)
   png(plot_path2, width = 1200, height = 1000, res = 150)
   print(my_distPlot4(pro@meta.data))
   dev.off()
 
-  # 保存分组 Cluster UMAP 图 — data_plot.R::my_distPlot6()
-  plot_path3 <- file.path(project_path, "plot_cluster_group.png")
+  group_archive <- make_output_name(project_path, "4", "cluster", "group_umap", "png")
+  plot_path3 <- file.path(project_path, group_archive)
   png(plot_path3, width = 1400, height = 1200, res = 150)
   print(my_distPlot6(pro, group_by))
   dev.off()
 
   report(85, "保存数据...")
 
-  output_path <- file.path(project_path, "seurat_clustered.rds")
-  saveRDS(pro, output_path)
+  # 双命名：RDS
+  rds_archive <- make_output_name(project_path, "4", "cluster", "harmony", "rds")
+  archive_path <- file.path(project_path, rds_archive)
+  canonical_path <- file.path(project_path, "seurat_clustered.rds")
+  save_with_canonical(archive_path, canonical_path, pro)
 
   # 调用原始函数生成统计
   cluster_num <- my_cluster_num1(pro@meta.data)
@@ -350,8 +423,10 @@ function(req) {
 
   list(
     status = "success",
-    result_path = output_path,
+    result_path = archive_path,
     plot_path = plot_path,
+    plot_path2 = plot_path2,
+    plot_path3 = plot_path3,
     stats = list(
       cells = ncol(pro),
       clusters = length(levels(pro)),
@@ -397,17 +472,19 @@ function(req) {
 
   report(70, "生成 DotPlot...")
 
-  # 保存 DotPlot (调用原始函数)
+  # 双命名：DotPlot
   ntop <- params$ntop %||% 5
-  plot_path <- file.path(project_path, "plot_markers_dotplot.png")
+  dotplot_archive <- make_output_name(project_path, "5", "markers", "dotplot", "png")
+  plot_path <- file.path(project_path, dotplot_archive)
   png(plot_path, width = 1600, height = 800, res = 150)
   print(my_distPlot7(pro, min_pct, logfc, test_use, only_pos, ntop))
   dev.off()
 
   report(80, "生成 Heatmap...")
 
-  # 保存 Heatmap (调用 my_distPlot8)
-  heatmap_path <- file.path(project_path, "plot_markers_heatmap.png")
+  # 双命名：Heatmap
+  heatmap_archive <- make_output_name(project_path, "5", "markers", "heatmap", "png")
+  heatmap_path <- file.path(project_path, heatmap_archive)
   tryCatch({
     heatmap_plot <- my_distPlot8(pro, min_pct, logfc, test_use, only_pos, ntop)
     n_clusters <- length(levels(pro))
@@ -421,9 +498,12 @@ function(req) {
 
   report(85, "保存结果...")
 
-  # 保存差异基因表
-  output_csv <- file.path(project_path, "diff_genes.csv")
+  # 双命名：CSV
+  csv_archive <- make_output_name(project_path, "5", "markers", "diff_genes", "csv")
+  output_csv <- file.path(project_path, csv_archive)
   write.csv(diffTable, output_csv, row.names = FALSE)
+  # 管道链名（enrich 步骤需要读取此固定名）
+  file.copy(output_csv, file.path(project_path, "diff_genes.csv"), overwrite = TRUE)
 
   report(100, "差异分析完成")
 
@@ -431,6 +511,7 @@ function(req) {
     status = "success",
     result_path = output_csv,
     plot_path = plot_path,
+    heatmap_path = heatmap_path,
     stats = list(
       total_deg = nrow(diffTable),
       clusters_analyzed = ifelse(cluster == "All", "所有聚类", cluster)
@@ -491,7 +572,8 @@ function(req) {
     calc_h <- max(1200, n_rows * 55 + 200)
     calc_w <- 2000
   }
-  plot_path <- file.path(project_path, paste0("plot_enrich_", pathway, "_", direction, ".png"))
+  plot_archive <- make_output_name(project_path, "6", "enrich", paste0(pathway, "_", direction), "png")
+  plot_path <- file.path(project_path, plot_archive)
   png(plot_path, width = calc_w, height = calc_h, res = 150)
   # GSEA 的 create_gsea_plots 返回 grob (gridExtra::grid.arrange)
   # GO/KEGG 返回 ggplot — 需要不同的输出方式
@@ -502,8 +584,9 @@ function(req) {
   }
   dev.off()
 
-  # 保存表格
-  table_path <- file.path(project_path, paste0("enrich_", pathway, "_", direction, ".csv"))
+  # 双命名：CSV
+  csv_archive <- make_output_name(project_path, "6", "enrich", paste0(pathway, "_", direction), "csv")
+  table_path <- file.path(project_path, csv_archive)
   if (nrow(result$data) > 0) {
     write.csv(result$data, table_path, row.names = FALSE)
   }
@@ -572,15 +655,18 @@ function(req) {
   n_genes <- min(ntop, 8)
   calc_height <- max(800, ceiling(n_genes / 2) * 400)
 
-  # 分别保存 FeaturePlot 和 VlnPlot
-  plot_path_feature <- file.path(project_path, paste0("plot_markers_feature_", cluster, ".png"))
+  # 双命名：FeaturePlot
+  feature_archive <- make_output_name(project_path, "7", "plot_markers", paste0("feature_", cluster), "png")
+  plot_path_feature <- file.path(project_path, feature_archive)
   png(plot_path_feature, width = 1600, height = calc_height, res = 150)
   print(result$feature)
   dev.off()
 
   report(70, "保存 VlnPlot...")
 
-  plot_path_vln <- file.path(project_path, paste0("plot_markers_vln_", cluster, ".png"))
+  # 双命名：VlnPlot
+  vln_archive <- make_output_name(project_path, "7", "plot_markers", paste0("vln_", cluster), "png")
+  plot_path_vln <- file.path(project_path, vln_archive)
   png(plot_path_vln, width = 1600, height = calc_height, res = 150)
   print(result$vln)
   dev.off()
@@ -632,8 +718,9 @@ function(req) {
 
   report(80, "保存结果...")
 
-  output_csv <- file.path(project_path,
-    paste0("diff_genes_", cluster1, "_vs_", cluster2, ".csv"))
+  # 双命名：CSV
+  csv_archive <- make_output_name(project_path, "5b", "markers_pairwise", paste0(cluster1, "_vs_", cluster2), "csv")
+  output_csv <- file.path(project_path, csv_archive)
   write.csv(diffTable, output_csv, row.names = FALSE)
 
   report(100, "成对差异分析完成")
@@ -690,8 +777,9 @@ function(req) {
 
   report(70, "生成注释图...")
 
-  # UMAP 注释图
-  plot_path <- file.path(project_path, "plot_annotate.png")
+  # 双命名：UMAP 注释图
+  umap_archive <- make_output_name(project_path, "8", "annotate", "umap", "png")
+  plot_path <- file.path(project_path, umap_archive)
   png(plot_path, width = 1400, height = 800, res = 150)
   print(DimPlot(pro, reduction = 'umap', group.by = 'CellType',
                 label = T, cols = clusterCols, repel = T))
@@ -699,14 +787,17 @@ function(req) {
 
   report(85, "保存数据...")
 
-  output_path <- file.path(project_path, "seurat_annotated.rds")
-  saveRDS(pro, output_path)
+  # 双命名：RDS
+  rds_archive <- make_output_name(project_path, "8", "annotate", "result", "rds")
+  archive_path <- file.path(project_path, rds_archive)
+  canonical_path <- file.path(project_path, "seurat_annotated.rds")
+  save_with_canonical(archive_path, canonical_path, pro)
 
   report(100, "细胞注释完成")
 
   list(
     status = "success",
-    result_path = output_path,
+    result_path = archive_path,
     plot_path = plot_path,
     stats = list(
       cells = ncol(pro),
@@ -714,6 +805,65 @@ function(req) {
       anno_type = anno_type
     ),
     freq_table = freq_table
+  )
+}
+
+
+# ======================================================================
+# 4b. 细胞群亚类提取
+#     对应 v1: subset(hm_data(), Cluster == subC)
+# ======================================================================
+
+#* 提取选定 Cluster 亚类的 Seurat 子集
+#* @post /subset_cluster
+function(req) {
+  body <- jsonlite::fromJSON(req$postBody)
+  project_path <- body$project_path
+  params <- body$params
+  task_id <- params$task_id
+  report <- create_progress_reporter(task_id)
+
+  report(5, "加载聚类数据...")
+
+  input_path <- file.path(project_path, "seurat_clustered.rds")
+  if (!file.exists(input_path)) stop("请先运行聚类步骤")
+  pro <- readRDS(input_path)
+
+  selected_clusters <- params$clusters
+  if (is.null(selected_clusters) || length(selected_clusters) == 0) {
+    stop("请至少选择一个细胞群")
+  }
+
+  report(30, paste0("提取亚类: ", paste(selected_clusters, collapse = ", "), "..."))
+
+  # 调用原始逻辑 — 与 v1 app-new.R 的 subset(hm_data(), Cluster == subC) 一致
+  sub_data <- subset(pro, Cluster %in% selected_clusters)
+
+  report(70, "保存亚类数据...")
+
+  # 双命名：RDS
+  cluster_label <- paste(selected_clusters, collapse = "-")
+  rds_archive <- make_output_name(project_path, "4b", "subset", cluster_label, "rds")
+  archive_path <- file.path(project_path, rds_archive)
+  saveRDS(sub_data, archive_path)
+
+  # 提取 meta.data 样本供前端展示
+  meta_sample <- head(sub_data@meta.data, 100)
+  meta_sample$barcode <- rownames(meta_sample)
+  meta_sample <- meta_sample[, c("barcode", setdiff(colnames(meta_sample), "barcode"))]
+
+  report(100, "亚类提取完成")
+
+  list(
+    status = "success",
+    result_path = archive_path,
+    stats = list(
+      cells = ncol(sub_data),
+      genes = nrow(sub_data),
+      clusters_selected = selected_clusters
+    ),
+    meta_data_sample = meta_sample,
+    meta_data_total_rows = nrow(sub_data@meta.data)
   )
 }
 

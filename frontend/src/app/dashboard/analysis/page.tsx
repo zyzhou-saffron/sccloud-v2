@@ -49,7 +49,7 @@ const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
   normalize: {},
   reduce: { method: "umap", n_pcs: 30, group_by: "Sample" },
   cluster: { method: "harmony", resolution: 0.5, n_dims: 30, group_by: "Sample" },
-  markers: { min_pct: 0.1, logfc_threshold: 0.25, test_use: "wilcox", ntop: 5 },
+  markers: { cluster: "All", min_pct: 0.1, logfc_threshold: 0.25, test_use: "wilcox", only_pos: true, ntop: 5 },
   enrich: { pathway: "GO", direction: "Up" },
   marker_expr: {},
   annotate: { mode: "auto", group_by: "Sample" },
@@ -636,6 +636,29 @@ function AnalysisPageContent() {
                       </Tooltip>
                     </label>
                     <input type="number" value={stepParams.ntop as number ?? 5} onChange={(e) => updateParam("ntop", Number(e.target.value))} min={1} max={50} className={inputCls} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                      <span>仅正向差异 (only_pos)</span>
+                      <Tooltip content="变量: only_pos\n\n若为 TRUE，则只返回上调基因(avg_log2FC > 0)。V1 默认行为。">
+                        <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      </Tooltip>
+                    </label>
+                    <select value={String(stepParams.only_pos ?? true)} onChange={(e) => updateParam("only_pos", e.target.value === "true")} className={selectCls} style={selectStyle}>
+                      <option value="true">TRUE（仅上调）</option>
+                      <option value="false">FALSE（上下调均返回）</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                      <span>分析聚类</span>
+                      <Tooltip content="变量: cluster\n\n选择 'All' 则对所有聚类做 FindAllMarkers；选择单个聚类则只对该聚类做 FindMarkers (1 vs rest)。">
+                        <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      </Tooltip>
+                    </label>
+                    <select value={stepParams.cluster as string ?? "All"} onChange={(e) => updateParam("cluster", e.target.value)} className={selectCls} style={selectStyle}>
+                      <option value="All">All（所有聚类）</option>
+                    </select>
                   </div>
                 </>
               )}
