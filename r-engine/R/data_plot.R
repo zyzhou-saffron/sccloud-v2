@@ -80,8 +80,10 @@ my_distPlot1 <- function(exp){
 }
 
 my_distPlot2 <- function(exp,pro){
-  plot1 <- VlnPlot(exp, features = c("nCount_RNA", "nFeature_RNA", "percent.mt"), ncol = 3, pt.size = 0)+ NoLegend()
-  plot2 <- VlnPlot(pro, features = c("nCount_RNA", "nFeature_RNA", "percent.mt"), ncol = 3, pt.size = 0)+ NoLegend()
+  plot1 <- VlnPlot(exp, features = c("nCount_RNA", "nFeature_RNA", "percent.mt"), ncol = 3, pt.size = 0) +
+    NoLegend() + patchwork::plot_annotation(title = "Before QC (过滤前)")
+  plot2 <- VlnPlot(pro, features = c("nCount_RNA", "nFeature_RNA", "percent.mt"), ncol = 3, pt.size = 0) +
+    NoLegend() + patchwork::plot_annotation(title = "After QC (过滤后)")
   return(plot1/plot2)
 }
 

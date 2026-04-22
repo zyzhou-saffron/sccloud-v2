@@ -182,6 +182,8 @@ function AnalysisPageContent() {
   useEffect(() => {
     const clusterTask = taskCache.cluster;
     if (!clusterTask?.id || clusterTask.status !== "completed") {
+      // 仅在确认不存在聚类任务时清空，避免异步恢复期间误清
+      if (clusterTask === undefined && clusterLevels.length > 0) return;
       setClusterLevels([]);
       return;
     }
@@ -708,8 +710,16 @@ function AnalysisPageContent() {
                         <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                       </Tooltip>
                     </label>
-                    {clusterLevels.length === 0 ? (
-                      /* 聚类尚未完成 —— 仅显示 All */
+                    {(() => {
+                      // 优先使用聚类结果的 levels，回退到当前参数中已选的 cluster 值
+                      const effectiveLevels = clusterLevels.length > 0
+                        ? clusterLevels
+                        : ((stepParams.cluster as string) && (stepParams.cluster as string) !== "All"
+                          ? (stepParams.cluster as string).split(",").filter(Boolean)
+                          : []);
+                      return effectiveLevels.length === 0;
+                    })() ? (
+                      /* 聚类尚未完成且无历史选择 —— 仅显示 All */
                       <select value={stepParams.cluster as string ?? "All"} onChange={(e) => updateParam("cluster", e.target.value)} className={selectCls} style={selectStyle}>
                         <option value="All">All（所有聚类）</option>
                       </select>
@@ -731,7 +741,7 @@ function AnalysisPageContent() {
                           All（所有聚类）
                         </label>
                         <div style={{ borderTop: "1px solid var(--clr-border)", margin: "2px 0" }} />
-                        {clusterLevels.map((cl) => {
+                        {(clusterLevels.length > 0 ? clusterLevels : ((stepParams.cluster as string) && (stepParams.cluster as string) !== "All" ? (stepParams.cluster as string).split(",").filter(Boolean) : [])).map((cl) => {
                           const currentVal = stepParams.cluster as string ?? "All";
                           const selected = currentVal !== "All" ? currentVal.split(",") : [];
                           const isChecked = selected.includes(cl);
