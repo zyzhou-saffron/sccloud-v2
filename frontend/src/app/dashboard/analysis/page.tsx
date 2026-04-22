@@ -50,7 +50,7 @@ const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
   reduce: { method: "umap", n_pcs: 30, group_by: "Sample" },
   cluster: { method: "harmony", resolution: 0.5, n_dims: 30, group_by: "Sample" },
   markers: { cluster: "All", min_pct: 0.1, logfc_threshold: 0.25, test_use: "wilcox", only_pos: true, ntop: 5 },
-  enrich: { pathway: "GO", direction: "Up" },
+  enrich: { pathway: "GO", direction: "Up", p_adjust_method: "BH", pvalue_cutoff: 0.05, qvalue_cutoff: 0.2, n_term: 10 },
   marker_expr: {},
   annotate: { mode: "auto", group_by: "Sample" },
 };
@@ -792,6 +792,64 @@ function AnalysisPageContent() {
                         </label>
                       ))}
                     </div>
+                  </div>
+                  {/* P值校正方法 */}
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                      <span>P值校正方法</span>
+                      <Tooltip content={"变量: p_adjust_method\n\n多重检验校正方法。\nBH (Benjamini-Hochberg) 是最常用的 FDR 校正。"}>
+                        <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      </Tooltip>
+                    </label>
+                    <select value={(stepParams.p_adjust_method as string) ?? "BH"} onChange={(e) => updateParam("p_adjust_method", e.target.value)} className={selectCls} style={selectStyle}>
+                      <option value="BH">BH (FDR)</option>
+                      <option value="holm">Holm</option>
+                      <option value="hochberg">Hochberg</option>
+                      <option value="hommel">Hommel</option>
+                      <option value="bonferroni">Bonferroni</option>
+                      <option value="BY">BY</option>
+                      <option value="fdr">fdr</option>
+                      <option value="none">none</option>
+                    </select>
+                  </div>
+                  {/* P值阈值 */}
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                      <span>P值阈值</span>
+                      <Tooltip content={"变量: pvalue_cutoff\n\n显著性阈值，只保留 p 值小于此值的通路。\n默认 0.05。"}>
+                        <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      </Tooltip>
+                    </label>
+                    <input type="number" step="0.01" min="0" max="1"
+                      value={(stepParams.pvalue_cutoff as number) ?? 0.05}
+                      onChange={(e) => updateParam("pvalue_cutoff", parseFloat(e.target.value) || 0.05)}
+                      className={selectCls} style={selectStyle} />
+                  </div>
+                  {/* Q值阈值 */}
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                      <span>Q值阈值</span>
+                      <Tooltip content={"变量: qvalue_cutoff\n\nFDR 校正后的显著性阈值。\n默认 0.2。"}>
+                        <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      </Tooltip>
+                    </label>
+                    <input type="number" step="0.01" min="0" max="1"
+                      value={(stepParams.qvalue_cutoff as number) ?? 0.2}
+                      onChange={(e) => updateParam("qvalue_cutoff", parseFloat(e.target.value) || 0.2)}
+                      className={selectCls} style={selectStyle} />
+                  </div>
+                  {/* 展示条目数 */}
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                      <span>展示条目数</span>
+                      <Tooltip content={"变量: n_term\n\n每个富集类型显示的条目数。\n默认 10。"}>
+                        <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      </Tooltip>
+                    </label>
+                    <input type="number" step="1" min="1" max="50"
+                      value={(stepParams.n_term as number) ?? 10}
+                      onChange={(e) => updateParam("n_term", parseInt(e.target.value) || 10)}
+                      className={selectCls} style={selectStyle} />
                   </div>
                 </>
               )}

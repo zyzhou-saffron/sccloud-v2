@@ -464,7 +464,20 @@ function ReduceResult({ data, taskId }: { data: Record<string, unknown> | null; 
               — WebGL 交互式 · {rawScatter.x.length.toLocaleString()} 个细胞
             </span>
           </p>
-          <DeckScatterPlot data={rawScatter} method={method as "UMAP" | "tSNE" | "PCA"} height={520} />
+          <div style={{ position: "relative" }}>
+            <DeckScatterPlot data={rawScatter} method={method as "UMAP" | "tSNE" | "PCA"} height={520} />
+            {plotSrc && (
+              <AuthDownloadLink
+                url={plotSrc}
+                filename={plotFileName || "reduce_plot.png"}
+                title="下载 R 原版高清图 (.png)"
+                className="inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
+                style={{ position: "absolute", bottom: 12, right: 12, background: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", color: "var(--clr-amber)", zIndex: 50 }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              </AuthDownloadLink>
+            )}
+          </div>
         </div>
       ) : plotSrc ? (
         <div className="space-y-1">
@@ -591,10 +604,46 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
                   — WebGL 交互式 · {rawScatter.x.length.toLocaleString()} 个细胞
                 </span>
               </p>
-              <DeckScatterPlot data={rawScatter} method="UMAP" height={560} />
+              <div style={{ position: "relative" }}>
+                <DeckScatterPlot data={rawScatter} method="UMAP" height={560} />
+                {umapSrc && (
+                  <AuthDownloadLink
+                    url={umapSrc}
+                    filename={umapName}
+                    title="下载 R 原版高清图 (.png)"
+                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
+                    style={{ position: "absolute", bottom: 12, right: 12, background: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", color: "var(--clr-amber)", zIndex: 50 }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </AuthDownloadLink>
+                )}
+              </div>
+            </>
+          ) : umapSrc ? (
+            <>
+              <p className="text-xs font-medium" style={{ color: "var(--clr-amber-dark)" }}>
+                Cluster UMAP 图
+                <span className="font-normal ml-1" style={{ color: "var(--clr-text-faint)" }}>— R ggplot2 原版输出</span>
+              </p>
+              <div className="relative w-full">
+                <AuthImg
+                  src={umapSrc}
+                  alt="Cluster UMAP plot"
+                  className="w-full rounded border"
+                  style={{ border: "1px solid var(--clr-border)", background: "#fff" }}
+                />
+                <AuthDownloadLink
+                  url={umapSrc}
+                  filename={umapName}
+                  className="absolute bottom-3 right-3 inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
+                  style={{ background: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", color: "var(--clr-amber)", zIndex: 20 }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </AuthDownloadLink>
+              </div>
             </>
           ) : (
-            <div className="callout text-xs">散点数据未返回，暂不可用</div>
+            <div className="callout text-xs">聚类 UMAP 结果未返回</div>
           )}
         </div>
       )}
@@ -849,39 +898,7 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
         </div>
       )}
 
-      {/* ── 数据下载 ── */}
-      <div className="pt-4 border-t mt-6" style={{ borderColor: "var(--clr-border)" }}>
-        <p className="text-xs font-semibold mb-3" style={{ color: "var(--clr-amber-dark)" }}>结果数据下载</p>
-        <div className="flex flex-col gap-2 items-start">
-          {['stats', 'subtype'].includes(activeTab) && (
-            <>
-              <AuthDownloadLink 
-                url={mkSrc("seurat_reduced.rds")!} 
-                filename="seurat_reduced.rds"
-                className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90"
-                style={{ background: "var(--clr-amber)", boxShadow: "0 2px 4px rgba(200,96,25,0.2)" }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                数据批次校正后rds文件 (seurat_reduced)
-              </AuthDownloadLink>
-              <AuthDownloadLink 
-                url={mkSrc("seurat_clustered.rds")!} 
-                filename="seurat_clustered.rds"
-                className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90"
-                style={{ background: "var(--clr-amber)", boxShadow: "0 2px 4px rgba(200,96,25,0.2)" }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                数据批次校正后细胞群亚类rds文件 (seurat_clustered)
-              </AuthDownloadLink>
-            </>)}
 
-
-
-
-
-
-        </div>
-      </div>
     </div>
   );
 }
