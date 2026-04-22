@@ -10,7 +10,73 @@
 /** API 基地址 — 空字符串表示同源相对路径 */
 const API_BASE = "";
 
-/** 通用 fetch 封装 — 自动注入 auth header */
+/* ===== Refresh Token 自动续期机制 ===== */
+
+/**
+ * 共享的刷新锁 — 防止多个并发请求同时触发 refresh。
+ * 第一个遇到 401 的请求执行 refresh，后续请求等待同一个 Promise。
+ */
+let refreshPromise: Promise<string | null> | null = null;
+
+/**
+ * 调用 POST /api/auth/refresh 获取新的 access_token。
+ * 成功时更新 localStorage 并返回新 token；失败返回 null。
+ */
+async function doRefreshToken(): Promise<string | null> {
+  const refreshToken =
+    typeof window !== "undefined"
+      ? localStorage.getItem("refresh_token")
+      : null;
+
+  if (!refreshToken) return null;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    // 更新 localStorage 中的 token
+    localStorage.setItem("access_token", data.access_token);
+    if (data.refresh_token) {
+      localStorage.setItem("refresh_token", data.refresh_token);
+    }
+    if (data.username) {
+      localStorage.setItem("username", data.username);
+    }
+    return data.access_token as string;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 尝试刷新 token（带并发锁）。
+ * 多个请求同时 401 时，只有第一个真正执行 refresh，其余复用结果。
+ */
+async function tryRefresh(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = doRefreshToken().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
+/** 清除登录态并跳转登录页 */
+function forceLogout(): never {
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("refresh_token");
+  localStorage.removeItem("username");
+  window.location.href = "/login";
+  throw new Error("登录已过期，请重新登录");
+}
+
+/** 通用 fetch 封装 — 自动注入 auth header + 401 自动续期 */
 async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
@@ -39,13 +105,27 @@ async function apiFetch<T>(
   });
 
   if (!res.ok) {
-    /* 401 = token 过期或无效 → 清除登录态，跳转登录页 */
+    /* 401 = token 过期 → 尝试用 refresh_token 续期 */
     if (res.status === 401 && typeof window !== "undefined") {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-      localStorage.removeItem("username");
-      window.location.href = "/login";
-      throw new Error("登录已过期，请重新登录");
+      const newToken = await tryRefresh();
+      if (newToken) {
+        /* 续期成功 — 用新 token 重试原请求 */
+        headers["Authorization"] = `Bearer ${newToken}`;
+        const retry = await fetch(`${API_BASE}${path}`, {
+          ...options,
+          headers,
+        });
+        if (retry.ok) {
+          if (retry.status === 204) return undefined as T;
+          return retry.json();
+        }
+        /* 重试仍然失败 → 强制登出 */
+        if (retry.status === 401) forceLogout();
+        const text = await retry.text();
+        throw new Error(`API ${retry.status}: ${text}`);
+      }
+      /* refresh 也失败 → 强制登出 */
+      forceLogout();
     }
 
     const text = await res.text();
