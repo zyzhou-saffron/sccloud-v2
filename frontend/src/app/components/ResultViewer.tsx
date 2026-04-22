@@ -472,27 +472,25 @@ function ReduceResult({ data, taskId }: { data: Record<string, unknown> | null; 
             {method} 可视化
             <span className="font-normal ml-1" style={{ color: "var(--clr-text-faint)" }}>— R ggplot2 原版输出</span>
           </p>
-          <AuthImg
-            src={plotSrc}
-            alt={`${method} reduction plot`}
-            className="w-full rounded border"
-            style={{ border: "1px solid var(--clr-border)", background: "#fff" }}
-          />
+          <div className="relative w-full">
+            <AuthImg
+              src={plotSrc}
+              alt={`${method} reduction plot`}
+              className="w-full rounded border"
+              style={{ border: "1px solid var(--clr-border)", background: "#fff" }}
+            />
+            <AuthDownloadLink
+              url={plotSrc}
+              filename={plotFileName || "reduce_plot.png"}
+              className="absolute bottom-3 right-3 inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
+              style={{ background: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", color: "var(--clr-amber)" }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </AuthDownloadLink>
+          </div>
         </div>
       ) : (
         <div className="callout text-xs">降维完成，但坐标数据暂未返回</div>
-      )}
-      {/* R PNG 下载按钮 */}
-      {plotSrc && rawScatter && (
-        <AuthDownloadLink
-          url={plotSrc}
-          filename={plotFileName || "reduce_plot.png"}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors"
-          style={{ background: "var(--clr-bg-alt)", color: "var(--clr-amber-dark)", border: "1px solid var(--clr-border)" }}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          下载 R 原版高清图 (.png)
-        </AuthDownloadLink>
       )}
     </div>
   );
@@ -656,8 +654,18 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
       {activeTab === "sankey" && (
         <div className="space-y-1">
           <SectionTitle>样本 Cluster 占比图 — Fraction of cell populations (%)</SectionTitle>
-          <AuthImg src={sankeySrc} alt="Sample Cluster Proportion"
-            className="w-full rounded border" style={{ border: "1px solid var(--clr-border)", background: "#fff" }} />
+          <div className="relative w-full">
+            <AuthImg src={sankeySrc} alt="Sample Cluster Proportion"
+              className="w-full rounded border" style={{ border: "1px solid var(--clr-border)", background: "#fff" }} />
+            <AuthDownloadLink
+              url={sankeySrc}
+              filename="plot_cluster_sankey.png"
+              className="absolute bottom-3 right-3 inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
+              style={{ background: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", color: "var(--clr-amber)" }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </AuthDownloadLink>
+          </div>
         </div>
       )}
 
@@ -665,8 +673,18 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
       {activeTab === "group" && (
         <div className="space-y-1">
           <SectionTitle>分组 Cluster UMAP 图</SectionTitle>
-          <AuthImg src={groupSrc} alt="Group Cluster UMAP"
-            className="w-full rounded border" style={{ border: "1px solid var(--clr-border)", background: "#fff" }} />
+          <div className="relative w-full">
+            <AuthImg src={groupSrc} alt="Group Cluster UMAP"
+              className="w-full rounded border" style={{ border: "1px solid var(--clr-border)", background: "#fff" }} />
+            <AuthDownloadLink
+              url={groupSrc}
+              filename="plot_cluster_group.png"
+              className="absolute bottom-3 right-3 inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
+              style={{ background: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", color: "var(--clr-amber)" }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </AuthDownloadLink>
+          </div>
         </div>
       )}
 
@@ -857,41 +875,11 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
               </AuthDownloadLink>
             </>)}
 
-          {activeTab === 'sankey' && sankeySrc && (
-            <AuthDownloadLink 
-              url={sankeySrc} 
-              filename="plot_cluster_sankey.png"
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90"
-              style={{ background: "var(--clr-amber)", boxShadow: "0 2px 4px rgba(200,96,25,0.2)" }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              下载样本 Cluster 占比图 (.png)
-            </AuthDownloadLink>
-          )}
 
-          {activeTab === 'umap' && umapSrc && (
-            <AuthDownloadLink 
-              url={umapSrc} 
-              filename="plot_cluster.png"
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90"
-              style={{ background: "var(--clr-amber)", boxShadow: "0 2px 4px rgba(200,96,25,0.2)" }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              下载 Cluster UMAP 图 (.png)
-            </AuthDownloadLink>
-          )}
 
-          {activeTab === 'group' && groupSrc && (
-            <AuthDownloadLink 
-              url={groupSrc} 
-              filename="plot_cluster_group.png"
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90"
-              style={{ background: "var(--clr-amber)", boxShadow: "0 2px 4px rgba(200,96,25,0.2)" }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              下载分组 Cluster UMAP 图 (.png)
-            </AuthDownloadLink>
-          )}
+
+
+
         </div>
       </div>
     </div>
