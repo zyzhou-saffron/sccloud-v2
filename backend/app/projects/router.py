@@ -178,3 +178,45 @@ async def delete_project(
 
     db.delete(project)
     db.commit()
+
+
+@router.get("/{project_id}/genes")
+async def get_project_genes(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    获取项目 Seurat 对象中所有可用基因名称。
+    用于前端基因自动补全搜索。
+    """
+    import httpx
+
+    project = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.user_id == current_user.id)
+        .first()
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    settings = get_settings()
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0)
+        ) as client:
+            response = await client.post(
+                f"{settings.r_engine_url}/genes",
+                json={"project_path": project.storage_path},
+            )
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=502,
+                detail=f"R 引擎返回错误: {response.text}",
+            )
+        return response.json()
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail="R 引擎超时，请稍后重试",
+        )

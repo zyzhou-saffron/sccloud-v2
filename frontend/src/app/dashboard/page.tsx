@@ -144,7 +144,7 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between">
                 <span className="text-xs flex items-center gap-1.5" style={{ color: "var(--clr-text-faint)", fontFamily: "var(--font-mono)" }}>
                   <IconDNA size={12} className="text-stone-400" />
-                  {project.species === "human" ? "Human" : "Mouse"}{" · "}{new Date(project.created_at).toLocaleDateString("zh-CN")}
+                  {project.species === "human" ? "Human" : "Mouse"}{" · "}{new Date(project.created_at + (!project.created_at.endsWith("Z") ? "Z" : "")).toLocaleDateString("zh-CN")}
                 </span>
                 <a href={`/dashboard/analysis?project=${project.id}`} className="text-xs font-medium transition-colors" style={{ color: "var(--clr-amber)" }}>开始分析 →</a>
               </div>

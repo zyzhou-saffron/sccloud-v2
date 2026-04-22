@@ -226,37 +226,63 @@ my_distPlot8 <- function(pro,minPct,logFc,test,pos,ntop){
 }
 
 
-my_distPlot9 <- function(pro,rawC,minPct,logFc,test,pos,ntop){
-  if(rawC!="All"){
-    mkfs <-  data.frame()
-    newident <- levels(pro)
-    for (l in newident) {
-      cluster.markers <- FindMarkers(object = pro, ident.1 = l, min.pct = minPct, logfc.threshold = logFc,test.use=test,only.pos=pos)
-      diffTable <- data.frame(gene_id = rownames(cluster.markers), cluster.markers, Cluster=l)
-      mkfs <- rbind(mkfs,diffTable)
-    }
+my_distPlot9 <- function(pro, rawC, minPct, logFc, test, pos, ntop, custom_genes = NULL) {
+  if (rawC == "All") {
+    stop("请选择单个聚类群，不支持 'All'")
+  }
 
-    allgenes <- rownames(GetAssayData(pro, assay = 'SCT', layer = 'data'))
-     
-    mkfsSub <- mkfs %>% filter(Cluster == rawC) %>% arrange(Cluster, p_val_adj, desc(avg_log2FC), desc(pct.1)) %>%  dplyr::slice(1:ntop)
-    markers <- intersect(mkfsSub$gene_id, allgenes)[1:ntop]
-    #print(markers)
-    
-  #n <- 1
-  #while (n <= length(markers)) {
-    #geneP <- na.omit(markers[n:(n + 3)])
-    geneP <- na.omit(markers)
-    fpname = paste(geneP, collapse = '_')
-    #print(fpname)
-    p <- FeaturePlot(pro, features = geneP, pt.size = 0.2, ncol = 2, slot = 'data') &
-      scale_color_gradientn(colours = rev(rainbow(7, start = 0, end = 0.7)))
-    p2 <- VlnPlot(pro, features = geneP, pt.size = 0, cols = clusterCols, ncol = 2)
-    p/p2
-    #n <- n + 4
-  #}
+  # 验证 cluster identity 是否存在
+  valid_idents <- levels(Idents(pro))
+  if (!(rawC %in% valid_idents)) {
+    stop(paste0(
+      "聚类 '", rawC, "' 不存在。可用聚类: ",
+      paste(valid_idents, collapse = ", ")
+    ))
+  }
 
- }
-     
+  # 对当前 cluster 运行 FindMarkers (1 vs rest)
+  cluster.markers <- FindMarkers(
+    object = pro, ident.1 = rawC,
+    min.pct = minPct, logfc.threshold = logFc,
+    test.use = test, only.pos = pos
+  )
+
+  if (nrow(cluster.markers) == 0) {
+    stop(paste0("聚类 ", rawC, " 未找到差异基因，请调整参数"))
+  }
+
+  diffTable <- data.frame(
+    gene_id = rownames(cluster.markers),
+    cluster.markers, Cluster = rawC
+  )
+
+  # 获取 SCT data 层中实际存在的基因
+  allgenes <- rownames(GetAssayData(pro, assay = "SCT", layer = "data"))
+
+  # 按显著性排序取 top N
+  mkfsSub <- diffTable %>%
+    arrange(p_val_adj, desc(avg_log2FC), desc(pct.1)) %>%
+    dplyr::slice(1:ntop)
+
+  markers <- intersect(mkfsSub$gene_id, allgenes)
+  markers <- na.omit(markers)
+
+  # 合并用户自定义基因（放在最前面，去重）
+  if (!is.null(custom_genes) && length(custom_genes) > 0) {
+    valid_custom <- intersect(custom_genes, allgenes)
+    markers <- unique(c(valid_custom, markers))
+  }
+
+  if (length(markers) == 0) {
+    stop(paste0("聚类 ", rawC, " 的 Top ", ntop, " 差异基因未在 SCT 数据层中找到"))
+  }
+
+  geneP <- markers
+  p <- FeaturePlot(pro, features = geneP, pt.size = 0.2, ncol = 2, slot = "data") &
+    scale_color_gradientn(colours = rev(rainbow(7, start = 0, end = 0.7)))
+  p2 <- VlnPlot(pro, features = geneP, pt.size = 0, cols = clusterCols, ncol = 2)
+
+  return(list(feature = p, vln = p2))
 }
 
 

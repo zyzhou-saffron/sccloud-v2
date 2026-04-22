@@ -241,7 +241,7 @@ export default function ProjectSelector({
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium truncate" style={{ color: p.id === selectedId ? "var(--clr-amber)" : "var(--clr-dark)" }}>{p.name}</div>
                       <div className="text-[10px] flex items-center gap-2" style={{ color: "var(--clr-text-faint)" }}>
-                        <span>{new Date(p.created_at).toLocaleDateString("zh-CN")}</span>
+                        <span>{new Date(p.created_at + (!p.created_at.endsWith("Z") ? "Z" : "")).toLocaleDateString("zh-CN")}</span>
                         {p.description && <><span>·</span><span className="truncate">{p.description}</span></>}
                       </div>
                     </div>

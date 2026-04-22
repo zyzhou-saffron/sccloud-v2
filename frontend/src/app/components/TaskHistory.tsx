@@ -93,7 +93,7 @@ export default function TaskHistory({
                 {STEP_LABELS[task.step] || task.step}
               </div>
               <div className="text-[10px]" style={{ color: "var(--clr-text-faint)", fontFamily: "var(--font-mono)" }}>
-                {new Date(task.created_at).toLocaleString("zh-CN")}
+                {new Date(task.created_at + (!task.created_at.endsWith("Z") ? "Z" : "")).toLocaleString("zh-CN")}
               </div>
             </div>
             <span className={`text-[10px] font-mono shrink-0 ${style.text}`}>

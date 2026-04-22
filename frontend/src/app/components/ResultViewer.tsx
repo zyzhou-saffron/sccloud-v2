@@ -11,8 +11,11 @@
 "use client";
 
 import React, { Component, type ComponentType, type ReactNode, useEffect, useMemo, useState } from "react";
-import { type Task } from "../lib/api";
+import { type Task, submitTask, getTask } from "../lib/api";
+import ProgressTracker from "./ProgressTracker";
 import QCResultTabs from "./QCResultTabs";
+import MultiSelectDropdown from "./MultiSelectDropdown";
+import GeneAutocomplete from "./GeneAutocomplete";
 import {
   ScatterPlot,
   DeckScatterPlot,
@@ -285,7 +288,7 @@ export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCa
           <>
             {stepId === "normalize" && resultData && <NormalizeResult data={resultData} taskId={task.id} />}
             {stepId === "reduce"    && <ReduceResult data={resultData} taskId={task.id} />}
-            {stepId === "cluster"   && <ClusterResult data={resultData} taskId={task.id} />}
+            {stepId === "cluster"   && <ClusterResult data={resultData} task={task} />}
             {stepId === "markers"   && <MarkersResult data={resultData} task={task} taskCache={taskCache} />}
             {stepId === "enrich"    && <EnrichResult data={resultData} taskId={task.id} />}
             {!["qc","normalize","reduce","cluster","markers","enrich"].includes(stepId) && (
@@ -305,7 +308,6 @@ export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCa
 /** 标准化结果 */
 function NormalizeResult({ data, taskId }: { data: Record<string, unknown>; taskId?: string }) {
   const stats = data.stats as { cells?: number; genes?: number; assays?: string[] } | undefined;
-  const inputFile = safeString(data.input_file) ?? "seurat_qc.rds";
   const resultPath = safeString(data.result_path);
   const resultFileName = resultPath ? resultPath.split("/").pop() : null;
 
@@ -318,12 +320,38 @@ function NormalizeResult({ data, taskId }: { data: Record<string, unknown>; task
   const metaPageData = metaSample ? metaSample.slice(metaPage * metaPageSize, (metaPage + 1) * metaPageSize) : [];
   const metaTotalPages = metaSample ? Math.ceil(metaSample.length / metaPageSize) : 0;
 
+  // 下载辅助
+  const handleDownload = async () => {
+    if (!resultFileName || !taskId) return;
+    const url = `/api/tasks/${taskId}/plot?name=${encodeURIComponent(resultFileName)}`;
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } });
+      if (!res.ok) throw new Error(`${res.status}`);
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = resultFileName;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch { /* 静默失败 */ }
+  };
+
   return (
     <div className="space-y-4">
-      {/* 输入文件提示 */}
-      <div className="callout text-xs flex items-center gap-2">
-        <span>📄</span>
-        <span>输入文件：<strong style={{ color: "var(--clr-amber)" }}>{inputFile}</strong></span>
+      {/* 说明横幅 + 下载 RDS 图标 */}
+      <div className="callout text-xs" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+        <span>SCTransform 标准化完成，细胞数 {stats?.cells?.toLocaleString() ?? "—"}，Assays: {(stats?.assays ?? []).join(", ") || "—"}。</span>
+        {resultFileName && (
+          <button
+            style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", flexShrink: 0, color: "var(--clr-amber)", transition: "color 0.2s" }}
+            onClick={handleDownload}
+            title={`下载 ${resultFileName}`}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--clr-amber-dark)")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--clr-amber)")}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+        )}
       </div>
 
       {/* 统计卡片 */}
@@ -340,7 +368,7 @@ function NormalizeResult({ data, taskId }: { data: Record<string, unknown>; task
         ))}
       </div>
 
-      {/* meta.data 表格 */}
+      {/* meta.data 表格 —— 限制宽度防止撑破布局 */}
       {metaSample && metaSample.length > 0 && (
         <div className="space-y-2">
           <div className="card-label">
@@ -349,16 +377,22 @@ function NormalizeResult({ data, taskId }: { data: Record<string, unknown>; task
               — 显示前 {Math.min(metaSample.length, 100)} / {metaTotalRows.toLocaleString()} 行
             </span>
           </div>
-          <div className="table-wrap">
-            <table>
+          <div className="table-wrap" style={{ maxWidth: "100%", overflowX: "auto" }}>
+            <table style={{ fontSize: "0.7rem" }}>
               <thead>
-                <tr>{metaCols.map(c => <th key={c}>{c}</th>)}</tr>
+                <tr>{metaCols.map(c => <th key={c} style={{ whiteSpace: "nowrap" }}>{c}</th>)}</tr>
               </thead>
               <tbody>
                 {metaPageData.map((row, i) => (
                   <tr key={i}>
                     {metaCols.map(c => (
-                      <td key={c} style={c === "barcode" ? { fontFamily: "var(--font-mono)", color: "var(--clr-amber-dark)" } : {}}>
+                      <td key={c} style={{
+                        whiteSpace: "nowrap",
+                        maxWidth: "180px",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        ...(c === "barcode" ? { fontFamily: "var(--font-mono)", color: "var(--clr-amber-dark)" } : {}),
+                      }}>
                         {String(row[c] ?? "")}
                       </td>
                     ))}
@@ -389,18 +423,6 @@ function NormalizeResult({ data, taskId }: { data: Record<string, unknown>; task
               </button>
             </div>
           )}
-        </div>
-      )}
-
-      {/* RDS 下载按钮 */}
-      {resultFileName && taskId && (
-        <div className="card">
-          <div className="card-label">⬇ 下载结果文件</div>
-          <AuthDownloadLink
-            url={`/api/tasks/${taskId}/plot?name=${encodeURIComponent(resultFileName)}`}
-            filename={resultFileName}
-            label="💾 标准化 RDS"
-          />
         </div>
       )}
     </div>
@@ -476,7 +498,8 @@ function ReduceResult({ data, taskId }: { data: Record<string, unknown> | null; 
 }
 
 /** 聚类结果 — 完整展示原版 R 脚本所有输出 */
-function ClusterResult({ data, taskId }: { data: Record<string, unknown> | null; taskId?: string }) {
+function ClusterResult({ data, task }: { data: Record<string, unknown> | null; task: Task }) {
+  const taskId = task.id;
   // ── 统计 ──
   const stats = data?.stats as { clusters?: number; cluster_levels?: string[]; cells?: number } | undefined;
 
@@ -495,18 +518,34 @@ function ClusterResult({ data, taskId }: { data: Record<string, unknown> | null;
   const clusterNum = (data?.cluster_num ?? []) as FreqRow[];
   const freqTable  = (data?.freq_table   ?? []) as FreqRow[];
 
+  // meta.data 表格
+  const metaSample = data?.meta_data_sample as Record<string, unknown>[] | undefined;
+  const metaTotalRows = (data?.meta_data_total_rows as number) ?? 0;
+  const [metaPage, setMetaPage] = useState(0);
+  const metaPageSize = 10;
+  const metaCols = metaSample && metaSample.length > 0 ? Object.keys(metaSample[0]) : [];
+  const metaPageData = metaSample ? metaSample.slice(metaPage * metaPageSize, (metaPage + 1) * metaPageSize) : [];
+  const metaTotalPages = metaSample ? Math.ceil(metaSample.length / metaPageSize) : 0;
+
+  // 提取亚类状态
+  const [selectedClusters, setSelectedClusters] = useState<string[]>([]);
+  const [submittingSubset, setSubmittingSubset] = useState(false);
+  const [subsetError, setSubsetError] = useState<string | null>(null);
+  const [subsetTask, setSubsetTask] = useState<Task | null>(null);
+
   // ── deck.gl 交互式散点图数据 ──
   const rawScatter = useMemo(() => safeScatter(data?.scatter_data), [data]);
 
   // ── Tab 状态 ──
-  type TabId = "interactive" | "stats" | "sankey" | "group" | "subtype";
+  type TabId = "interactive" | "stats" | "sankey" | "group" | "metadata" | "subtype";
   const [activeTab, setActiveTab] = useState<TabId>("interactive");
   const tabs: { id: TabId; label: string }[] = [
     { id: "interactive", label: "Cluster UMAP图" },
     { id: "stats",   label: "结果统计" },
     { id: "sankey",  label: "样本占比图" },
     { id: "group",   label: "分组 UMAP" },
-    { id: "subtype", label: "细胞亚类" },
+    { id: "metadata", label: "meta.data" },
+    { id: "subtype", label: "细胞亚类提取" },
   ];
 
   // ── 子标题工具 ──
@@ -630,45 +669,164 @@ function ClusterResult({ data, taskId }: { data: Record<string, unknown> | null;
         </div>
       )}
 
-      {/* ── Tab 5: 细胞亚类结果（RenameIdents2 后的 cluster 标签） ── */}
-      {activeTab === "subtype" && (
+      {/* ── Tab 4.5: metadata 表格 ── */}
+      {activeTab === "metadata" && metaSample && metaSample.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold mb-2" style={{ color: "var(--clr-amber-dark)" }}>细胞亚类结果
-            <span className="font-normal ml-1" style={{ color: "var(--clr-text-faint)" }}>— RenameIdents2() 聚类命名</span>
-          </p>
-          {stats?.cluster_levels && stats.cluster_levels.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {stats.cluster_levels.map((cl, i) => (
-                <span key={i} className="px-3 py-1.5 rounded-full text-xs font-semibold"
-                  style={{ background: "rgba(200,96,25,0.08)", color: "var(--clr-amber-dark)", border: "1px solid rgba(200,96,25,0.2)" }}>
-                  {cl}
-                </span>
-              ))}
-            </div>
-          ) : <div className="callout text-xs">聚类标签数据暂未返回</div>}
-          {clusterNum.length > 0 && (
-            <div className="mt-3">
-              <p className="text-xs mb-1.5" style={{ color: "var(--clr-text-faint)" }}>各亚类细胞总数：</p>
-              <div className="table-wrap">
-                <table>
-                  <thead><tr><th>Cluster</th><th className="text-right">总细胞数</th></tr></thead>
-                  <tbody>
-                    {Object.entries(
-                      clusterNum.reduce((acc, row) => {
-                        if (row.Cluster) acc[row.Cluster] = (acc[row.Cluster] || 0) + (row.CellNumber || 0);
-                        return acc;
-                      }, {} as Record<string, number>)
-                    ).map(([cluster, total]) => (
-                      <tr key={cluster}>
-                        <td className="font-mono font-semibold" style={{ color: "var(--clr-amber-dark)" }}>{cluster}</td>
-                        <td className="text-right">{total.toLocaleString()}</td>
-                      </tr>
+          <SectionTitle>
+            meta.data 预览
+            <span className="font-normal ml-1" style={{ color: "var(--clr-text-faint)" }}>
+              — 显示前 {Math.min(metaSample.length, 100)} / {metaTotalRows.toLocaleString()} 行
+            </span>
+          </SectionTitle>
+          <div className="table-wrap" style={{ maxWidth: "100%", overflowX: "auto" }}>
+            <table style={{ fontSize: "0.7rem" }}>
+              <thead>
+                <tr>{metaCols.map(c => <th key={c} style={{ whiteSpace: "nowrap" }}>{c}</th>)}</tr>
+              </thead>
+              <tbody>
+                {metaPageData.map((row, i) => (
+                  <tr key={i}>
+                    {metaCols.map(c => (
+                      <td key={c} style={{
+                        whiteSpace: "nowrap",
+                        maxWidth: "180px",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        ...(c === "barcode" ? { fontFamily: "var(--font-mono)", color: "var(--clr-amber-dark)" } : {}),
+                      }}>
+                        {String(row[c] ?? "")}
+                      </td>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* 分页控件 */}
+          {metaTotalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 text-xs" style={{ color: "var(--clr-text-muted)" }}>
+              <button
+                disabled={metaPage === 0}
+                onClick={() => setMetaPage(p => p - 1)}
+                className="px-2 py-1 rounded"
+                style={{ border: "1px solid var(--clr-border)", opacity: metaPage === 0 ? 0.4 : 1 }}
+              >
+                ‹ 上一页
+              </button>
+              <span>{metaPage + 1} / {metaTotalPages}</span>
+              <button
+                disabled={metaPage >= metaTotalPages - 1}
+                onClick={() => setMetaPage(p => p + 1)}
+                className="px-2 py-1 rounded"
+                style={{ border: "1px solid var(--clr-border)", opacity: metaPage >= metaTotalPages - 1 ? 0.4 : 1 }}
+              >
+                下一页 ›
+              </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Tab 5: 细胞亚类结果（RenameIdents2 后的 cluster 标签） ── */}
+      {activeTab === "subtype" && (
+        <div className="space-y-4">
+          <div>
+            <SectionTitle>细胞亚类结果</SectionTitle>
+            {stats?.cluster_levels && stats.cluster_levels.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {stats.cluster_levels.map((cl, i) => (
+                  <span key={i} className="px-3 py-1.5 rounded-full text-xs font-semibold"
+                    style={{ background: "rgba(200,96,25,0.08)", color: "var(--clr-amber-dark)", border: "1px solid rgba(200,96,25,0.2)" }}>
+                    {cl}
+                  </span>
+                ))}
+              </div>
+            ) : <div className="callout text-xs">聚类标签数据暂未返回</div>}
+          </div>
+
+          {/* 亚类提取 UI */}
+          <div className="card mt-4">
+            <div className="card-label mb-3">提取亚群 (Subset)</div>
+            <p className="text-xs mb-3" style={{ color: "var(--clr-text-muted)" }}>选择一个或多个亚类提取并保存为新的 RDS 文件。</p>
+            {stats?.cluster_levels && (
+              <div className="flex flex-wrap gap-3 mb-4">
+                {stats.cluster_levels.map(cl => (
+                  <label key={cl} className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+                    <input 
+                      type="checkbox" 
+                      className="accent-[#C86019]"
+                      checked={selectedClusters.includes(cl)}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedClusters(prev => [...prev, cl]);
+                        else setSelectedClusters(prev => prev.filter(c => c !== cl));
+                      }}
+                    />
+                    {cl}
+                  </label>
+                ))}
+              </div>
+            )}
+            
+            {subsetError && <div className="callout callout-danger text-xs mb-3">{subsetError}</div>}
+            
+            {!subsetTask || subsetTask.status === 'completed' || subsetTask.status === 'failed' ? (
+              <button
+                disabled={selectedClusters.length === 0 || submittingSubset}
+                onClick={async () => {
+                  if (selectedClusters.length === 0) return;
+                  setSubmittingSubset(true);
+                  setSubsetError(null);
+                  try {
+                    const res = await submitTask({
+                      project_id: task.project_id,
+                      step: "subset_cluster",
+                      params: { clusters: selectedClusters }
+                    });
+                    setSubsetTask(res);
+                  } catch (e) {
+                    setSubsetError(e instanceof Error ? e.message : "提交提取任务失败");
+                  } finally {
+                    setSubmittingSubset(false);
+                  }
+                }}
+                className="px-4 py-2 bg-[#C86019] text-white rounded text-xs transition-colors hover:bg-[#b05214] disabled:opacity-50"
+              >
+                {submittingSubset ? "提交中..." : "提取选中亚群"}
+              </button>
+            ) : (
+              <div className="w-full">
+                <ProgressTracker 
+                  taskId={subsetTask.id} 
+                  stepLabel="亚类提取" 
+                  onComplete={() => {
+                    // Refresh subsetTask state to get result path
+                    getTask(subsetTask.id).then(t => setSubsetTask(t));
+                  }} 
+                  onError={(err) => setSubsetError(err)}
+                />
+              </div>
+            )}
+
+            {subsetTask?.status === 'completed' && subsetTask.result_path && (
+              <div className="mt-4 p-3 rounded" style={{ background: "rgba(45, 138, 86, 0.05)", border: "1px solid rgba(45, 138, 86, 0.2)" }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D8A56" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span className="text-xs font-medium" style={{ color: "#2D8A56" }}>提取完成</span>
+                  </div>
+                  <AuthDownloadLink 
+                    url={`/api/tasks/${subsetTask.id}/plot?name=${encodeURIComponent(subsetTask.result_path.split('/').pop()!)}`}
+                    filename={subsetTask.result_path.split('/').pop()!}
+                    className="flex items-center gap-1 text-xs px-3 py-1.5 rounded transition-colors hover:bg-white"
+                    style={{ color: "#2D8A56", border: "1px solid #C3E6D1" }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    下载 {subsetTask.result_path.split('/').pop()!}
+                  </AuthDownloadLink>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -776,28 +934,65 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
     }
   }, [clusterTask?.id]);
 
-  // Tab 3 State
-  const [tab3Cluster, setTab3Cluster] = useState<string>("");
+  // 限制可选聚类：只显示当前 markers 任务中分析过的聚类
+  const analyzedClusters = useMemo(() => {
+    const paramCluster = task?.params?.cluster as string | undefined;
+    if (!paramCluster || paramCluster === "All") return clusterLevels;
+    const selected = paramCluster.split(",").map(s => s.trim());
+    return clusterLevels.filter(c => selected.includes(c));
+  }, [task?.params?.cluster, clusterLevels]);
+
+  // Tab 3 State — 多选
+  const [tab3Selected, setTab3Selected] = useState<string[]>([]);
   const [tab3TaskId, setTab3TaskId] = useState<string | null>(null);
   const [tab3Loading, setTab3Loading] = useState(false);
   const [tab3Error, setTab3Error] = useState<string | null>(null);
   const [tab3PlotMode, setTab3PlotMode] = useState<'feature' | 'vln'>('feature');
 
-  // Tab 4 State
-  const [tab4C1, setTab4C1] = useState<string>("");
-  const [tab4C2, setTab4C2] = useState<string>("");
+  // 自定义基因 — 基因自动补全
+  const [customGenes, setCustomGenes] = useState<string[]>([]);
+  const [allGenes, setAllGenes] = useState<string[]>([]);
+  const [genesLoading, setGenesLoading] = useState(false);
+  const [genesFetched, setGenesFetched] = useState(false);
+
+  // 当用户切换到 Tab 3 时，自动加载基因列表（仅首次）
+  useEffect(() => {
+    if (activeTab === 2 && !genesFetched && task?.project_id) {
+      setGenesLoading(true);
+      const token = getToken();
+      fetch(`/api/projects/${task.project_id}/genes`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
+        .then((data) => {
+          setAllGenes(data.genes || []);
+          setGenesFetched(true);
+        })
+        .catch(() => { /* 静默失败，用户仍可使用 top N 功能 */ })
+        .finally(() => setGenesLoading(false));
+    }
+  }, [activeTab, genesFetched, task?.project_id]);
+
+  // Tab 4 State — 多选
+  const [tab4G1, setTab4G1] = useState<string[]>([]);
+  const [tab4G2, setTab4G2] = useState<string[]>([]);
   const [tab4TaskId, setTab4TaskId] = useState<string | null>(null);
   const [tab4Data, setTab4Data] = useState<GeneRow[] | null>(null);
   const [tab4Loading, setTab4Loading] = useState(false);
   const [tab4Error, setTab4Error] = useState<string | null>(null);
 
   useEffect(() => {
-    if (clusterLevels.length > 0) {
-       if (!tab3Cluster) setTab3Cluster(clusterLevels[0]);
-       if (!tab4C1) setTab4C1(clusterLevels[0]);
-       if (!tab4C2) setTab4C2(clusterLevels.length > 1 ? clusterLevels[1] : clusterLevels[0]);
+    if (analyzedClusters.length > 0) {
+       if (tab3Selected.length === 0) setTab3Selected([analyzedClusters[0]]);
+       if (tab4G1.length === 0) setTab4G1([analyzedClusters[0]]);
+       if (tab4G2.length === 0) setTab4G2(analyzedClusters.length > 1 ? [analyzedClusters[1]] : [analyzedClusters[0]]);
     }
-  }, [clusterLevels]);
+  }, [analyzedClusters]);
+
+  /** 多选 toggle 工具函数 */
+  const toggleCluster = (list: string[], item: string): string[] => {
+    return list.includes(item) ? list.filter(c => c !== item) : [...list, item];
+  };
 
   const pollTask = async (taskId: string) => {
      const token = getToken();
@@ -918,34 +1113,59 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
           </div>
         )}
 
-        {/* Tab 3: 单簇特征图 */}
+        {/* Tab 3: 聚类特征分布图（多选下拉 + 自定义基因） */}
         {activeTab === 2 && (
           <div className="space-y-4 animate-fade-in">
-             <div className="flex items-center gap-4 bg-stone-50 p-3 rounded border" style={{ borderColor: 'var(--clr-border)' }}>
-               <label className="text-sm font-medium" style={{ color: 'var(--clr-text-muted)' }}>选择聚类群:</label>
-               <select 
-                 value={tab3Cluster} 
-                 onChange={e => setTab3Cluster(e.target.value)}
-                 className="px-2 py-1 text-sm border rounded focus:outline-none"
-                 style={{ borderColor: 'var(--clr-border)' }}
-               >
-                 {clusterLevels.map(c => <option key={c} value={c}>Cluster {c}</option>)}
-               </select>
-               <button 
-                 onClick={() => runSubTask("plot_markers", { cluster: tab3Cluster, ...task.params }, setTab3Loading, setTab3Error, (tid: string) => setTab3TaskId(tid))}
-                 disabled={tab3Loading}
-                 className="px-3 py-1 text-white text-sm rounded shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50"
-                 style={{ background: 'var(--clr-amber)' }}
-               >
-                 {tab3Loading ? "计算中..." : "生成表达特征图"}
-               </button>
+             <div className="bg-stone-50 p-3 rounded border space-y-3" style={{ borderColor: 'var(--clr-border)' }}>
+               {/* 第一行：聚类选择 + 生成按钮 */}
+               <div className="flex items-end gap-3">
+                 <div className="flex-1">
+                   <label className="text-xs font-medium flex items-baseline gap-1.5 mb-1.5" style={{ color: 'var(--clr-text-muted)' }}>
+                     <span className="shrink-0">选择聚类群</span>
+                     {tab3Selected.length > 0 && (
+                       <span>{tab3Selected.map(c => `Cluster ${c}`).join(', ')}</span>
+                     )}
+                   </label>
+                   <MultiSelectDropdown
+                     options={analyzedClusters}
+                     selected={tab3Selected}
+                     onChange={setTab3Selected}
+                     renderLabel={c => `Cluster ${c}`}
+                     placeholder="点击选择聚类…"
+                   />
+                 </div>
+                 <button 
+                   onClick={() => {
+                     const clusterStr = tab3Selected.join(',');
+                     const customStr = customGenes.join(',');
+                     runSubTask("plot_markers", { ...task.params, cluster: clusterStr, custom_genes: customStr }, setTab3Loading, setTab3Error, (tid: string) => setTab3TaskId(tid));
+                   }}
+                   disabled={tab3Loading || tab3Selected.length === 0}
+                   className="px-3 py-1.5 text-white text-sm rounded shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 shrink-0"
+                   style={{ background: 'var(--clr-amber)' }}
+                 >
+                   {tab3Loading ? "计算中..." : "生成表达特征图"}
+                 </button>
+               </div>
+               {/* 第二行：自定义基因输入 */}
+               <div>
+                 <label className="text-xs font-medium mb-1.5 block" style={{ color: 'var(--clr-text-muted)' }}>
+                   自定义关注基因 <span className="font-normal">（可选，会追加到 Top N 结果中）</span>
+                 </label>
+                 <GeneAutocomplete
+                   allGenes={allGenes}
+                   selected={customGenes}
+                   onChange={setCustomGenes}
+                   loading={genesLoading}
+                   placeholder="输入基因名搜索，如 FOXP3, CD4…"
+                 />
+               </div>
              </div>
              
              {tab3Error && <div className="callout callout-danger text-xs">{tab3Error}</div>}
              
              {tab3TaskId && !tab3Loading && !tab3Error && (
                <div className="mt-4 w-full animate-fade-in">
-                 {/* 子标题切换按钮 */}
                  <div className="flex gap-2 mb-4">
                    {([['feature', 'FeaturePlot 特征图 (UMAP)'], ['vln', 'VlnPlot 小提琴图 (Expression)']] as const).map(([mode, label]) => (
                      <button
@@ -959,60 +1179,93 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
                      >{label}</button>
                    ))}
                  </div>
-                 {/* FeaturePlot */}
-                 {tab3PlotMode === 'feature' && (
-                   <AuthImg 
-                     src={`/api/tasks/${tab3TaskId}/plot?name=${encodeURIComponent(`plot_markers_feature_${tab3Cluster}.png`)}`} 
-                     alt={`Feature Plot ${tab3Cluster}`} 
-                     className="w-full max-w-4xl border rounded shadow-sm bg-white mx-auto block" 
-                   />
-                 )}
-                 {/* VlnPlot */}
-                 {tab3PlotMode === 'vln' && (
-                   <AuthImg 
-                     src={`/api/tasks/${tab3TaskId}/plot?name=${encodeURIComponent(`plot_markers_vln_${tab3Cluster}.png`)}`} 
-                     alt={`Vln Plot ${tab3Cluster}`} 
-                     className="w-full max-w-4xl border rounded shadow-sm bg-white mx-auto block" 
-                   />
-                 )}
+                 {/* 为每个选中的 cluster 渲染图片 */}
+                 {tab3Selected.map(cl => (
+                   <div key={cl} className="mb-6">
+                     <h4 className="text-xs font-semibold mb-2 px-1" style={{ color: 'var(--clr-text-muted)' }}>Cluster {cl}</h4>
+                     {tab3PlotMode === 'feature' && (
+                       <AuthImg 
+                         src={`/api/tasks/${tab3TaskId}/plot?name=${encodeURIComponent(`plot_markers_feature_${cl}.png`)}`} 
+                         alt={`Feature Plot ${cl}`} 
+                         className="w-full max-w-4xl border rounded shadow-sm bg-white mx-auto block" 
+                       />
+                     )}
+                     {tab3PlotMode === 'vln' && (
+                       <AuthImg 
+                         src={`/api/tasks/${tab3TaskId}/plot?name=${encodeURIComponent(`plot_markers_vln_${cl}.png`)}`} 
+                         alt={`Vln Plot ${cl}`} 
+                         className="w-full max-w-4xl border rounded shadow-sm bg-white mx-auto block" 
+                       />
+                     )}
+                   </div>
+                 ))}
                </div>
              )}
           </div>
         )}
 
-        {/* Tab 4: 二簇对比 */}
+        {/* Tab 4: 分组对比（多选下拉） */}
         {activeTab === 3 && (
           <div className="space-y-4 animate-fade-in">
-             <div className="flex items-center gap-4 bg-stone-50 p-3 rounded border" style={{ borderColor: 'var(--clr-border)' }}>
-               <label className="text-sm font-medium" style={{ color: 'var(--clr-text-muted)' }}>组一 (Group 1):</label>
-               <select value={tab4C1} onChange={e => setTab4C1(e.target.value)} className="px-2 py-1 text-sm border rounded">
-                 {clusterLevels.map(c => <option key={c} value={c}>{c}</option>)}
-               </select>
-               <span className="text-stone-400 font-bold">vs</span>
-               <label className="text-sm font-medium" style={{ color: 'var(--clr-text-muted)' }}>组二 (Group 2):</label>
-               <select value={tab4C2} onChange={e => setTab4C2(e.target.value)} className="px-2 py-1 text-sm border rounded">
-                 {clusterLevels.map(c => <option key={c} value={c}>{c}</option>)}
-               </select>
+             <div className="bg-stone-50 p-3 rounded border" style={{ borderColor: 'var(--clr-border)' }}>
+               <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-end">
+                 {/* Group 1 */}
+                 <div>
+                   <label className="text-xs font-medium flex items-baseline gap-1.5 mb-1.5" style={{ color: 'var(--clr-text-muted)' }}>
+                     <span className="shrink-0">组一 (Group 1)</span>
+                     {tab4G1.length > 0 && (
+                       <span>{tab4G1.map(c => `Cluster ${c}`).join(', ')}</span>
+                     )}
+                   </label>
+                   <MultiSelectDropdown
+                     options={analyzedClusters}
+                     selected={tab4G1}
+                     onChange={setTab4G1}
+                     renderLabel={c => `Cluster ${c}`}
+                     placeholder="选择组一聚类…"
+                   />
+                 </div>
+                 <span className="text-stone-400 font-bold text-lg">vs</span>
+                 {/* Group 2 */}
+                 <div>
+                   <label className="text-xs font-medium flex items-baseline gap-1.5 mb-1.5" style={{ color: 'var(--clr-text-muted)' }}>
+                     <span className="shrink-0">组二 (Group 2)</span>
+                     {tab4G2.length > 0 && (
+                       <span>{tab4G2.map(c => `Cluster ${c}`).join(', ')}</span>
+                     )}
+                   </label>
+                   <MultiSelectDropdown
+                     options={analyzedClusters}
+                     selected={tab4G2}
+                     onChange={setTab4G2}
+                     renderLabel={c => `Cluster ${c}`}
+                     placeholder="选择组二聚类…"
+                   />
+                 </div>
+               </div>
                <button 
-                 onClick={() => runSubTask("markers_pairwise", { cluster_1: tab4C1, cluster_2: tab4C2, ...task.params }, setTab4Loading, setTab4Error, (tid: string, res: any) => {
-                     setTab4TaskId(tid);
-                     setTab4Data((res.top_genes ?? []) as GeneRow[]);
-                 })}
-                 disabled={tab4Loading || tab4C1 === tab4C2}
-                 className="px-3 py-1 text-white text-sm rounded shadow-sm hover:opacity-90 disabled:opacity-50"
+                 onClick={() => {
+                   const g1Str = tab4G1.join(',');
+                   const g2Str = tab4G2.join(',');
+                   runSubTask("markers_pairwise", { ...task.params, cluster_1: g1Str, cluster_2: g2Str }, setTab4Loading, setTab4Error, (tid: string, res: any) => {
+                       setTab4TaskId(tid);
+                       setTab4Data((res.top_genes ?? []) as GeneRow[]);
+                   });
+                 }}
+                 disabled={tab4Loading || tab4G1.length === 0 || tab4G2.length === 0 || (tab4G1.length === 1 && tab4G2.length === 1 && tab4G1[0] === tab4G2[0])}
+                 className="mt-3 px-3 py-1 text-white text-sm rounded shadow-sm hover:opacity-90 disabled:opacity-50"
                  style={{ background: 'var(--clr-amber)' }}
                >
-                 {tab4Loading ? "对比计算中..." : "进行成对差异分析"}
+                 {tab4Loading ? "对比计算中..." : "进行分组差异分析"}
                </button>
              </div>
              
              {tab4Error && <div className="callout callout-danger text-xs">{tab4Error}</div>}
-             {tab4C1 === tab4C2 && <div className="text-xs text-stone-500">（请选择两个不同的组进行对比）</div>}
              
              {tab4TaskId && !tab4Loading && !tab4Error && tab4Data && (
                <div className="animate-fade-in">
                  <div className="flex gap-4 text-xs mb-3" style={{ color: "var(--clr-text-faint)" }}>
-                   <span>分析对：<strong style={{ color: "var(--clr-text)" }}>{tab4C1} vs {tab4C2}</strong></span>
+                   <span>分析对：<strong style={{ color: "var(--clr-text)" }}>{tab4G1.join('+')} vs {tab4G2.join('+')}</strong></span>
                  </div>
                  <div className="table-wrap max-h-96 overflow-y-auto mb-4">
                    <table className="w-full">
@@ -1039,12 +1292,12 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
                    </table>
                  </div>
                  <AuthDownloadLink 
-                   url={`/api/tasks/${tab4TaskId}/plot?name=${encodeURIComponent(`diff_genes_${tab4C1}_vs_${tab4C2}.csv`)}`} 
-                   filename={`diff_genes_${tab4C1}_vs_${tab4C2}.csv`}
+                   url={`/api/tasks/${tab4TaskId}/plot?name=${encodeURIComponent(`diff_genes_${tab4G1.join('+')}_vs_${tab4G2.join('+')}.csv`)}`} 
+                   filename={`diff_genes_${tab4G1.join('+')}_vs_${tab4G2.join('+')}.csv`}
                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white"
                    style={{ background: "var(--clr-amber)" }}
                  >
-                   下载成对差异基因表 (.csv)
+                   下载分组差异基因表 (.csv)
                  </AuthDownloadLink>
                </div>
              )}

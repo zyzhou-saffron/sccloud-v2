@@ -46,7 +46,7 @@ source("R/data_plot.R")
 make_output_name <- function(project_path, step_num, step_name, suffix, ext) {
   proj <- basename(project_path)
   ts <- format(Sys.time(), "%Y%m%d%H%M%S", tz = "Asia/Shanghai")
-  paste0(proj, "_", ts, ".", step_name, "_", suffix, ".", ext)
+  paste0(proj, "_", step_name, "_", ts, "_", suffix, ".", ext)
 }
 
 #' 保存文件并同时创建管道链名副本
@@ -76,6 +76,28 @@ function() {
     r_version = R.version.string,
     seurat = as.character(packageVersion("Seurat"))
   )
+}
+
+
+# ======================================================================
+# 基因列表查询（轻量端点，供前端自动补全）
+# ======================================================================
+
+#* 获取 Seurat 对象中所有可用基因名称
+#* @post /genes
+function(req) {
+  body <- jsonlite::fromJSON(req$postBody)
+  project_path <- body$project_path
+
+  input_path <- file.path(project_path, "seurat_clustered.rds")
+  if (!file.exists(input_path)) {
+    stop("请先运行聚类步骤")
+  }
+
+  pro <- readRDS(input_path)
+  genes <- sort(rownames(GetAssayData(pro, assay = "SCT", layer = "data")))
+
+  list(status = "success", genes = genes)
 }
 
 
@@ -405,6 +427,11 @@ function(req) {
   cluster_num <- my_cluster_num1(pro@meta.data)
   freq_table  <- my_freqTable(pro@meta.data)
 
+  # 提取前 100 行 meta.data 供前端表格展示
+  meta_sample <- head(pro@meta.data, 100)
+  meta_sample$barcode <- rownames(meta_sample)
+  meta_sample <- meta_sample[, c("barcode", setdiff(colnames(meta_sample), "barcode"))]
+
   report(100, "聚类完成")
 
   # 提取 UMAP 坐标供前端渲染 (聚类标签着色)
@@ -429,12 +456,14 @@ function(req) {
     plot_path3 = plot_path3,
     stats = list(
       cells = ncol(pro),
-      clusters = length(levels(pro)),
-      cluster_levels = levels(pro)
+      clusters = length(levels(Idents(pro))),
+      cluster_levels = levels(Idents(pro))
     ),
     cluster_num  = cluster_num,
     freq_table   = freq_table,
-    scatter_data = scatter_data
+    scatter_data = scatter_data,
+    meta_data_sample = meta_sample,
+    meta_data_total_rows = nrow(pro@meta.data)
   )
 }
 
@@ -459,13 +488,20 @@ function(req) {
   if (!file.exists(input_path)) stop("请先运行聚类步骤")
   pro <- readRDS(input_path)
 
-  cluster <- params$cluster %||% "All"
+  cluster_raw <- params$cluster %||% "All"
+  # 前端多选时传逗号分隔字符串（如 "0,1,3"），需拆分为向量
+  if (is.character(cluster_raw) && length(cluster_raw) == 1 && grepl(",", cluster_raw)) {
+    cluster <- trimws(unlist(strsplit(cluster_raw, ",")))
+  } else {
+    cluster <- cluster_raw
+  }
   min_pct <- params$min_pct %||% 0.25
   logfc <- params$logfc_threshold %||% 0.25
   test_use <- params$test_use %||% "wilcox"
   only_pos <- params$only_pos %||% TRUE
 
-  report(30, paste0("运行差异分析 (", cluster, ")..."))
+  cluster_label <- if (length(cluster) == 1 && cluster == "All") "All" else paste(cluster, collapse = ", ")
+  report(30, paste0("运行差异分析 (", cluster_label, ")..."))
 
   # 调用原始函数 — data_summary.R::my_diffTable()
   diffTable <- my_diffTable(pro, cluster, min_pct, logfc, test_use, only_pos)
@@ -514,7 +550,7 @@ function(req) {
     heatmap_path = heatmap_path,
     stats = list(
       total_deg = nrow(diffTable),
-      clusters_analyzed = ifelse(cluster == "All", "所有聚类", cluster)
+      clusters_analyzed = ifelse(cluster_label == "All", "所有聚类", cluster_label)
     ),
     top_genes = head(diffTable, 20)
   )
@@ -639,45 +675,69 @@ function(req) {
   if (!file.exists(input_path)) stop("请先运行聚类步骤")
   pro <- readRDS(input_path)
 
-  cluster <- params$cluster %||% "C1"
+  cluster_raw <- params$cluster %||% "C1"
+  # 前端多选时传逗号分隔字符串（如 "C1,C3"），需拆分为向量
+  if (is.character(cluster_raw) && length(cluster_raw) == 1 && grepl(",", cluster_raw)) {
+    clusters <- trimws(unlist(strsplit(cluster_raw, ",")))
+  } else {
+    clusters <- cluster_raw
+  }
   min_pct <- params$min_pct %||% 0.25
   logfc <- params$logfc_threshold %||% 0.25
   test_use <- params$test_use %||% "wilcox"
   only_pos <- params$only_pos %||% TRUE
   ntop <- params$ntop %||% 8
 
-  report(40, paste0("生成 ", cluster, " 的 Marker 表达图..."))
+  # 解析用户自定义关注基因（逗号分隔字符串）
+  custom_genes_raw <- params$custom_genes %||% NULL
+  custom_genes <- NULL
+  if (!is.null(custom_genes_raw) && nchar(custom_genes_raw) > 0) {
+    custom_genes <- trimws(unlist(strsplit(custom_genes_raw, ",")))
+    custom_genes <- custom_genes[nchar(custom_genes) > 0]
+  }
 
-  # 调用原始函数 — data_plot.R::my_distPlot9() 返回 list(feature, vln)
-  result <- my_distPlot9(pro, cluster, min_pct, logfc, test_use, only_pos, ntop)
-
-  # 计算图片高度（基于基因数量）
-  n_genes <- min(ntop, 8)
+  # 计算图片高度（基于基因数量，含自定义基因）
+  n_custom <- if (!is.null(custom_genes)) length(custom_genes) else 0
+  n_genes <- min(ntop, 8) + n_custom
   calc_height <- max(800, ceiling(n_genes / 2) * 400)
 
-  # 双命名：FeaturePlot
-  feature_archive <- make_output_name(project_path, "7", "plot_markers", paste0("feature_", cluster), "png")
-  plot_path_feature <- file.path(project_path, feature_archive)
-  png(plot_path_feature, width = 1600, height = calc_height, res = 150)
-  print(result$feature)
-  dev.off()
+  plot_paths <- list()
+  total <- length(clusters)
 
-  report(70, "保存 VlnPlot...")
+  for (idx in seq_along(clusters)) {
+    cl <- clusters[idx]
+    pct <- 10 + floor(80 * (idx - 1) / total)
+    report(pct, paste0("生成 ", cl, " 的 Marker 表达图 (", idx, "/", total, ")..."))
 
-  # 双命名：VlnPlot
-  vln_archive <- make_output_name(project_path, "7", "plot_markers", paste0("vln_", cluster), "png")
-  plot_path_vln <- file.path(project_path, vln_archive)
-  png(plot_path_vln, width = 1600, height = calc_height, res = 150)
-  print(result$vln)
-  dev.off()
+    result <- my_distPlot9(pro, cl, min_pct, logfc, test_use, only_pos, ntop, custom_genes)
+
+    # FeaturePlot
+    feature_archive <- make_output_name(project_path, "7", "plot_markers", paste0("feature_", cl), "png")
+    plot_path_feature <- file.path(project_path, feature_archive)
+    png(plot_path_feature, width = 1600, height = calc_height, res = 150)
+    print(result$feature)
+    dev.off()
+    # 创建固定名称副本，供前端用 canonical name 访问
+    file.copy(plot_path_feature, file.path(project_path, paste0("plot_markers_feature_", cl, ".png")), overwrite = TRUE)
+
+    # VlnPlot
+    vln_archive <- make_output_name(project_path, "7", "plot_markers", paste0("vln_", cl), "png")
+    plot_path_vln <- file.path(project_path, vln_archive)
+    png(plot_path_vln, width = 1600, height = calc_height, res = 150)
+    print(result$vln)
+    dev.off()
+    file.copy(plot_path_vln, file.path(project_path, paste0("plot_markers_vln_", cl, ".png")), overwrite = TRUE)
+
+    plot_paths[[cl]] <- list(feature = plot_path_feature, vln = plot_path_vln)
+  }
 
   report(100, "Marker 表达图生成完成")
 
   list(
     status = "success",
-    plot_path_feature = plot_path_feature,
-    plot_path_vln = plot_path_vln,
-    stats = list(cluster = cluster, ntop = ntop)
+    clusters = clusters,
+    plot_paths = plot_paths,
+    stats = list(clusters = paste(clusters, collapse = ", "), ntop = ntop)
   )
 }
 
@@ -687,7 +747,7 @@ function(req) {
 #     调用: data_summary.R::my_diffTable2()
 # ======================================================================
 
-#* 双簇成对差异分析 (C1 vs C2)
+#* 分组差异分析 (Group1 vs Group2，每组支持多个聚类)
 #* @post /markers_pairwise
 function(req) {
   body <- jsonlite::fromJSON(req$postBody)
@@ -702,35 +762,49 @@ function(req) {
   if (!file.exists(input_path)) stop("请先运行聚类步骤")
   pro <- readRDS(input_path)
 
-  cluster1 <- params$cluster1 %||% "C1"
-  cluster2 <- params$cluster2 %||% "C2"
+  # 前端传逗号分隔字符串，需拆分为向量
+  parse_clusters <- function(raw, default) {
+    val <- raw %||% default
+    if (is.character(val) && length(val) == 1 && grepl(",", val)) {
+      return(trimws(unlist(strsplit(val, ","))))
+    }
+    return(val)
+  }
+
+  group1 <- parse_clusters(params$cluster_1, "C1")
+  group2 <- parse_clusters(params$cluster_2, "C2")
   min_pct  <- params$min_pct %||% 0.25
   logfc    <- params$logfc_threshold %||% 0.25
   test_use <- params$test_use %||% "wilcox"
   only_pos <- params$only_pos %||% FALSE
 
-  report(30, paste0("运行成对差异分析: ", cluster1, " vs ", cluster2, "..."))
+  g1_label <- paste(group1, collapse = "+")
+  g2_label <- paste(group2, collapse = "+")
+  report(30, paste0("运行分组差异分析: ", g1_label, " vs ", g2_label, "..."))
 
-  # 调用原始函数 — data_summary.R::my_diffTable2()
-  diffTable <- my_diffTable2(pro, min_pct, logfc, test_use, only_pos, c(cluster1, cluster2))
+  # 调用更新后的 my_diffTable2()，传入两组聚类向量
+  diffTable <- my_diffTable2(pro, min_pct, logfc, test_use, only_pos, group1, group2)
 
   if (is.character(diffTable)) stop(diffTable)
 
   report(80, "保存结果...")
 
   # 双命名：CSV
-  csv_archive <- make_output_name(project_path, "5b", "markers_pairwise", paste0(cluster1, "_vs_", cluster2), "csv")
+  csv_archive <- make_output_name(
+    project_path, "5b", "markers_pairwise",
+    paste0(g1_label, "_vs_", g2_label), "csv"
+  )
   output_csv <- file.path(project_path, csv_archive)
   write.csv(diffTable, output_csv, row.names = FALSE)
 
-  report(100, "成对差异分析完成")
+  report(100, "分组差异分析完成")
 
   list(
     status = "success",
     result_path = output_csv,
     stats = list(
-      cluster1 = cluster1,
-      cluster2 = cluster2,
+      group1 = g1_label,
+      group2 = g2_label,
       total_deg = nrow(diffTable)
     ),
     top_genes = head(diffTable, 20)

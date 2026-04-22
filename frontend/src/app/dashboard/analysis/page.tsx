@@ -100,6 +100,9 @@ function AnalysisPageContent() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 从聚类结果中提取的可用 cluster 列表（供差异基因步骤使用）
+  const [clusterLevels, setClusterLevels] = useState<string[]>([]);
+
   const step = STEPS[activeStep];
   // 当前步骤的 task（来自 cache）
   const currentTask = taskCache[step.id] ?? null;
@@ -153,24 +156,48 @@ function AnalysisPageContent() {
     const savedCache = ss?.taskCache as Record<string, Task> | undefined;
     if (!savedCache || Object.keys(savedCache).length === 0) return;
     const token = localStorage.getItem("access_token") || "";
-    // 只恢复当前步骤的 task（减少请求数）
-    const stepId = STEPS[ss?.activeStep ?? 0]?.id;
-    const savedTask = savedCache[stepId];
-    if (!savedTask?.id) return;
-    fetch(`/api/tasks/${savedTask.id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.ok ? r.json() : null)
-      .then((task: Task | null) => {
-        if (task) updateTaskCache(stepId, task);
+    // 恢复所有步骤的 task（确保跨步骤依赖如 clusterLevels 可用）
+    for (const [stepId, savedTask] of Object.entries(savedCache)) {
+      if (!savedTask?.id) continue;
+      fetch(`/api/tasks/${savedTask.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
       })
-      .catch(() => { /* 找不到就算 */ });
+        .then((r) => r.ok ? r.json() : null)
+        .then((task: Task | null) => {
+          if (task) updateTaskCache(stepId, task);
+        })
+        .catch(() => { /* 找不到就算 */ });
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /** params / uploadedFile 变更时持久化 */
   useEffect(() => { saveSession({ params }); }, [params]);
   useEffect(() => { saveSession({ uploadedFile }); }, [uploadedFile]);
+
+  /**
+   * 当聚类任务完成后，自动拉取其结果以提取 cluster_levels，
+   * 供差异基因步骤的聚类多选器使用。
+   */
+  useEffect(() => {
+    const clusterTask = taskCache.cluster;
+    if (!clusterTask?.id || clusterTask.status !== "completed") {
+      setClusterLevels([]);
+      return;
+    }
+    const token = localStorage.getItem("access_token") || "";
+    fetch(`/api/tasks/${clusterTask.id}/result`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: Record<string, unknown> | null) => {
+        const stats = data?.stats as { cluster_levels?: string[] } | undefined;
+        if (stats?.cluster_levels?.length) {
+          setClusterLevels(stats.cluster_levels);
+        }
+      })
+      .catch(() => { /* 静默 */ });
+  }, [taskCache.cluster?.id, taskCache.cluster?.status]);
 
   /**
    * 安全回退轮询：同步当前步骤任务的最新状态到 taskCache。
@@ -376,7 +403,7 @@ function AnalysisPageContent() {
         </div>
 
         {/* ===== Main Content ===== */}
-        <div className="flex-1 flex gap-6 items-stretch">
+        <div className="flex-1 flex gap-6 items-stretch" style={{ minWidth: 0 }}>
           {/* Parameters Panel — 动态收缩 */}
           <div
             style={{
@@ -512,7 +539,32 @@ function AnalysisPageContent() {
               )}
 
               {step.id === "normalize" && (
-                <p className="text-xs" style={{ color: "var(--clr-text-muted)" }}>使用 SCTransform + glmGamPoi 方法进行标准化。需要先完成数据预处理 (Step 1)。</p>
+                <div>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>输入数据</label>
+                  {/* 模拟已上传文件样式 — 读取上一步 QC 输出 */}
+                  <div
+                    className="flex items-center justify-center gap-2 w-full py-2 text-xs border border-dashed rounded mb-1.5"
+                    style={{
+                      borderColor: taskCache.qc?.status === "completed" ? "#C86019" : "var(--clr-border)",
+                      color: taskCache.qc?.status === "completed" ? "#C86019" : "var(--clr-text-faint)",
+                      background: taskCache.qc?.status === "completed" ? "rgba(200,96,25,0.04)" : undefined,
+                      cursor: "default",
+                    }}
+                  >
+                    {taskCache.qc?.status === "completed" ? (
+                      <span>已加载质控输出</span>
+                    ) : (
+                      <span>需要先完成 Step 1 数据预处理</span>
+                    )}
+                  </div>
+                  {taskCache.qc?.status === "completed" && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2D8A56" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      <span className="flex-1 truncate text-[11px]" style={{ color: "var(--clr-text-muted)" }}>seurat_qc.rds</span>
+                    </div>
+                  )}
+                  <p className="text-[10px] mt-2" style={{ color: "var(--clr-text-faint)" }}>使用 SCTransform + glmGamPoi 方法进行标准化。</p>
+                </div>
               )}
 
               {step.id === "reduce" && (
@@ -640,7 +692,7 @@ function AnalysisPageContent() {
                   <div>
                     <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                       <span>仅正向差异 (only_pos)</span>
-                      <Tooltip content="变量: only_pos\n\n若为 TRUE，则只返回上调基因(avg_log2FC > 0)。V1 默认行为。">
+                      <Tooltip content="变量: only_pos\n\n若为 TRUE，则只返回上调基因(avg_log2FC > 0)。">
                         <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                       </Tooltip>
                     </label>
@@ -652,13 +704,68 @@ function AnalysisPageContent() {
                   <div>
                     <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                       <span>分析聚类</span>
-                      <Tooltip content="变量: cluster\n\n选择 'All' 则对所有聚类做 FindAllMarkers；选择单个聚类则只对该聚类做 FindMarkers (1 vs rest)。">
+                      <Tooltip content="变量: cluster\n\n选择 'All' 则对所有聚类做 FindAllMarkers；选择具体聚类则只对所选聚类做 FindMarkers (1 vs rest)。支持多选。">
                         <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                       </Tooltip>
                     </label>
-                    <select value={stepParams.cluster as string ?? "All"} onChange={(e) => updateParam("cluster", e.target.value)} className={selectCls} style={selectStyle}>
-                      <option value="All">All（所有聚类）</option>
-                    </select>
+                    {clusterLevels.length === 0 ? (
+                      /* 聚类尚未完成 —— 仅显示 All */
+                      <select value={stepParams.cluster as string ?? "All"} onChange={(e) => updateParam("cluster", e.target.value)} className={selectCls} style={selectStyle}>
+                        <option value="All">All（所有聚类）</option>
+                      </select>
+                    ) : (
+                      /* 聚类已完成 —— 多选 checkbox 面板 */
+                      <div className="border rounded p-2 space-y-1" style={{ borderColor: "var(--clr-border)", maxHeight: 160, overflowY: "auto" }}>
+                        {/* All 选项 */}
+                        <label className="flex items-center gap-2 text-xs cursor-pointer px-1 py-0.5 rounded hover:bg-stone-50 transition-colors" style={{ color: "var(--clr-text)" }}>
+                          <input
+                            type="checkbox"
+                            className="accent-[#C86019]"
+                            checked={(stepParams.cluster as string) === "All"}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                updateParam("cluster", "All");
+                              }
+                            }}
+                          />
+                          All（所有聚类）
+                        </label>
+                        <div style={{ borderTop: "1px solid var(--clr-border)", margin: "2px 0" }} />
+                        {clusterLevels.map((cl) => {
+                          const currentVal = stepParams.cluster as string ?? "All";
+                          const selected = currentVal !== "All" ? currentVal.split(",") : [];
+                          const isChecked = selected.includes(cl);
+                          return (
+                            <label key={cl} className="flex items-center gap-2 text-xs cursor-pointer px-1 py-0.5 rounded hover:bg-stone-50 transition-colors" style={{ color: "var(--clr-text)" }}>
+                              <input
+                                type="checkbox"
+                                className="accent-[#C86019]"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  let next: string[];
+                                  if (e.target.checked) {
+                                    next = [...selected, cl];
+                                  } else {
+                                    next = selected.filter((c) => c !== cl);
+                                  }
+                                  if (next.length === 0 || next.length === clusterLevels.length) {
+                                    updateParam("cluster", "All");
+                                  } else {
+                                    updateParam("cluster", next.join(","));
+                                  }
+                                }}
+                              />
+                              Cluster {cl}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {(stepParams.cluster as string) !== "All" && (stepParams.cluster as string) && (
+                      <p className="text-[10px] mt-1" style={{ color: "var(--clr-amber)" }}>
+                        已选: {(stepParams.cluster as string).split(",").map(c => `Cluster ${c}`).join(", ")}
+                      </p>
+                    )}
                   </div>
                 </>
               )}
@@ -742,8 +849,8 @@ function AnalysisPageContent() {
           </div>
 
           {/* Results Panel — 动态扩展 */}
-          <div style={{ flex: 1, transition: 'flex 0.45s cubic-bezier(0.4,0,0.2,1)' }}>
-            <div className="card p-6 min-h-[500px]">
+          <div style={{ flex: 1, minWidth: 0, transition: 'flex 0.45s cubic-bezier(0.4,0,0.2,1)' }}>
+            <div className="card p-6 min-h-[500px]" style={{ overflow: 'hidden' }}>
               <div className="section-header mb-4" style={{ paddingBottom: "10px" }}>
                 <div className="section-num">{step.num}</div>
                 <div className="flex-1 flex items-center justify-between">

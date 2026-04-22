@@ -79,41 +79,75 @@ my_freqTable <- function(df){
     return(freqTable)
 }
 
-my_diffTable <- function(pro,rawC,minPct,logFc,test,pos){
-  if(rawC!="All"){
-    cluster.markers <- FindMarkers(object = pro, ident.1 = rawC, min.pct = minPct, logfc.threshold = logFc,test.use=test,only.pos=pos)
-    diffTable <- data.frame(gene_id = rownames(cluster.markers), cluster.markers, Cluster=rawC)#%>%
-    #mutate(across(where(is.numeric), ~ formatC(., format = "e", digits = 4)))
-    return(diffTable)
-    #print(diffTable, digits = 4, scientific = TRUE)
-  }else{
-    mergeDif <-  data.frame()
+my_diffTable <- function(pro, rawC, minPct, logFc, test, pos) {
+  # rawC 可以是 "All"、单个 cluster 名称、或多个 cluster 名称的向量
+  if (length(rawC) == 1 && rawC == "All") {
+    # 对所有聚类逐一做 FindMarkers (1 vs rest)
+    mergeDif <- data.frame()
     newident <- levels(pro)
     for (l in newident) {
-      cluster.markers <- FindMarkers(object = pro, ident.1 = l, min.pct = minPct, logfc.threshold = logFc,test.use=test,only.pos=pos)
-      diffTable <- data.frame(gene_id = rownames(cluster.markers), cluster.markers, Cluster=l)#%>%
-      #mutate(across(where(is.numeric), ~ formatC(., format = "e", digits = 4)))
-      mergeDif <- rbind(mergeDif,diffTable)
+      cluster.markers <- FindMarkers(
+        object = pro, ident.1 = l,
+        min.pct = minPct, logfc.threshold = logFc,
+        test.use = test, only.pos = pos
+      )
+      diffTable <- data.frame(
+        gene_id = rownames(cluster.markers),
+        cluster.markers, Cluster = l
+      )
+      mergeDif <- rbind(mergeDif, diffTable)
     }
     return(mergeDif)
-    #print(mergeDif, digits = 4, scientific = TRUE)
+  } else {
+    # 对指定的一个或多个聚类逐一做 FindMarkers (1 vs rest)
+    mergeDif <- data.frame()
+    for (cl in rawC) {
+      cluster.markers <- FindMarkers(
+        object = pro, ident.1 = cl,
+        min.pct = minPct, logfc.threshold = logFc,
+        test.use = test, only.pos = pos
+      )
+      diffTable <- data.frame(
+        gene_id = rownames(cluster.markers),
+        cluster.markers, Cluster = cl
+      )
+      mergeDif <- rbind(mergeDif, diffTable)
+    }
+    return(mergeDif)
   }
 }
 
 
-my_diffTable2 <- function(pro,minPct,logFc,test,pos,rawC1){
-tryCatch({
-  if(length(rawC1)==2){
-    cluster.markers <- FindMarkers(object = pro, ident.1 = rawC1[1],ident.2 = rawC1[2], min.pct = minPct, logfc.threshold = logFc,test.use=test,only.pos=pos)
-    diffTable <- data.frame(gene_id = rownames(cluster.markers), cluster.markers, Cluster=paste(rawC1, collapse = "vs") )#%>%
-    #mutate(across(where(is.numeric), ~ formatC(., format = "e", digits = 4)))
+my_diffTable2 <- function(pro, minPct, logFc, test, pos, group1, group2) {
+  # group1 和 group2 可以各自是一个或多个 cluster 的向量
+  # Seurat FindMarkers 原生支持向量形式的 ident.1 / ident.2
+  tryCatch({
+    if (length(group1) == 0 || length(group2) == 0) {
+      return("Error: 两组均需至少选择一个聚类")
+    }
+    cluster.markers <- FindMarkers(
+      object = pro,
+      ident.1 = group1,
+      ident.2 = group2,
+      min.pct = minPct,
+      logfc.threshold = logFc,
+      test.use = test,
+      only.pos = pos
+    )
+    label <- paste0(
+      paste(group1, collapse = "+"), " vs ",
+      paste(group2, collapse = "+")
+    )
+    diffTable <- data.frame(
+      gene_id = rownames(cluster.markers),
+      cluster.markers,
+      Cluster = label,
+      row.names = NULL
+    )
     return(diffTable)
-    #print(diffTable, digits = 4, scientific = TRUE)
-  }
   }, error = function(e) {
-    return("Error: select two cell cluster!")
-  }
-  )
+    return(paste0("Error: ", e$message))
+  })
 }
 
 is_upper_strict <- function(x) {
