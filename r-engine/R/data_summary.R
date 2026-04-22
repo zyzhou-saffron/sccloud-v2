@@ -125,6 +125,12 @@ my_diffTable2 <- function(pro, minPct, logFc, test, pos, group1, group2) {
     if (length(group1) == 0 || length(group2) == 0) {
       return("Error: 两组均需至少选择一个聚类")
     }
+    # 修复多样本合并后 barcode 重复导致 'duplicate row.names' 的问题
+    # FindMarkers 内部用 cell names 构造 data.frame，重复会报错
+    cell_names <- colnames(pro)
+    if (any(duplicated(cell_names))) {
+      pro <- RenameCells(pro, new.names = make.unique(cell_names, sep = "_dup"))
+    }
     cluster.markers <- FindMarkers(
       object = pro,
       ident.1 = group1,
