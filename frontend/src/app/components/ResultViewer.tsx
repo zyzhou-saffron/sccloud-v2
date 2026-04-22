@@ -935,12 +935,18 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
   const analyzedClusters = useMemo(() => {
     const raw = safeString(data?.clusters_analyzed);
     if (!raw || raw === "All" || raw === "所有聚类") {
+      // 优先从 cluster_labels 取
       const allC = safeString(data?.cluster_labels);
       if (allC) return allC.split(/[,·]/).map(s => s.trim()).filter(Boolean);
+      // 回退：从 top_genes 数据的 Cluster 列提取唯一值
+      if (topGenes.length > 0) {
+        const unique = [...new Set(topGenes.map(r => String(r.Cluster ?? "")).filter(Boolean))];
+        if (unique.length > 0) return unique;
+      }
       return [];
     }
     return raw.split(",").map(s => s.trim()).filter(Boolean);
-  }, [data]);
+  }, [data, topGenes]);
 
   // getToken 便捷函数
   const getToken = () => {
