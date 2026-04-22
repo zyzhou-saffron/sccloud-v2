@@ -1163,33 +1163,35 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
           <div className="space-y-6 animate-fade-in flex flex-col items-center">
             <div className="w-full flex-col flex items-center">
               <p className="text-sm font-semibold mb-2 self-start" style={{ color: 'var(--clr-text)' }}>各聚类显著差异基因点图 (DotPlot)</p>
-              {dotplotSrc && <AuthImg src={dotplotSrc} alt="DotPlot" className="w-full max-w-4xl border rounded shadow-sm" style={{ borderColor: 'var(--clr-border)' }} />}
               {dotplotSrc && (
-                <AuthDownloadLink
-                  url={dotplotSrc}
-                  filename={dotplotName}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90 mt-2 self-start"
-                  style={{ background: "var(--clr-amber)", boxShadow: "0 2px 4px rgba(200,96,25,0.2)" }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  下载 DotPlot (.png)
-                </AuthDownloadLink>
+                <div className="relative w-full max-w-4xl">
+                  <AuthImg src={dotplotSrc} alt="DotPlot" className="w-full border rounded shadow-sm" style={{ borderColor: 'var(--clr-border)' }} />
+                  <AuthDownloadLink
+                    url={dotplotSrc}
+                    filename={dotplotName}
+                    className="absolute bottom-3 right-3 inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
+                    style={{ background: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", color: "var(--clr-amber)" }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </AuthDownloadLink>
+                </div>
               )}
             </div>
             <div className="w-full h-px" style={{ background: 'var(--clr-border)' }}></div>
             <div className="w-full flex-col flex items-center">
               <p className="text-sm font-semibold mb-2 self-start" style={{ color: 'var(--clr-text)' }}>各聚类显著差异基因热图 (Heatmap) (需要 ntop 增加才有明显表现)</p>
-              {heatmapSrc && <AuthImg src={heatmapSrc} alt="Heatmap" className="w-full max-w-4xl border rounded shadow-sm" style={{ borderColor: 'var(--clr-border)' }} />}
               {heatmapSrc && (
-                <AuthDownloadLink
-                  url={heatmapSrc}
-                  filename={heatmapName}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90 mt-2 self-start"
-                  style={{ background: "var(--clr-amber)", boxShadow: "0 2px 4px rgba(200,96,25,0.2)" }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  下载 Heatmap (.png)
-                </AuthDownloadLink>
+                <div className="relative w-full max-w-4xl">
+                  <AuthImg src={heatmapSrc} alt="Heatmap" className="w-full border rounded shadow-sm" style={{ borderColor: 'var(--clr-border)' }} />
+                  <AuthDownloadLink
+                    url={heatmapSrc}
+                    filename={heatmapName}
+                    className="absolute bottom-3 right-3 inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
+                    style={{ background: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", color: "var(--clr-amber)" }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </AuthDownloadLink>
+                </div>
               )}
             </div>
           </div>
@@ -1273,26 +1275,28 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                      <h4 className="text-xs font-semibold mb-2 px-1" style={{ color: 'var(--clr-text-muted)' }}>Cluster {cl}</h4>
                      {tab3PlotMode === 'feature' && (
                        <>
-                         <AuthImg src={featureSrc} alt={`Feature Plot ${cl}`} className="w-full max-w-4xl border rounded shadow-sm bg-white mx-auto block" />
-                         <AuthDownloadLink url={featureSrc} filename={featureName}
-                           className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90 mt-2"
-                           style={{ background: 'var(--clr-amber)', boxShadow: '0 2px 4px rgba(200,96,25,0.2)' }}
-                         >
-                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                           下载 FeaturePlot Cluster {cl} (.png)
-                         </AuthDownloadLink>
+                         <div className="relative w-full max-w-4xl mx-auto">
+                           <AuthImg src={featureSrc} alt={`Feature Plot ${cl}`} className="w-full border rounded shadow-sm bg-white block" />
+                           <AuthDownloadLink url={featureSrc} filename={featureName}
+                             className="absolute bottom-3 right-3 inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
+                             style={{ background: 'rgba(255,255,255,0.92)', boxShadow: '0 2px 8px rgba(0,0,0,0.10)', color: 'var(--clr-amber)' }}
+                           >
+                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                           </AuthDownloadLink>
+                         </div>
                        </>
                      )}
                      {tab3PlotMode === 'vln' && (
                        <>
-                         <AuthImg src={vlnSrc} alt={`Vln Plot ${cl}`} className="w-full max-w-4xl border rounded shadow-sm bg-white mx-auto block" />
-                         <AuthDownloadLink url={vlnSrc} filename={vlnName}
-                           className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90 mt-2"
-                           style={{ background: 'var(--clr-amber)', boxShadow: '0 2px 4px rgba(200,96,25,0.2)' }}
-                         >
-                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                           下载 VlnPlot Cluster {cl} (.png)
-                         </AuthDownloadLink>
+                         <div className="relative w-full max-w-4xl mx-auto">
+                           <AuthImg src={vlnSrc} alt={`Vln Plot ${cl}`} className="w-full border rounded shadow-sm bg-white block" />
+                           <AuthDownloadLink url={vlnSrc} filename={vlnName}
+                             className="absolute bottom-3 right-3 inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
+                             style={{ background: 'rgba(255,255,255,0.92)', boxShadow: '0 2px 8px rgba(0,0,0,0.10)', color: 'var(--clr-amber)' }}
+                           >
+                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                           </AuthDownloadLink>
+                         </div>
                        </>
                      )}
                    </div>);
