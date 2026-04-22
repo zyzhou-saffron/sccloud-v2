@@ -800,6 +800,14 @@ function(req) {
 
   report(100, "分组差异分析完成")
 
+  # 火山图数据：精简版全量（gene_id + log2FC + p_val_adj）
+  volcano <- data.frame(
+    gene_id     = diffTable$gene_id,
+    avg_log2FC  = as.numeric(diffTable$avg_log2FC),
+    p_val_adj   = as.numeric(diffTable$p_val_adj),
+    stringsAsFactors = FALSE
+  )
+
   list(
     status = "success",
     result_path = output_csv,
@@ -808,7 +816,8 @@ function(req) {
       group2 = g2_label,
       total_deg = nrow(diffTable)
     ),
-    top_genes = head(diffTable, 20)
+    top_genes = head(diffTable, 20),
+    volcano_data = volcano
   )
 }
 

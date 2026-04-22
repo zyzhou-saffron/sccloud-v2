@@ -14,3 +14,6 @@ export type { DotPlotData } from "./DotPlot";
 
 export { default as EnrichBubble } from "./EnrichBubble";
 export type { EnrichData } from "./EnrichBubble";
+
+export { default as VolcanoPlot } from "./VolcanoPlot";
+export type { VolcanoPoint } from "./VolcanoPlot";

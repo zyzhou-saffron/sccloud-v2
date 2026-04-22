@@ -23,6 +23,8 @@ import {
   EnrichBubble,
   type ScatterData,
   type EnrichData,
+  VolcanoPlot,
+  type VolcanoPoint,
 } from "./charts";
 
 /* ===== Error Boundary — 防止图表报错崩溃整页 ===== */
@@ -1002,6 +1004,7 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
   const [tab4Data, setTab4Data] = useState<GeneRow[] | null>(null);
   const [tab4Loading, setTab4Loading] = useState(false);
   const [tab4Error, setTab4Error] = useState<string | null>(null);
+  const [tab4Volcano, setTab4Volcano] = useState<VolcanoPoint[] | null>(null);
 
   useEffect(() => {
     if (analyzedClusters.length > 0) {
@@ -1356,6 +1359,13 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                    runSubTask("markers_pairwise", { ...task.params, cluster_1: g1Str, cluster_2: g2Str }, setTab4Loading, setTab4Error, (tid: string, res: any) => {
                        setTab4TaskId(tid);
                        setTab4Data((res.top_genes ?? []) as GeneRow[]);
+                       // 火山图数据
+                       const vd = res.volcano_data;
+                       if (Array.isArray(vd) && vd.length > 0) {
+                         setTab4Volcano(vd as VolcanoPoint[]);
+                       } else {
+                         setTab4Volcano(null);
+                       }
                    });
                  }}
                  disabled={tab4Loading || tab4G1.length === 0 || tab4G2.length === 0 || (tab4G1.length === 1 && tab4G2.length === 1 && tab4G1[0] === tab4G2[0])}
@@ -1383,6 +1393,16 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                   <div className="flex gap-4 text-xs mb-3" style={{ color: "var(--clr-text-faint)" }}>
                     <span>分析对：<strong style={{ color: "var(--clr-text)" }}>{tab4G1.join('+')} vs {tab4G2.join('+')}</strong></span>
                   </div>
+                  {/* 火山图 */}
+                  {tab4Volcano && tab4Volcano.length > 0 && (
+                    <div className="mb-4">
+                      <VolcanoPlot
+                        data={tab4Volcano}
+                        title={`${tab4G1.join('+')} vs ${tab4G2.join('+')}`}
+                        height={400}
+                      />
+                    </div>
+                  )}
                   <div className="space-y-2 mb-4">
                     <div className="card-label">
                       分组差异基因预览
