@@ -942,7 +942,7 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
   // getToken 便捷函数
   const getToken = () => {
     if (typeof window === "undefined") return "";
-    return localStorage.getItem("token") ?? sessionStorage.getItem("token") ?? "";
+    return localStorage.getItem("access_token") || "";
   };
 
   // Tab 定义
