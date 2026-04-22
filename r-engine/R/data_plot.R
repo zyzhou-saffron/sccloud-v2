@@ -84,7 +84,8 @@ my_distPlot2 <- function(exp,pro){
     NoLegend() + patchwork::plot_annotation(title = "Before QC (过滤前)")
   plot2 <- VlnPlot(pro, features = c("nCount_RNA", "nFeature_RNA", "percent.mt"), ncol = 3, pt.size = 0) +
     NoLegend() + patchwork::plot_annotation(title = "After QC (过滤后)")
-  return(plot1/plot2)
+  # free() 保持嵌套 patchwork 的 plot_annotation 标题
+  return(patchwork::free(plot1) / patchwork::free(plot2))
 }
 
 my_distPlot3 <- function(sctpro,redu,group,nPCA){
