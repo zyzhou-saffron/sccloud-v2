@@ -138,9 +138,97 @@ const handleTaskComplete = async (partialTask: Task) => {
 👉 **解决对策**：将 Flex 容器的对齐方式从 `items-start` 改为 **`items-center`**。无论两侧缩放的实现方式不同（zoom vs transform），它们的视觉中心始终对齐在同一水平线上。
 👉 **核心原则**：当 Flex 子元素使用不同的缩放机制（一个影响布局、一个不影响布局）时，**绝对不要用 `items-start` 或 `items-end`**，必须用 `items-center` 才能保持视觉平衡。
 
-## 4. 特色说明
-*   **设计系统**：UI 的背景色为带点米白质感的暖调，注重阴影层级、微过渡动画（`animate-fade-in`）和圆润边缘。强调极好的 UX 提示文案与响应。图表主要采用 D3.js（部分交互图）、deck.gl WebGL（处理海量散点UMAP图）、及 fallback 供下载的原生 R PNG 图。
-*   **数据通讯机制**：单次任务为异步提交 -> Backend 交给 Celery/Redis -> Plumber 监听响应 -> Redis 发布订阅实时进度 -> FastAPI WebSocket 转发 -> Frontend 显示进度条。
+## 4. UI 设计理念与设计系统规范
+
+本项目的 UI 设计语言经历了从早期原型到当前"ComputaBio 暖色学术风格"的完整演进。以下所有设计决策都是固化在代码中的，后续开发**必须遵循**，不得随意引入冲突风格。
+
+### 🎨 4.1 色彩系统 — "暖调学术" (ComputaBio Palette)
+
+所有颜色通过 CSS 自定义属性定义在 `globals.css` 的 `:root` 中，**绝不在组件中硬编码色值**。
+
+| 变量 | 色值 | 用途 |
+|---|---|---|
+| `--clr-amber` | `#C2693D` | 主色调 — 暖赭石 |
+| `--clr-amber-light` | `#D4784A` | 悬停态 |
+| `--clr-amber-dark` | `#9E4C13` | 按下态/强调 |
+| `--clr-gold` | `#FFD42A` | 辅助金色 |
+| `--clr-bg` | `#FAF7F4` | 页面背景 — 暖奶油白，**绝不用纯白 `#FFF`** |
+| `--clr-bg-alt` | `#F3EDE7` | 交替区域背景 |
+| `--clr-dark-deep` | `#1E1B18` | 标题深色 — 浓缩咖啡色 |
+| `--clr-text` | `#3B3836` | 正文色 — 暖灰，**绝不用纯黑 `#000`** |
+| `--clr-text-muted` | `#7C7067` | 次要文字 |
+| `--clr-border` | `#E8E2DA` | 边框 — 暖色调分割线 |
+
+**核心原则**：整个 UI 不允许出现"冷色调"的白/灰/黑。所有中性色都带有暖色偏移（warm undertone）。这是区别于普通 SaaS 产品的学术气质关键。
+
+### 🔤 4.2 字体系统 — 编辑风衬线 + 几何无衬线
+
+| 变量 | 字体族 | 用途 |
+|---|---|---|
+| `--font-display` | `Playfair Display`, `Noto Serif SC`, `Songti SC`, serif | Landing page 大标题 — 编辑风衬线体 |
+| `--font-serif` | `Noto Serif SC`, `Songti SC`, serif | 中文衬线体 |
+| `--font-sans` | `DM Sans`, `Noto Sans SC`, `PingFang SC`, sans-serif | 正文/UI 控件 — 几何无衬线体 |
+| `--font-mono` | `JetBrains Mono`, `Menlo`, monospace | 代码/技术文字 |
+
+**原则**：Landing page 标题使用衬线体（`--font-display`）传达学术权威感；Dashboard 内全部使用无衬线体（`--font-sans`）保证功能界面的可读性。
+
+### 🖌 4.3 图标系统 — SVG 描边线条图标 (替代 Emoji)
+
+> **⚠️ 重要：项目中绝不使用 Emoji 作为图标。**
+
+早期版本曾使用 Emoji（如 🔬🧬📊）作为步骤图标，存在以下问题：
+*   **跨平台不一致**：同一个 Emoji 在 macOS/Windows/Linux/Android 上渲染完全不同。
+*   **色彩冲突**：Emoji 自带的花花绿绿配色与暖色设计系统严重不搭。
+*   **尺寸不可控**：Emoji 的 line-height/baseline 在不同浏览器中表现不一致。
+
+**已采用的方案**：自建 `Icons.tsx` 组件库，参考 **GitHub Octicons** 风格的 SVG 描边线条图标：
+```tsx
+// Icons.tsx — 统一规范:
+// 1. 24x24 viewBox
+// 2. fill="none" stroke="currentColor" (继承父元素颜色)
+// 3. strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"
+// 4. 可配置 size 和 className
+```
+
+目前已有 16 个自定义图标：`IconMicroscope`（显微镜/QC）、`IconBarChart`（柱状图/标准化）、`IconAxis`（坐标系/降维）、`IconCluster`（节点网络/聚类）、`IconTestTube`（试管/差异基因）、`IconPathway`（链环/通路富集）、`IconWaveform`（波形/Marker 表达）、`IconTag`（标签/细胞注释）等。
+
+**新增图标规则**：
+1.  必须在 `Icons.tsx` 中新增，**不要在组件中内联 SVG**。
+2.  必须使用 `currentColor` 填充，让图标颜色跟随 CSS 父元素。
+3.  统一 `strokeWidth={1.5}` 线条粗细。
+
+### 🌊 4.4 阴影与动画系统
+
+**阴影**（定义在 CSS 变量中）：
+*   `--shadow-sm`：卡片微阴影（轻量悬浮）。
+*   `--shadow-md`：弹窗/下拉菜单（中等层级）。
+*   `--shadow-lg`：模态框/核心面板（重层级）。
+*   `--shadow-glow`：主色调光晕（用于 CTA 按钮 hover 态）。
+*   所有阴影使用 `rgba(45,41,38,...)` 暖色底调，**绝不用纯黑阴影**。
+
+**动画规范**：
+*   进场动画：`fadeUp`（上滑渐显）、`fadeIn`（渐显）、`scaleUp`（放大渐显），统一 `cubic-bezier(0.22,1,0.36,1)` 缓动。
+*   循环动画：`float-y`（上下漂浮，仅含 `translateY`，不含 `scale`，避免与 3D `transform` 冲突）。
+*   **禁止使用 `backdrop-filter` 做大面积动画**——曾因 600 个元素使用 `backdrop-filter: blur()` 导致帧率降至 5fps（见 git commit `07e5201`）。
+
+### 📊 4.5 图表技术栈
+
+| 场景 | 技术 | 原因 |
+|---|---|---|
+| 海量散点 (UMAP/PCA) | **deck.gl** (WebGL) | 万级细胞点的流畅缩放平移，DOM 方案无法承载 |
+| 交互式图表 (DotPlot/Violin) | **D3.js** | 灵活的 SVG 操控，支持 tooltip 交互 |
+| 静态结果图 | **R PNG** (通过 AuthImg) | R 引擎直接渲染，前端做权限代理展示 |
+
+### 🧩 4.6 组件设计原则
+
+*   **圆润边缘**：全局 `--radius: 10px`，按钮和卡片统一圆角，避免锐利直角。
+*   **渐变按钮**：CTA 按钮使用 `linear-gradient` 暖色渐变 + `box-shadow` hover 光晕，不用纯色扁平按钮。
+*   **间距层次**：使用 Tailwind 的 4px 基准间距系统（`p-4`, `gap-6`, `mb-8` 等）。
+*   **过渡时长**：所有 hover/focus 过渡统一 `transition: all 0.2s ease` 或 `0.3s`，不允许出现生硬的瞬间状态切换。
+*   **空状态**：所有列表/面板的空状态必须有温暖的插图+引导文案（如"尚无分析任务，点击上方步骤开始"），禁止白屏空白。
+
+### 📱 4.7 数据通讯机制
+*   **任务执行流**：异步提交 → Backend 交给 Celery/Redis → Plumber 监听响应 → Redis 发布订阅实时进度 → FastAPI WebSocket 转发 → Frontend 显示进度条。
 
 ### 🖥 Landing Page 响应式缩放系统 (Hero 区域)
 
