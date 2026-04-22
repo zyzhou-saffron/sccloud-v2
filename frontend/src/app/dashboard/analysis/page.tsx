@@ -888,7 +888,7 @@ function AnalysisPageContent() {
                 </div>
               )}
 
-              <ResultViewer task={currentTask} stepId={step.id} stepLabel={step.label} StepIcon={step.Icon} taskCache={taskCache} />
+              <ResultViewer task={currentTask} stepId={step.id} stepLabel={step.label} StepIcon={step.Icon} taskCache={taskCache} clusterLevels={clusterLevels} />
 
               {/* 底部导航 — 仅在当前步骤有任务时显示 */}
               {hasTaskForStep && (

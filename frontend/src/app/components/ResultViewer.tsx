@@ -165,6 +165,7 @@ interface ResultViewerProps {
   stepLabel: string;
   StepIcon: ComponentType<{ className?: string; size?: number }>;
   taskCache?: Record<string, Task>;
+  clusterLevels?: string[];
 }
 
 /** 从 localStorage 读取 token */
@@ -189,7 +190,7 @@ async function fetchTaskResult(taskId: string): Promise<Record<string, unknown> 
 // 由于 WebGL 重构提升了性能，现在所有有步骤均自动加载结果数据
 // 不再需要显式点击加载图表按钮。
 
-export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCache }: ResultViewerProps) {
+export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCache, clusterLevels }: ResultViewerProps) {
   const [resultData, setResultData] = useState<Record<string, unknown> | null>(null);
   const [loadingResult, setLoadingResult] = useState(false);
   // 自动加载：任务完成后触发
@@ -289,7 +290,7 @@ export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCa
             {stepId === "normalize" && resultData && <NormalizeResult data={resultData} taskId={task.id} />}
             {stepId === "reduce"    && <ReduceResult data={resultData} taskId={task.id} />}
             {stepId === "cluster"   && <ClusterResult data={resultData} task={task} />}
-            {stepId === "markers"   && <MarkersResult data={resultData} task={task} taskCache={taskCache} />}
+            {stepId === "markers"   && <MarkersResult data={resultData} task={task} taskCache={taskCache} clusterLevels={clusterLevels} />}
             {stepId === "enrich"    && <EnrichResult data={resultData} taskId={task.id} />}
             {!["qc","normalize","reduce","cluster","markers","enrich"].includes(stepId) && (
               <div className="callout text-xs">分析完成，详细结果可在输出文件中查看</div>
@@ -898,7 +899,7 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
 }
 
 /** 差异基因结果 */
-function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<string, unknown> | null; taskCache?: Record<string, Task> }) {
+function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLevels }: { task: Task; data: Record<string, unknown> | null; taskCache?: Record<string, Task>; clusterLevels?: string[] }) {
   // 动态列表方式（与 meta.data 一致），兼容 R 返回的任意字段名
   type GeneRow = Record<string, unknown>;
   const topGenes = (data?.top_genes ?? []) as GeneRow[];
@@ -935,10 +936,12 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
   const analyzedClusters = useMemo(() => {
     const raw = safeString(data?.clusters_analyzed);
     if (!raw || raw === "All" || raw === "所有聚类") {
-      // 优先从 cluster_labels 取
+      // 优先从 markers 结果的 cluster_labels 取
       const allC = safeString(data?.cluster_labels);
       if (allC) return allC.split(/[,·]/).map(s => s.trim()).filter(Boolean);
-      // 回退：从 top_genes 数据的 Cluster 列提取唯一值
+      // 回退：从父组件传入的聚类步骤 cluster_levels 取
+      if (parentClusterLevels && parentClusterLevels.length > 0) return parentClusterLevels;
+      // 最终回退：从 top_genes 数据的 Cluster 列提取唯一值
       if (topGenes.length > 0) {
         const unique = [...new Set(topGenes.map(r => String(r.Cluster ?? "")).filter(Boolean))];
         if (unique.length > 0) return unique;
@@ -946,7 +949,7 @@ function MarkersResult({ task, data, taskCache }: { task: Task; data: Record<str
       return [];
     }
     return raw.split(",").map(s => s.trim()).filter(Boolean);
-  }, [data, topGenes]);
+  }, [data, topGenes, parentClusterLevels]);
 
   // getToken 便捷函数
   const getToken = () => {

@@ -552,6 +552,7 @@ function(req) {
       total_deg = nrow(diffTable),
       clusters_analyzed = ifelse(cluster_label == "All", "所有聚类", cluster_label)
     ),
+    cluster_labels = paste(levels(Idents(pro)), collapse = ","),
     top_genes = head(diffTable, 20)
   )
 }
