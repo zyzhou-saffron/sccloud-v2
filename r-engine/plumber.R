@@ -1015,29 +1015,103 @@ function(req) {
 
 
 # ======================================================================
-# 9. 格式转换 (新增功能 — 旧系统不存在)
+# 9. 格式转换 (双向: 导入 + 导出)
+#    导入: H5AD / H5 / CSV / TSV → Seurat RDS
+#    导出: RDS → H5Seurat / H5AD
+#    来源: app-new.R convert_single_file() 逻辑移植
 # ======================================================================
 
-#* Seurat 对象格式转换
-#* @post /convert
-function(req) {
-  params <- jsonlite::fromJSON(req$postBody)
-  input_path <- params$input_path
-  output_format <- params$output_format
-  output_path <- params$output_path
-
+#* 将外部格式转换为 Seurat RDS (导入方向)
+#* @param input_path 输入文件路径
+#* @param input_format 输入格式 (h5ad / h5 / csv / tsv / rds)
+#* @param output_path 输出 RDS 路径
+#* @return 转换结果统计
+convert_to_rds <- function(input_path, input_format, output_path) {
   if (!file.exists(input_path)) stop(paste("文件不存在:", input_path))
 
-  ext <- tolower(tools::file_ext(input_path))
+  obj <- switch(input_format,
+    # ---- H5AD (AnnData / Scanpy) ----
+    h5ad = {
+      if (!requireNamespace("reticulate", quietly = TRUE)) {
+        stop("缺少 reticulate 包")
+      }
+      anndata <- reticulate::import("anndata")
+      adata <- anndata$read_h5ad(input_path)
 
-  # 加载对象
-  if (ext == "rds") {
-    obj <- readRDS(input_path)
-  } else {
-    stop(paste("不支持的输入格式:", ext))
-  }
+      # 获取表达矩阵
+      if (reticulate::py_has_attr(adata, "X")) {
+        counts <- reticulate::py_to_r(adata$X)
+      } else {
+        counts <- reticulate::py_to_r(adata$raw$X)
+      }
+      if (inherits(counts, "dgCMatrix")) counts <- as.matrix(counts)
 
-  # 转换
+      # 设置行列名
+      tryCatch({
+        if (reticulate::py_has_attr(adata, "var_names")) {
+          rownames(counts) <- as.character(reticulate::py_to_r(adata$var_names))
+        }
+      }, error = function(e) {})
+      tryCatch({
+        if (reticulate::py_has_attr(adata, "obs_names")) {
+          colnames(counts) <- as.character(reticulate::py_to_r(adata$obs_names))
+        }
+      }, error = function(e) {})
+
+      # 转稀疏矩阵
+      if (requireNamespace("Matrix", quietly = TRUE)) {
+        counts <- Matrix::Matrix(counts, sparse = TRUE)
+      }
+      Seurat::CreateSeuratObject(counts = counts)
+    },
+
+    # ---- 10X CellRanger H5 ----
+    h5 = {
+      mat <- Seurat::Read10X_h5(input_path)
+      Seurat::CreateSeuratObject(counts = mat)
+    },
+
+    # ---- CSV 表达矩阵 (基因×细胞) ----
+    csv = {
+      mat <- read.csv(input_path, row.names = 1, check.names = FALSE)
+      Seurat::CreateSeuratObject(counts = as.matrix(mat))
+    },
+
+    # ---- TSV/TXT 表达矩阵 ----
+    tsv = {
+      mat <- read.table(input_path, sep = "\t", row.names = 1,
+                        header = TRUE, check.names = FALSE)
+      Seurat::CreateSeuratObject(counts = as.matrix(mat))
+    },
+
+    # ---- RDS (直接读取，无需转换) ----
+    rds = {
+      readRDS(input_path)
+    },
+
+    stop(paste("不支持的输入格式:", input_format))
+  )
+
+  # 保存为 RDS
+  saveRDS(obj, output_path)
+
+  list(
+    status = "success",
+    cells = ncol(obj),
+    genes = nrow(obj),
+    file_size_mb = round(file.size(output_path) / 1024 / 1024, 2)
+  )
+}
+
+#* 将 Seurat RDS 导出为外部格式 (导出方向)
+#* @param input_path 输入 RDS 路径
+#* @param output_format 输出格式 (h5seurat / h5ad / rds)
+#* @param output_path 输出文件路径
+#* @return 转换结果
+convert_from_rds <- function(input_path, output_format, output_path) {
+  if (!file.exists(input_path)) stop(paste("文件不存在:", input_path))
+  obj <- readRDS(input_path)
+
   if (output_format == "h5seurat") {
     SeuratDisk::SaveH5Seurat(obj, filename = output_path, overwrite = TRUE)
   } else if (output_format == "h5ad") {
@@ -1047,11 +1121,105 @@ function(req) {
     file.remove(h5seurat_path)
   } else if (output_format == "rds") {
     saveRDS(obj, output_path)
+  } else {
+    stop(paste("不支持的输出格式:", output_format))
   }
 
   list(
     status = "success",
     cells = ncol(obj),
     genes = nrow(obj)
+  )
+}
+
+#* 格式转换统一入口 (双向)
+#* @post /convert
+function(req) {
+  params <- jsonlite::fromJSON(req$postBody)
+  direction <- params$direction  # "import" | "export"
+
+  if (direction == "import") {
+    convert_to_rds(params$input_path, params$input_format, params$output_path)
+  } else {
+    convert_from_rds(params$input_path, params$output_format, params$output_path)
+  }
+}
+
+
+# ======================================================================
+# 10. 多样本 10X MTX 整合
+#     来源: app-new.R convert_multi_mtx() 逻辑移植
+# ======================================================================
+
+#* 多样本 10X MTX 整合为单个 Seurat RDS
+#* @post /convert_mtx_merge
+function(req) {
+  params <- jsonlite::fromJSON(req$postBody)
+  sample_dirs <- params$sample_dirs    # 各样本目录路径列表
+  sample_names <- params$sample_names  # 各样本名称列表
+  output_path <- params$output_path    # 输出 RDS 路径
+  task_id <- params$task_id            # 任务 ID (用于进度推送)
+
+  if (length(sample_dirs) < 1) stop("请至少提供 1 个样本目录")
+  if (length(sample_dirs) != length(sample_names)) {
+    stop("sample_dirs 和 sample_names 长度不一致")
+  }
+
+  seurat_objects <- list()
+
+  for (i in seq_along(sample_dirs)) {
+    sdir <- sample_dirs[i]
+    sname <- sample_names[i]
+
+    if (!dir.exists(sdir)) stop(paste("样本目录不存在:", sdir))
+
+    # 报告进度
+    if (!is.null(task_id)) {
+      pct <- round((i - 1) / length(sample_dirs) * 80)
+      report_progress(task_id, pct, paste0("读取样本 ", sname, "..."))
+    }
+
+    # 读取 10X 数据
+    matrix_data <- Seurat::Read10X(data.dir = sdir)
+    obj <- Seurat::CreateSeuratObject(
+      counts = matrix_data,
+      project = sname
+    )
+    obj$Sample <- sname
+    seurat_objects[[sname]] <- obj
+  }
+
+  # 合并所有样本
+  if (!is.null(task_id)) {
+    report_progress(task_id, 85, paste0("合并 ", length(seurat_objects), " 个样本..."))
+  }
+
+  if (length(seurat_objects) == 1) {
+    merged_obj <- seurat_objects[[1]]
+  } else {
+    merged_obj <- merge(
+      seurat_objects[[1]],
+      y = seurat_objects[-1],
+      add.cell.ids = names(seurat_objects),
+      project = "Merged_MultiSample"
+    )
+  }
+
+  # 保存
+  if (!is.null(task_id)) {
+    report_progress(task_id, 95, "保存 RDS...")
+  }
+  saveRDS(merged_obj, output_path)
+
+  if (!is.null(task_id)) {
+    report_progress(task_id, 100, "✅ 整合完成")
+  }
+
+  list(
+    status = "success",
+    n_samples = length(seurat_objects),
+    cells = ncol(merged_obj),
+    genes = nrow(merged_obj),
+    file_size_mb = round(file.size(output_path) / 1024 / 1024, 2)
   )
 }

@@ -1,274 +1,471 @@
 /**
- * scCloud v2 — 格式转换页面 (BUG-T4 修复)
- *
- * Phase 3 重写: 对接 POST /api/convert 后端接口
- *
- * 旧系统完全不支持格式转换，用户需手动使用
- * SeuratDisk::SaveH5Seurat() 等 R 命令。
- * 新系统实现一键转换: RDS ↔ H5AD ↔ H5Seurat ↔ 10X
+ * scCloud v2 — 格式转换页面 (重写: 暖白学术风格)
+ * Tab 1: 单文件转换 (导入/导出)
+ * Tab 2: 多样本 MTX 整合
  */
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
-
-
-const FORMATS = [
-  { id: "rds", label: "RDS", desc: "R/Seurat 原生格式", ext: ".rds" },
-  { id: "h5seurat", label: "H5Seurat", desc: "HDF5 Seurat 格式", ext: ".h5seurat" },
-  { id: "h5ad", label: "H5AD", desc: "AnnData/Scanpy 格式", ext: ".h5ad" },
-  { id: "10x", label: "10X Genomics", desc: "CellRanger 输出格式", ext: ".mtx" },
+/* ===== 格式定义 ===== */
+const IMPORT_FORMATS = [
+  { id: "h5ad", label: "H5AD", desc: "AnnData / Scanpy", ext: ".h5ad" },
+  { id: "h5", label: "10X H5", desc: "CellRanger HDF5", ext: ".h5" },
+  { id: "csv", label: "CSV", desc: "逗号分隔表达矩阵", ext: ".csv" },
+  { id: "tsv", label: "TSV/TXT", desc: "制表符分隔矩阵", ext: ".tsv,.txt" },
+  { id: "rds", label: "RDS", desc: "R/Seurat 对象", ext: ".rds" },
 ];
 
+const EXPORT_FORMATS = [
+  { id: "h5ad", label: "H5AD", desc: "AnnData / Scanpy" },
+  { id: "h5seurat", label: "H5Seurat", desc: "HDF5 Seurat" },
+];
+
+/* ===== 接口类型 ===== */
 interface ConvertResult {
-  task_id: string;
   status: string;
-  output_path: string | null;
-  error: string | null;
+  cells?: number;
+  genes?: number;
+  file_size_mb?: number;
+  download_url?: string;
+  output_path?: string;
+  n_samples?: number;
+}
+
+/* ===== 样本条目 ===== */
+interface SampleEntry {
+  id: string;
+  name: string;
+  file: File | null;
+}
+
+/* ===== 带认证下载 ===== */
+async function authDownload(url: string, filename: string) {
+  const token = localStorage.getItem("access_token");
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("下载失败");
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 export default function ConvertPage() {
-  const [inputFormat, setInputFormat] = useState("rds");
-  const [outputFormat, setOutputFormat] = useState("h5ad");
+  const [tab, setTab] = useState<"single" | "mtx">("single");
+
+  // ===== 单文件状态 =====
+  const [direction, setDirection] = useState<"import" | "export">("import");
   const [file, setFile] = useState<File | null>(null);
+  const [inputFormat, setInputFormat] = useState("h5ad");
+  const [outputFormat, setOutputFormat] = useState("h5ad");
   const [converting, setConverting] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ConvertResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleConvert = async () => {
-    if (!file) return;
+  // ===== MTX 整合状态 =====
+  const [samples, setSamples] = useState<SampleEntry[]>([
+    { id: "s1", name: "Sample1", file: null },
+    { id: "s2", name: "Sample2", file: null },
+  ]);
+  const [merging, setMerging] = useState(false);
+  const [mergeResult, setMergeResult] = useState<ConvertResult | null>(null);
+  const [mergeError, setMergeError] = useState<string | null>(null);
 
+  /* ===== 单文件转换 ===== */
+  const handleConvert = useCallback(async () => {
+    if (!file) return;
     setConverting(true);
-    setProgress(0);
     setResult(null);
     setError(null);
 
     try {
       const token = localStorage.getItem("access_token");
+
+      // Step 1: 上传文件
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("input_format", inputFormat);
-      formData.append("output_format", outputFormat);
-
-      /* 模拟进度 — 后续通过 WebSocket 替换 */
-      const progressInterval = setInterval(() => {
-        setProgress((p) => Math.min(p + 5, 90));
-      }, 800);
-
-      const res = await fetch("/api/convert", {
+      const uploadRes = await fetch("/api/convert/upload", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
+      if (!uploadRes.ok) throw new Error(`上传失败: ${await uploadRes.text()}`);
+      const uploadData = await uploadRes.json();
 
-      clearInterval(progressInterval);
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`转换失败: ${text}`);
-      }
-
-      const data: ConvertResult = await res.json();
+      // Step 2: 调用转换
+      const convertRes = await fetch("/api/convert", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          direction,
+          input_path: uploadData.path,
+          input_format: direction === "import" ? inputFormat : undefined,
+          output_format: direction === "export" ? outputFormat : undefined,
+        }),
+      });
+      if (!convertRes.ok) throw new Error(`转换失败: ${await convertRes.text()}`);
+      const data: ConvertResult = await convertRes.json();
       setResult(data);
-      setProgress(100);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "转换失败";
-      setError(msg);
-      setProgress(0);
+      setError(e instanceof Error ? e.message : "转换失败");
     } finally {
       setConverting(false);
     }
+  }, [file, direction, inputFormat, outputFormat]);
+
+  /* ===== MTX 整合 ===== */
+  const handleMerge = useCallback(async () => {
+    const validSamples = samples.filter((s) => s.file && s.name.trim());
+    if (validSamples.length < 1) return;
+    setMerging(true);
+    setMergeResult(null);
+    setMergeError(null);
+
+    try {
+      const token = localStorage.getItem("access_token");
+      const formData = new FormData();
+      validSamples.forEach((s) => {
+        formData.append("sample_names", s.name);
+        formData.append("files", s.file!);
+      });
+
+      const res = await fetch("/api/convert/mtx-merge", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error(`整合失败: ${await res.text()}`);
+      const data: ConvertResult = await res.json();
+      setMergeResult(data);
+    } catch (e) {
+      setMergeError(e instanceof Error ? e.message : "整合失败");
+    } finally {
+      setMerging(false);
+    }
+  }, [samples]);
+
+  const addSample = () => {
+    const id = `s${Date.now()}`;
+    setSamples((prev) => [
+      ...prev,
+      { id, name: `Sample${prev.length + 1}`, file: null },
+    ]);
   };
 
-  /* 清空文件大小显示 */
+  const removeSample = (id: string) => {
+    setSamples((prev) => prev.filter((s) => s.id !== id));
+  };
+
   const fileInfo = file
     ? `${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`
     : null;
 
+  /* ===== 渲染 ===== */
   return (
-    <div className="animate-fade-in space-y-6">
+    <div className="animate-fade-in space-y-5">
+      {/* 页面标题 */}
       <div>
-        <h1 className="text-2xl font-bold text-stone-100">格式转换</h1>
-        <p className="text-sm text-stone-500 mt-1">
-          在 RDS、H5AD、H5Seurat、10X 格式之间转换
+        <h1 className="text-xl font-bold" style={{ color: "var(--clr-text)" }}>
+          格式转换
+        </h1>
+        <p className="text-xs mt-1" style={{ color: "var(--clr-text-faint)" }}>
+          在 RDS、H5AD、H5、CSV/TSV 之间转换，或整合多样本 10X 数据
         </p>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6">
-        {/* Input Format */}
-        <div className="glass-card p-6">
-          <h3 className="font-semibold text-stone-200 mb-4">📥 输入格式</h3>
-          <div className="space-y-2">
-            {FORMATS.map((f) => (
-              <label
-                key={f.id}
-                className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${
-                  inputFormat === f.id
-                    ? "bg-amber-500/10 border border-amber-500/30"
-                    : "hover:bg-stone-800/50 border border-transparent"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="input"
-                  value={f.id}
-                  checked={inputFormat === f.id}
-                  onChange={() => {
-                    setInputFormat(f.id);
-                    /* 如果输出和输入一样，自动切换 */
-                    if (outputFormat === f.id) {
-                      const alt = FORMATS.find((x) => x.id !== f.id);
-                      if (alt) setOutputFormat(alt.id);
-                    }
+      {/* Tab 切换 */}
+      <div className="flex gap-1 p-1 rounded-lg" style={{ background: "var(--clr-border)" }}>
+        {(
+          [
+            ["single", "单文件转换"],
+            ["mtx", "多样本 MTX 整合"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className="flex-1 py-2 px-4 text-sm font-medium rounded-md transition-all"
+            style={{
+              background: tab === key ? "white" : "transparent",
+              color: tab === key ? "var(--clr-amber-dark)" : "var(--clr-text-faint)",
+              boxShadow: tab === key ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ===== Tab 1: 单文件转换 ===== */}
+      {tab === "single" && (
+        <div className="space-y-4">
+          {/* 方向选择 */}
+          <div className="card-section p-5 rounded-xl" style={{ background: "var(--clr-card)", border: "1px solid var(--clr-border)" }}>
+            <p className="card-label mb-3">转换方向</p>
+            <div className="flex gap-3">
+              {(
+                [
+                  ["import", "📥 导入 → RDS", "将其他格式转为 Seurat RDS"],
+                  ["export", "📤 RDS → 导出", "将 RDS 导出为其他格式"],
+                ] as const
+              ).map(([dir, title, desc]) => (
+                <button
+                  key={dir}
+                  onClick={() => { setDirection(dir); setResult(null); setError(null); }}
+                  className="flex-1 p-4 rounded-lg text-left transition-all"
+                  style={{
+                    background: direction === dir ? "var(--clr-gold-soft)" : "var(--clr-bg)",
+                    border: `1.5px solid ${direction === dir ? "var(--clr-amber)" : "var(--clr-border)"}`,
                   }}
-                  className="accent-amber-500"
-                />
-                <div>
-                  <div className="text-sm font-medium text-stone-200">{f.label}</div>
-                  <div className="text-xs text-stone-500">{f.desc}</div>
-                </div>
-              </label>
-            ))}
-          </div>
-
-          <div className="mt-4">
-            <input
-              type="file"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="w-full text-xs text-stone-400 file:mr-2 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-amber-600 file:text-white file:text-xs file:cursor-pointer hover:file:bg-amber-500"
-            />
-            {fileInfo && (
-              <p className="text-xs text-stone-600 mt-1">{fileInfo}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Center: Arrow + Convert Button */}
-        <div className="flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <div className="text-4xl">→</div>
-            <button
-              onClick={handleConvert}
-              disabled={!file || converting || inputFormat === outputFormat}
-              className="px-6 py-3 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 disabled:from-stone-700 disabled:to-stone-600 disabled:text-stone-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-amber-900/20 flex items-center gap-2"
-            >
-              {converting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  转换中...
-                </>
-              ) : (
-                "开始转换"
-              )}
-            </button>
-
-            {/* 进度条 */}
-            {converting && (
-              <div className="w-48 mx-auto">
-                <div className="h-1.5 bg-stone-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full transition-all duration-500"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-                <p className="text-xs text-stone-500 mt-1">{progress}%</p>
-              </div>
-            )}
-
-            {/* 错误提示 */}
-            {error && (
-              <div className="p-3 bg-red-950/30 border border-red-800/30 rounded-lg max-w-xs mx-auto">
-                <p className="text-xs text-red-400 break-all">{error}</p>
-              </div>
-            )}
-
-            {/* 成功结果 */}
-            {result && result.status === "completed" && (
-              <div className="p-3 bg-green-950/20 border border-green-800/30 rounded-lg max-w-xs mx-auto">
-                <p className="text-xs text-green-400 font-medium">✓ 转换完成</p>
-                {result.output_path && (
-                  <p className="text-[10px] text-stone-500 mt-1 break-all font-mono">
-                    {result.output_path}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {result && result.status === "failed" && (
-              <div className="p-3 bg-red-950/30 border border-red-800/30 rounded-lg max-w-xs mx-auto">
-                <p className="text-xs text-red-400">✗ {result.error || "转换失败"}</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Output Format */}
-        <div className="glass-card p-6">
-          <h3 className="font-semibold text-stone-200 mb-4">📤 输出格式</h3>
-          <div className="space-y-2">
-            {FORMATS.filter((f) => f.id !== inputFormat).map((f) => (
-              <label
-                key={f.id}
-                className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${
-                  outputFormat === f.id
-                    ? "bg-amber-500/10 border border-amber-500/30"
-                    : "hover:bg-stone-800/50 border border-transparent"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="output"
-                  value={f.id}
-                  checked={outputFormat === f.id}
-                  onChange={() => setOutputFormat(f.id)}
-                  className="accent-amber-500"
-                />
-                <div>
-                  <div className="text-sm font-medium text-stone-200">{f.label}</div>
-                  <div className="text-xs text-stone-500">{f.desc}</div>
-                </div>
-              </label>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Conversion Matrix */}
-      <div className="glass-card p-6">
-        <h3 className="font-semibold text-stone-200 mb-4">支持的转换矩阵</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-stone-700">
-                <th className="text-left py-2 px-3 text-stone-400">输入 ↓ / 输出 →</th>
-                <th className="py-2 px-3 text-stone-400">RDS</th>
-                <th className="py-2 px-3 text-stone-400">H5Seurat</th>
-                <th className="py-2 px-3 text-stone-400">H5AD</th>
-                <th className="py-2 px-3 text-stone-400">10X</th>
-              </tr>
-            </thead>
-            <tbody>
-              {["RDS", "H5Seurat", "H5AD", "10X"].map((row) => (
-                <tr key={row} className="border-b border-stone-800/50">
-                  <td className="py-2 px-3 font-medium text-stone-300">{row}</td>
-                  {["RDS", "H5Seurat", "H5AD", "10X"].map((col) => (
-                    <td key={col} className="py-2 px-3 text-center">
-                      {row === col ? (
-                        <span className="text-stone-600">—</span>
-                      ) : (
-                        <span className="text-green-400">✓</span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
+                >
+                  <div className="text-sm font-semibold" style={{ color: direction === dir ? "var(--clr-amber-dark)" : "var(--clr-text)" }}>{title}</div>
+                  <div className="text-xs mt-1" style={{ color: "var(--clr-text-faint)" }}>{desc}</div>
+                </button>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* 左侧: 上传 + 格式选择 */}
+            <div className="p-5 rounded-xl" style={{ background: "var(--clr-card)", border: "1px solid var(--clr-border)" }}>
+              <p className="card-label mb-3">
+                {direction === "import" ? "上传源文件" : "上传 RDS 文件"}
+              </p>
+
+              {/* 文件上传 */}
+              <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-lg cursor-pointer transition-all hover:border-[var(--clr-amber)]" style={{ border: "2px dashed var(--clr-border)", background: "var(--clr-bg)" }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: "var(--clr-amber)" }}>
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span className="text-xs" style={{ color: "var(--clr-text-faint)" }}>
+                  点击或拖拽上传
+                </span>
+                <input
+                  type="file"
+                  className="hidden"
+                  accept={direction === "import" ? ".h5ad,.h5,.csv,.tsv,.txt,.rds" : ".rds"}
+                  onChange={(e) => { setFile(e.target.files?.[0] || null); setResult(null); setError(null); }}
+                />
+              </label>
+              {fileInfo && (
+                <p className="text-xs mt-2 font-mono" style={{ color: "var(--clr-text-faint)" }}>{fileInfo}</p>
+              )}
+
+              {/* 格式选择 */}
+              <div className="mt-4">
+                <p className="card-label mb-2">
+                  {direction === "import" ? "输入格式" : "输出格式"}
+                </p>
+                <div className="space-y-1.5">
+                  {(direction === "import" ? IMPORT_FORMATS : EXPORT_FORMATS).map((f) => {
+                    const selected = direction === "import" ? inputFormat === f.id : outputFormat === f.id;
+                    return (
+                      <label
+                        key={f.id}
+                        className="flex items-center gap-2.5 p-2.5 rounded-lg cursor-pointer transition-all"
+                        style={{
+                          background: selected ? "var(--clr-gold-soft)" : "transparent",
+                          border: `1px solid ${selected ? "var(--clr-amber)" : "transparent"}`,
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="format"
+                          checked={selected}
+                          onChange={() => direction === "import" ? setInputFormat(f.id) : setOutputFormat(f.id)}
+                          className="accent-[var(--clr-amber)]"
+                        />
+                        <div>
+                          <span className="text-sm font-medium" style={{ color: "var(--clr-text)" }}>{f.label}</span>
+                          <span className="text-xs ml-2" style={{ color: "var(--clr-text-faint)" }}>{f.desc}</span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* 右侧: 转换按钮 + 结果 */}
+            <div className="p-5 rounded-xl flex flex-col" style={{ background: "var(--clr-card)", border: "1px solid var(--clr-border)" }}>
+              <p className="card-label mb-3">转换操作</p>
+
+              <button
+                onClick={handleConvert}
+                disabled={!file || converting}
+                className="w-full py-3 rounded-lg font-semibold text-sm text-white transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                style={{ background: "linear-gradient(135deg, var(--clr-amber-dark), var(--clr-amber))" }}
+              >
+                {converting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    转换中...
+                  </>
+                ) : (
+                  <>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" /><polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" /></svg>
+                    开始转换
+                  </>
+                )}
+              </button>
+
+              {/* 错误 */}
+              {error && (
+                <div className="mt-4 p-3 rounded-lg text-xs" style={{ background: "rgba(220,38,38,0.06)", border: "1px solid rgba(220,38,38,0.15)", color: "#b91c1c" }}>
+                  ✗ {error}
+                </div>
+              )}
+
+              {/* 成功 */}
+              {result && result.status === "success" && (
+                <div className="mt-4 p-4 rounded-lg space-y-2" style={{ background: "rgba(22,163,74,0.05)", border: "1px solid rgba(22,163,74,0.15)" }}>
+                  <p className="text-sm font-semibold" style={{ color: "#15803d" }}>✓ 转换完成</p>
+                  <div className="text-xs space-y-1" style={{ color: "var(--clr-text-faint)" }}>
+                    {result.cells != null && <p>细胞数: <strong style={{ color: "var(--clr-text)" }}>{result.cells.toLocaleString()}</strong></p>}
+                    {result.genes != null && <p>基因数: <strong style={{ color: "var(--clr-text)" }}>{result.genes.toLocaleString()}</strong></p>}
+                    {result.file_size_mb != null && <p>文件大小: <strong style={{ color: "var(--clr-text)" }}>{result.file_size_mb} MB</strong></p>}
+                  </div>
+                  {result.download_url && (
+                    <button
+                      onClick={() => authDownload(result.download_url!, `converted_${file?.name || "output"}.rds`)}
+                      className="mt-2 w-full py-2 rounded-lg text-sm font-medium text-white transition-all"
+                      style={{ background: "linear-gradient(135deg, #15803d, #22c55e)" }}
+                    >
+                      📥 下载转换结果
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* 说明 */}
+              <div className="mt-auto pt-4">
+                <div className="p-3 rounded-lg text-xs" style={{ background: "var(--clr-bg)", color: "var(--clr-text-faint)" }}>
+                  <p className="font-medium mb-1" style={{ color: "var(--clr-text)" }}>📋 支持的转换</p>
+                  <p>• 导入: H5AD / 10X H5 / CSV / TSV → Seurat RDS</p>
+                  <p>• 导出: RDS → H5AD / H5Seurat</p>
+                  <p>• 转换后的 RDS 可直接用于分析流程</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ===== Tab 2: 多样本 MTX 整合 ===== */}
+      {tab === "mtx" && (
+        <div className="space-y-4">
+          {/* 说明 */}
+          <div className="p-4 rounded-xl text-xs" style={{ background: "var(--clr-gold-soft)", border: "1px solid rgba(200,96,25,0.15)", color: "var(--clr-amber-dark)" }}>
+            <p className="font-semibold mb-1">📁 使用说明</p>
+            <p>每个样本上传一个 ZIP 压缩包，包含 10X CellRanger 输出的 3 个文件：</p>
+            <p className="font-mono mt-1">matrix.mtx.gz、features.tsv.gz、barcodes.tsv.gz</p>
+          </div>
+
+          {/* 样本列表 */}
+          <div className="p-5 rounded-xl" style={{ background: "var(--clr-card)", border: "1px solid var(--clr-border)" }}>
+            <p className="card-label mb-3">样本列表</p>
+            <div className="space-y-3" style={{ maxHeight: "400px", overflowY: "auto" }}>
+              {samples.map((s, idx) => (
+                <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg" style={{ background: "var(--clr-bg)", border: "1px solid var(--clr-border)" }}>
+                  <span className="text-xs font-mono w-6 text-center" style={{ color: "var(--clr-text-faint)" }}>#{idx + 1}</span>
+                  <input
+                    type="text"
+                    value={s.name}
+                    onChange={(e) => setSamples((prev) => prev.map((x) => x.id === s.id ? { ...x, name: e.target.value } : x))}
+                    className="text-sm px-2 py-1 rounded border w-32"
+                    style={{ borderColor: "var(--clr-border)", color: "var(--clr-text)", background: "white" }}
+                    placeholder="样本名"
+                  />
+                  <label className="flex-1 flex items-center gap-2 text-xs cursor-pointer" style={{ color: s.file ? "#15803d" : "var(--clr-text-faint)" }}>
+                    <input
+                      type="file"
+                      accept=".zip"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] || null;
+                        setSamples((prev) => prev.map((x) => x.id === s.id ? { ...x, file: f } : x));
+                      }}
+                    />
+                    {s.file ? `✓ ${s.file.name} (${(s.file.size / 1024 / 1024).toFixed(1)}MB)` : "点击上传 ZIP"}
+                  </label>
+                  {samples.length > 1 && (
+                    <button
+                      onClick={() => removeSample(s.id)}
+                      className="text-xs px-2 py-1 rounded transition-colors"
+                      style={{ color: "var(--clr-text-faint)" }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={addSample}
+              className="mt-3 w-full py-2 rounded-lg text-sm font-medium transition-all"
+              style={{ border: "1px dashed var(--clr-amber)", color: "var(--clr-amber-dark)", background: "transparent" }}
+            >
+              + 添加样本
+            </button>
+          </div>
+
+          {/* 整合按钮 */}
+          <button
+            onClick={handleMerge}
+            disabled={merging || samples.filter((s) => s.file).length < 1}
+            className="w-full py-3 rounded-lg font-semibold text-sm text-white transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+            style={{ background: "linear-gradient(135deg, var(--clr-amber-dark), var(--clr-amber))" }}
+          >
+            {merging ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                整合中...
+              </>
+            ) : (
+              `开始整合 (${samples.filter((s) => s.file).length} 个样本)`
+            )}
+          </button>
+
+          {/* 整合错误 */}
+          {mergeError && (
+            <div className="p-3 rounded-lg text-xs" style={{ background: "rgba(220,38,38,0.06)", border: "1px solid rgba(220,38,38,0.15)", color: "#b91c1c" }}>
+              ✗ {mergeError}
+            </div>
+          )}
+
+          {/* 整合结果 */}
+          {mergeResult && mergeResult.status === "success" && (
+            <div className="p-4 rounded-xl space-y-2" style={{ background: "rgba(22,163,74,0.05)", border: "1px solid rgba(22,163,74,0.15)" }}>
+              <p className="text-sm font-semibold" style={{ color: "#15803d" }}>✓ 整合完成</p>
+              <div className="text-xs space-y-1" style={{ color: "var(--clr-text-faint)" }}>
+                <p>样本数: <strong style={{ color: "var(--clr-text)" }}>{mergeResult.n_samples}</strong></p>
+                {mergeResult.cells != null && <p>总细胞数: <strong style={{ color: "var(--clr-text)" }}>{mergeResult.cells.toLocaleString()}</strong></p>}
+                {mergeResult.genes != null && <p>总基因数: <strong style={{ color: "var(--clr-text)" }}>{mergeResult.genes.toLocaleString()}</strong></p>}
+                {mergeResult.file_size_mb != null && <p>文件大小: <strong style={{ color: "var(--clr-text)" }}>{mergeResult.file_size_mb} MB</strong></p>}
+              </div>
+              {mergeResult.download_url && (
+                <button
+                  onClick={() => authDownload(mergeResult.download_url!, `merged_${samples.length}samples.rds`)}
+                  className="mt-2 w-full py-2 rounded-lg text-sm font-medium text-white transition-all"
+                  style={{ background: "linear-gradient(135deg, #15803d, #22c55e)" }}
+                >
+                  📥 下载整合 RDS
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
