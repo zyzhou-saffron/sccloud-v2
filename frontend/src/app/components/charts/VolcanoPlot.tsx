@@ -79,8 +79,13 @@ export default function VolcanoPlot({
     return { upGenes: up, downGenes: down, nsGenes: ns };
   }, [data, fcThreshold, pThreshold]);
 
-  // 计算 -log10(p_val_adj)，p=0 时 cap 到 300
-  const negLog10 = (p: number) => (p <= 0 ? 300 : -Math.log10(p));
+  // 计算 -log10(p_val_adj)，cap 到 100 防止极大值拉伸 Y 轴压缩底层点
+  const MAX_Y_CAP = 100;
+  const negLog10 = (p: number) => {
+    if (p <= 0) return MAX_Y_CAP;
+    const val = -Math.log10(p);
+    return val > MAX_Y_CAP ? MAX_Y_CAP : val;
+  };
 
   // Clamp log2FC 到 ±MAX_FC，防止极端值拉伸 X 轴
   const clampFC = (fc: number) => Math.max(-MAX_FC, Math.min(MAX_FC, fc));

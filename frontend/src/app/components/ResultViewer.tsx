@@ -1400,7 +1400,7 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                       <VolcanoPlot
                         data={tab4Volcano}
                         title={`${tab4G1.join('+')} vs ${tab4G2.join('+')}`}
-                        height={400}
+                        height={550}
                       />
                     </div>
                   )}
