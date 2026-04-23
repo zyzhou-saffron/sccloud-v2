@@ -1002,6 +1002,7 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
   const [tab4G1, setTab4G1] = useState<string[]>([]);
   const [tab4G2, setTab4G2] = useState<string[]>([]);
   const [tab4TaskId, setTab4TaskId] = useState<string | null>(null);
+  const [tab4Task, setTab4Task] = useState<Task | null>(null);
   const [tab4Data, setTab4Data] = useState<GeneRow[] | null>(null);
   const [tab4Loading, setTab4Loading] = useState(false);
   const [tab4Error, setTab4Error] = useState<string | null>(null);
@@ -1368,8 +1369,9 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                  onClick={() => {
                    const g1Str = tab4G1.join(',');
                    const g2Str = tab4G2.join(',');
-                   runSubTask("markers_pairwise", { ...task.params, cluster_1: g1Str, cluster_2: g2Str }, setTab4Loading, setTab4Error, (tid: string, res: any) => {
+                   runSubTask("markers_pairwise", { ...task.params, cluster_1: g1Str, cluster_2: g2Str }, setTab4Loading, setTab4Error, (tid: string, res: any, completedTask: Task) => {
                        setTab4TaskId(tid);
+                       setTab4Task(completedTask);
                        setTab4Data((res.top_genes ?? []) as GeneRow[]);
                        // 火山图数据
                        const vd = res.volcano_data;
@@ -1445,15 +1447,25 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                       </table>
                     </div>
                   </div>
-                  <AuthDownloadLink 
-                    url={`/api/tasks/${tab4TaskId}/plot?name=${encodeURIComponent(`diff_genes_${tab4G1.join('+')}_vs_${tab4G2.join('+')}.csv`)}`} 
-                    filename={`diff_genes_${tab4G1.join('+')}_vs_${tab4G2.join('+')}.csv`}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90"
-                    style={{ background: "var(--clr-amber)", boxShadow: "0 2px 4px rgba(200,96,25,0.2)" }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    下载分组差异基因表 (.csv)
-                  </AuthDownloadLink>
+                  {(() => {
+                    const ts = tab4Task?.completed_at ? tab4Task.completed_at.replace(/[-:T]/g, '').slice(0, 14) : "";
+                    const canonicalCsvName = `diff_genes_${tab4G1.join('+')}_vs_${tab4G2.join('+')}.csv`;
+                    const downloadCsvName = tab4Task 
+                      ? `${tab4Task.project_id}_markers_pairwise_${ts}_diff_genes.csv` 
+                      : canonicalCsvName;
+
+                    return (
+                      <AuthDownloadLink 
+                        url={`/api/tasks/${tab4TaskId}/plot?name=${encodeURIComponent(canonicalCsvName)}`} 
+                        filename={downloadCsvName}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90"
+                        style={{ background: "var(--clr-amber)", boxShadow: "0 2px 4px rgba(200,96,25,0.2)" }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        下载分组差异基因表 (.csv)
+                      </AuthDownloadLink>
+                    );
+                  })()}
                 </div>);
               })()}
           </div>
