@@ -7,7 +7,24 @@
  */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { OrthographicView } from "@deck.gl/core";
+import { ScatterplotLayer } from "@deck.gl/layers";
+import DeckGL from "@deck.gl/react";
+
+/* 样本色板 — 与 DeckScatterPlot 一致 */
+const SAMPLE_PALETTE: [number, number, number][] = [
+  [249, 115, 22],  // salmon/orange
+  [6, 182, 212],   // cyan
+  [236, 72, 153],  // pink
+  [16, 185, 129],  // emerald
+  [139, 92, 246],  // violet
+  [59, 130, 246],  // blue
+  [245, 158, 11],  // amber
+  [225, 29, 72],   // rose
+  [14, 165, 233],  // sky
+  [132, 204, 22],  // lime
+];
 
 // ===== 类型定义 =====
 
@@ -48,6 +65,15 @@ interface QCResult {
   umi_gene_after: UmiRow[];
   /** R 引擎生成的样本相关性散点图路径 */
   corr_plot_path?: string | string[];
+  /** 散点原始数据（用于 WebGL 渲染） */
+  corr_scatter_data?: {
+    nCount_RNA?: number[];
+    nFeature_RNA?: number[];
+    percent_mt?: number[];
+    sample?: string[];
+    cor_mt?: number;
+    cor_feature?: number;
+  };
   /** R 引擎生成的过滤前后 VlnPlot 路径 */
   violin_plot_path?: string | string[];
   /** QC 后 RDS 的归档路径 */
@@ -275,10 +301,21 @@ function FilterResultTab({ data, onDownload }: { data: QCResult; onDownload: (p:
   );
 }
 
-// ===== Tab 2: 样本相关性 =====
+// ===== Tab 2: 样本相关性（WebGL 交互式双散点图） =====
 
 function CorrTab({ data, taskId, token, onDownload }: { data: QCResult; taskId: string; token: string; onDownload: (p: unknown, f: string) => void }) {
   const src = plotUrl(taskId, data.corr_plot_path);
+  const scatter = data.corr_scatter_data as {
+    nCount_RNA?: number[];
+    nFeature_RNA?: number[];
+    percent_mt?: number[];
+    sample?: string[];
+    cor_mt?: number;
+    cor_feature?: number;
+  } | undefined;
+
+  // 如果有原始数据，优先渲染 WebGL；否则降级为 PNG
+  const hasScatter = scatter && scatter.nCount_RNA && scatter.nCount_RNA.length > 0;
 
   return (
     <div className="space-y-4">
@@ -287,7 +324,7 @@ function CorrTab({ data, taskId, token, onDownload }: { data: QCResult; taskId: 
         <button
           style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", flexShrink: 0, color: "var(--clr-amber)", transition: "color 0.2s" }}
           onClick={() => onDownload(data.corr_plot_path, "qc_correlation.png")}
-          title="下载相关性图"
+          title="下载 R 原版高清图"
           onMouseEnter={(e) => (e.currentTarget.style.color = "var(--clr-amber-dark)")}
           onMouseLeave={(e) => (e.currentTarget.style.color = "var(--clr-amber)")}
         >
@@ -295,7 +332,28 @@ function CorrTab({ data, taskId, token, onDownload }: { data: QCResult; taskId: 
         </button>
       </div>
 
-      {src ? (
+      {hasScatter ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <CorrScatterPanel
+            xData={scatter.nCount_RNA!}
+            yData={scatter.percent_mt!}
+            samples={scatter.sample!}
+            xLabel="nCount_RNA"
+            yLabel="percent.mt"
+            corr={scatter.cor_mt ?? 0}
+            token={token}
+          />
+          <CorrScatterPanel
+            xData={scatter.nCount_RNA!}
+            yData={scatter.nFeature_RNA!}
+            samples={scatter.sample!}
+            xLabel="nCount_RNA"
+            yLabel="nFeature_RNA"
+            corr={scatter.cor_feature ?? 0}
+            token={token}
+          />
+        </div>
+      ) : src ? (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           <AuthImg
             src={src}
@@ -416,6 +474,185 @@ function UmiTab({ data, onDownload }: { data: QCResult; onDownload: (p: unknown,
       </div>
       <div><div className="card-label">过滤前 · UMI/Gene 统计</div><UmiTable rows={data.umi_gene_before} /></div>
       <div><div className="card-label" style={{ color: "var(--clr-success)" }}>过滤后 · UMI/Gene 统计</div><UmiTable rows={data.umi_gene_after} /></div>
+    </div>
+  );
+}
+
+// ===== CorrScatterPanel — 单个 WebGL 相关性散点图 =====
+
+interface CorrScatterPanelProps {
+  xData: number[];
+  yData: number[];
+  samples: string[];
+  xLabel: string;
+  yLabel: string;
+  corr: number;
+  token: string;
+}
+
+function CorrScatterPanel({ xData, yData, samples, xLabel, yLabel, corr }: CorrScatterPanelProps) {
+  const [hoverInfo, setHoverInfo] = useState<{
+    x: number; y: number;
+    object?: { xVal: number; yVal: number; sample: string };
+  } | null>(null);
+
+  // 构建点数组
+  const points = useMemo(() => {
+    return xData.map((_, i) => ({
+      xVal: xData[i],
+      yVal: yData[i],
+      sample: samples[i],
+    }));
+  }, [xData, yData, samples]);
+
+  // 样本列表（排序）
+  const sampleList = useMemo(() => {
+    const unique = Array.from(new Set(samples));
+    unique.sort();
+    return unique;
+  }, [samples]);
+
+  // 样本 → 颜色
+  const colorMap = useMemo(() => {
+    const m = new Map<string, [number, number, number]>();
+    sampleList.forEach((s, i) => m.set(s, SAMPLE_PALETTE[i % SAMPLE_PALETTE.length]));
+    return m;
+  }, [sampleList]);
+
+  // 视口
+  const initialViewState = useMemo(() => {
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < xData.length; i++) {
+      if (xData[i] < minX) minX = xData[i];
+      if (xData[i] > maxX) maxX = xData[i];
+      if (yData[i] < minY) minY = yData[i];
+      if (yData[i] > maxY) maxY = yData[i];
+    }
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const rangeX = maxX - minX || 1;
+    const rangeY = maxY - minY || 1;
+    const maxRange = Math.max(rangeX, rangeY);
+    const zoom = Math.log2(380 / maxRange) - 0.3;
+    return { target: [cx, cy], zoom: Math.max(-2, Math.min(zoom, 10)) };
+  }, [xData, yData]);
+
+  const onHover = useCallback((info: { x: number; y: number; object?: unknown }) => {
+    if (info.object) {
+      setHoverInfo(info as { x: number; y: number; object: { xVal: number; yVal: number; sample: string } });
+    } else {
+      setHoverInfo(null);
+    }
+  }, []);
+
+  const layer = new ScatterplotLayer({
+    id: `corr-${yLabel}`,
+    data: points,
+    getPosition: (d: { xVal: number; yVal: number }) => [d.xVal, d.yVal],
+    getFillColor: (d: { sample: string }) => {
+      const c = colorMap.get(d.sample) || [128, 128, 128];
+      return [c[0], c[1], c[2], 180];
+    },
+    getRadius: 3,
+    radiusUnits: "pixels" as const,
+    radiusMinPixels: 1.5,
+    radiusMaxPixels: 8,
+    pickable: true,
+    onHover,
+  });
+
+  return (
+    <div>
+      {/* 相关系数标题 */}
+      <p className="text-center text-lg font-bold mb-2" style={{ color: "var(--clr-text)" }}>
+        {corr}
+      </p>
+
+      <div className="relative" style={{ height: 420 }}>
+        {/* Y 轴标签 */}
+        <div
+          className="absolute text-xs font-medium"
+          style={{
+            left: -4,
+            top: "50%",
+            transform: "translateY(-50%) rotate(-90deg)",
+            color: "var(--clr-text-muted)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {yLabel}
+        </div>
+
+        {/* deck.gl 画布 */}
+        <div
+          className="rounded-lg overflow-hidden"
+          style={{
+            marginLeft: 28,
+            height: 400,
+            background: "#FFFFFF",
+            border: "1px solid rgba(45,41,38,0.08)",
+          }}
+        >
+          <DeckGL
+            views={new OrthographicView({})}
+            initialViewState={initialViewState}
+            controller={true}
+            layers={[layer]}
+            style={{ position: "relative", width: "100%", height: "100%" }}
+          />
+        </div>
+
+        {/* Tooltip */}
+        {hoverInfo?.object && (
+          <div
+            className="absolute pointer-events-none z-10 px-2.5 py-1.5 rounded-md text-xs"
+            style={{
+              left: hoverInfo.x + 12,
+              top: hoverInfo.y - 36,
+              background: "rgba(30,27,24,0.92)",
+              color: "#fff",
+              backdropFilter: "blur(4px)",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            }}
+          >
+            <div className="font-semibold" style={{ color: "var(--clr-gold)" }}>
+              {hoverInfo.object.sample}
+            </div>
+            <div className="opacity-80">{xLabel}: {hoverInfo.object.xVal.toLocaleString()}</div>
+            <div className="opacity-80">{yLabel}: {hoverInfo.object.yVal.toFixed(2)}</div>
+          </div>
+        )}
+
+        {/* 图例 */}
+        <div
+          className="absolute top-2 right-2 z-10 rounded-md px-2.5 py-1.5"
+          style={{
+            background: "rgba(255,255,255,0.92)",
+            backdropFilter: "blur(8px)",
+            border: "1px solid rgba(45,41,38,0.08)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+          }}
+        >
+          <p className="text-[10px] font-semibold mb-1 uppercase tracking-wider" style={{ color: "var(--clr-text-faint)" }}>
+            Identity
+          </p>
+          {sampleList.map((s) => {
+            const c = colorMap.get(s) || [128, 128, 128];
+            return (
+              <div key={s} className="flex items-center gap-1.5 text-xs py-0.5">
+                <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: `rgb(${c[0]},${c[1]},${c[2]})` }} />
+                <span style={{ color: "var(--clr-text)" }}>{s}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* X 轴标签 */}
+      <p className="text-center text-xs font-medium mt-1" style={{ color: "var(--clr-text-muted)", marginLeft: 28 }}>
+        {xLabel}
+      </p>
     </div>
   );
 }

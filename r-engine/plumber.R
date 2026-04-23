@@ -160,6 +160,16 @@ function(req) {
   print(my_distPlot1(exp))
   dev.off()
 
+  # ---- 提取散点原始数据供前端 WebGL 渲染 ----
+  corr_scatter_data <- list(
+    nCount_RNA  = as.numeric(exp$nCount_RNA),
+    nFeature_RNA = as.numeric(exp$nFeature_RNA),
+    percent_mt  = as.numeric(exp[["percent.mt"]]),
+    sample      = as.character(exp$Sample),
+    cor_mt      = round(cor(exp$nCount_RNA, exp[["percent.mt"]]), 2),
+    cor_feature = round(cor(exp$nCount_RNA, exp$nFeature_RNA), 2)
+  )
+
   report(60, "过滤细胞...")
 
   # 过滤参数 (来自前端，已在上方从 body$params 解包)
@@ -233,6 +243,7 @@ function(req) {
     umi_gene_before = umiGene,
     umi_gene_after = umiGene1,
     corr_plot_path = corr_plot_path,
+    corr_scatter_data = corr_scatter_data,
     violin_plot_path = vln_plot_path,
     mito_csv_path = mito_csv_path,
     umi_csv_path = umi_csv_path
