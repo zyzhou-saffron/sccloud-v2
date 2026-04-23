@@ -425,6 +425,44 @@ function AnalysisPageContent() {
                 {step.label}
               </h3>
 
+              {/* 通用输入数据指示器 — 非 QC 步骤显示前置步骤的输出 RDS */}
+              {(() => {
+                const INPUT_MAP: Record<string, { prereqId: string; loadedLabel: string; rdsFile: string; missingLabel: string }> = {
+                  normalize: { prereqId: "qc", loadedLabel: "已加载质控输出", rdsFile: "seurat_qc.rds", missingLabel: "需要先完成 Step 1 数据预处理" },
+                  reduce:    { prereqId: "normalize", loadedLabel: "已加载标准化输出", rdsFile: "seurat_normalized.rds", missingLabel: "需要先完成 Step 2 数据标准化" },
+                  cluster:   { prereqId: "reduce", loadedLabel: "已加载降维输出", rdsFile: "seurat_reduced.rds", missingLabel: "需要先完成 Step 3 数据降维" },
+                  markers:   { prereqId: "cluster", loadedLabel: "已加载聚类输出", rdsFile: "seurat_clustered.rds", missingLabel: "需要先完成 Step 4 批次聚类" },
+                  enrich:    { prereqId: "markers", loadedLabel: "已加载差异基因输出", rdsFile: "diff_genes.csv", missingLabel: "需要先完成 Step 5 差异基因" },
+                  marker_expr: { prereqId: "cluster", loadedLabel: "已加载聚类输出", rdsFile: "seurat_clustered.rds", missingLabel: "需要先完成 Step 4 批次聚类" },
+                  annotate:  { prereqId: "cluster", loadedLabel: "已加载聚类输出", rdsFile: "seurat_clustered.rds", missingLabel: "需要先完成 Step 4 批次聚类" },
+                };
+                const info = INPUT_MAP[step.id];
+                if (!info) return null;
+                const ready = taskCache[info.prereqId]?.status === "completed";
+                return (
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>输入数据</label>
+                    <div
+                      className="flex items-center justify-center gap-2 w-full py-2 text-xs border border-dashed rounded mb-1.5"
+                      style={{
+                        borderColor: ready ? "#C86019" : "var(--clr-border)",
+                        color: ready ? "#C86019" : "var(--clr-text-faint)",
+                        background: ready ? "rgba(200,96,25,0.04)" : undefined,
+                        cursor: "default",
+                      }}
+                    >
+                      <span>{ready ? info.loadedLabel : info.missingLabel}</span>
+                    </div>
+                    {ready && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2D8A56" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span className="flex-1 truncate text-[11px]" style={{ color: "var(--clr-text-muted)" }}>{info.rdsFile}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* QC 参数 */}
               {step.id === "qc" && (
                 <>
@@ -542,29 +580,6 @@ function AnalysisPageContent() {
 
               {step.id === "normalize" && (
                 <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>输入数据</label>
-                  {/* 模拟已上传文件样式 — 读取上一步 QC 输出 */}
-                  <div
-                    className="flex items-center justify-center gap-2 w-full py-2 text-xs border border-dashed rounded mb-1.5"
-                    style={{
-                      borderColor: taskCache.qc?.status === "completed" ? "#C86019" : "var(--clr-border)",
-                      color: taskCache.qc?.status === "completed" ? "#C86019" : "var(--clr-text-faint)",
-                      background: taskCache.qc?.status === "completed" ? "rgba(200,96,25,0.04)" : undefined,
-                      cursor: "default",
-                    }}
-                  >
-                    {taskCache.qc?.status === "completed" ? (
-                      <span>已加载质控输出</span>
-                    ) : (
-                      <span>需要先完成 Step 1 数据预处理</span>
-                    )}
-                  </div>
-                  {taskCache.qc?.status === "completed" && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2D8A56" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                      <span className="flex-1 truncate text-[11px]" style={{ color: "var(--clr-text-muted)" }}>seurat_qc.rds</span>
-                    </div>
-                  )}
                   <p className="text-[10px] mt-2" style={{ color: "var(--clr-text-faint)" }}>使用 SCTransform + glmGamPoi 方法进行标准化。</p>
                 </div>
               )}
