@@ -80,18 +80,17 @@ export default function DeckScatterPlot({
   // 将平行数组 → 对象数组（仅在数据变化时重算）
   const points = useMemo(() => (data ? toPoints(data) : []), [data]);
 
-  // 提取唯一聚类列表（保持原始顺序）
+  // 提取唯一聚类列表并按自然数值排序（C1, C2, ..., C10）
   const clusters = useMemo(() => {
     if (!data) return [];
-    const seen = new Set<string>();
-    const result: string[] = [];
-    for (const c of data.cluster) {
-      if (!seen.has(c)) {
-        seen.add(c);
-        result.push(c);
-      }
-    }
-    return result;
+    const unique = Array.from(new Set(data.cluster));
+    unique.sort((a, b) => {
+      const numA = parseInt(a.replace(/\D/g, ""), 10);
+      const numB = parseInt(b.replace(/\D/g, ""), 10);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.localeCompare(b);
+    });
+    return unique;
   }, [data]);
 
   // 聚类 → 颜色索引映射
