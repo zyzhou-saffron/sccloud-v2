@@ -56,9 +56,13 @@ async def call_r_engine(
             )
 
         if response.status_code != 200:
-            raise Exception(
-                f"R 引擎返回错误 {response.status_code}: {response.text}"
-            )
+            # 尝试提取 R 引擎返回的原始错误消息
+            try:
+                err_body = response.json()
+                r_msg = err_body.get("error", response.text)
+            except Exception:
+                r_msg = response.text
+            raise Exception(r_msg)
 
         result = response.json()
 

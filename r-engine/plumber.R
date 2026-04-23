@@ -30,6 +30,16 @@ source("R/data_processing.R")
 source("R/data_summary.R")
 source("R/data_plot.R")
 
+# 自定义错误处理器: 将 stop() 的原始消息透传给调用方
+#* @plumber
+function(pr) {
+  pr$setErrorHandler(function(req, res, err) {
+    res$status <- 500L
+    msg <- conditionMessage(err)
+    list(error = msg)
+  })
+}
+
 
 # =====================================================================
 # 文件命名辅助函数

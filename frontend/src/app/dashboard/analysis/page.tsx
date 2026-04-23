@@ -907,22 +907,43 @@ function AnalysisPageContent() {
 
               {error && <div className="callout callout-danger text-xs">{error}</div>}
 
-              <button
-                onClick={handleSubmit}
-                disabled={submitting || !project || (step.id === "qc" && !uploadedFile) || step.id === "marker_expr"}
-                className="w-full py-2.5 text-white font-semibold rounded text-sm transition-all duration-300 shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
-                style={{ background: submitting || !project || (step.id === "qc" && !uploadedFile) || step.id === "marker_expr" ? "var(--clr-dark-light)" : "var(--clr-amber)" }}
-              >
-                {submitting ? (
-                  <><svg className="w-4 h-4" viewBox="0 0 24 24" style={{ animation: "spin 1s linear infinite" }}><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> 提交中...</>
-                ) : (
-                  <>▶ 执行{step.label}</>
-                )}
-              </button>
+              {/* 前置步骤依赖检查 */}
+              {(() => {
+                const PREREQS: Record<string, { stepId: string; label: string }> = {
+                  normalize: { stepId: "qc", label: "数据预处理" },
+                  reduce: { stepId: "normalize", label: "数据标准化" },
+                  cluster: { stepId: "reduce", label: "数据降维" },
+                  markers: { stepId: "cluster", label: "批次聚类" },
+                  enrich: { stepId: "markers", label: "差异基因" },
+                  marker_expr: { stepId: "cluster", label: "批次聚类" },
+                  annotate: { stepId: "cluster", label: "批次聚类" },
+                };
+                const prereq = PREREQS[step.id];
+                const prereqMissing = prereq && taskCache[prereq.stepId]?.status !== "completed";
+                const isDisabled = submitting || !project || (step.id === "qc" && !uploadedFile) || step.id === "marker_expr" || prereqMissing;
 
-              {!project && <p className="text-[10px] text-center" style={{ color: "var(--clr-text-faint)" }}>请先在顶部选择一个项目</p>}
-              {project && step.id === "qc" && !uploadedFile && <p className="text-[10px] text-center" style={{ color: "var(--clr-warn)" }}>请先上传 .rds 数据文件</p>}
-              {step.id === "marker_expr" && <p className="text-[10px] text-center" style={{ color: "var(--clr-text-faint)" }}>🚧 此功能正在开发中，敬请期待</p>}
+                return (
+                  <>
+                    <button
+                      onClick={handleSubmit}
+                      disabled={isDisabled}
+                      className="w-full py-2.5 text-white font-semibold rounded text-sm transition-all duration-300 shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                      style={{ background: isDisabled ? "var(--clr-dark-light)" : "var(--clr-amber)" }}
+                    >
+                      {submitting ? (
+                        <><svg className="w-4 h-4" viewBox="0 0 24 24" style={{ animation: "spin 1s linear infinite" }}><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> 提交中...</>
+                      ) : (
+                        <>▶ 执行{step.label}</>
+                      )}
+                    </button>
+
+                    {!project && <p className="text-[10px] text-center" style={{ color: "var(--clr-text-faint)" }}>请先在顶部选择一个项目</p>}
+                    {project && step.id === "qc" && !uploadedFile && <p className="text-[10px] text-center" style={{ color: "var(--clr-warn)" }}>请先上传 .rds 数据文件</p>}
+                    {step.id === "marker_expr" && <p className="text-[10px] text-center" style={{ color: "var(--clr-text-faint)" }}>🚧 此功能正在开发中，敬请期待</p>}
+                    {prereqMissing && <p className="text-[10px] text-center" style={{ color: "var(--clr-warn)" }}>⚠ 请先完成「{prereq.label}」步骤</p>}
+                  </>
+                );
+              })()}
             </div>
           </div>
 
