@@ -817,28 +817,57 @@ function(req) {
 
   if (is.character(diffTable)) stop(diffTable)
 
-  # 按 p_val_adj 阈值过滤
-  diffTable <- diffTable[diffTable$p_val_adj < p_adj_cutoff, ]
+  # 火山图数据：用宽松阈值重新调用 FindMarkers 获取全量基因
+  # （包含低 FC 和不显著基因，确保火山图有灰色/蓝色区域）
+  report(50, "生成火山图全量数据...")
+  volcano_full <- tryCatch({
+    cell_names <- colnames(pro)
+    if (any(duplicated(cell_names))) {
+      pro <- RenameCells(pro, new.names = make.unique(cell_names, sep = "_dup"))
+    }
+    fm <- FindMarkers(
+      object = pro,
+      ident.1 = group1,
+      ident.2 = group2,
+      min.pct = 0,
+      logfc.threshold = 0,
+      test.use = test_use,
+      only.pos = FALSE
+    )
+    data.frame(
+      gene_id    = rownames(fm),
+      avg_log2FC = as.numeric(fm$avg_log2FC),
+      p_val_adj  = as.numeric(fm$p_val_adj),
+      stringsAsFactors = FALSE
+    )
+  }, error = function(e) {
+    # 如果全量调用失败，退化到已有的 diffTable
+    data.frame(
+      gene_id    = diffTable$gene_id,
+      avg_log2FC = as.numeric(diffTable$avg_log2FC),
+      p_val_adj  = as.numeric(diffTable$p_val_adj),
+      stringsAsFactors = FALSE
+    )
+  })
+  # 过滤掉 Inf / NaN 行
+  volcano_full <- volcano_full[
+    is.finite(volcano_full$avg_log2FC) & is.finite(volcano_full$p_val_adj),
+  ]
+
+  # 按 p_val_adj 阈值过滤（仅用于 CSV 导出和 top_genes 表格）
+  diffFiltered <- diffTable[diffTable$p_val_adj < p_adj_cutoff, ]
 
   report(80, "保存结果...")
 
-  # 双命名：CSV
+  # 双命名：CSV（过滤后的显著基因）
   csv_archive <- make_output_name(
     project_path, "5b", "markers_pairwise",
     paste0(g1_label, "_vs_", g2_label), "csv"
   )
   output_csv <- file.path(project_path, csv_archive)
-  write.csv(diffTable, output_csv, row.names = FALSE)
+  write.csv(diffFiltered, output_csv, row.names = FALSE)
 
   report(100, "分组差异分析完成")
-
-  # 火山图数据：精简版全量（gene_id + log2FC + p_val_adj）
-  volcano <- data.frame(
-    gene_id     = diffTable$gene_id,
-    avg_log2FC  = as.numeric(diffTable$avg_log2FC),
-    p_val_adj   = as.numeric(diffTable$p_val_adj),
-    stringsAsFactors = FALSE
-  )
 
   list(
     status = "success",
@@ -846,10 +875,10 @@ function(req) {
     stats = list(
       group1 = g1_label,
       group2 = g2_label,
-      total_deg = nrow(diffTable)
+      total_deg = nrow(diffFiltered)
     ),
-    top_genes = head(diffTable, 20),
-    volcano_data = volcano
+    top_genes = head(diffFiltered, 20),
+    volcano_data = volcano_full
   )
 }
 
