@@ -540,6 +540,16 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
   const metaPageData = metaSample ? metaSample.slice(metaPage * metaPageSize, (metaPage + 1) * metaPageSize) : [];
   const metaTotalPages = metaSample ? Math.ceil(metaSample.length / metaPageSize) : 0;
 
+  // ── 新增分页状态 ──
+  const [clusterNumPage, setClusterNumPage] = useState(0);
+  const [freqTablePage, setFreqTablePage] = useState(0);
+  const clusterPageSize = 8;
+  const freqPageSize = 8;
+  const clusterNumPageData = clusterNum.slice(clusterNumPage * clusterPageSize, (clusterNumPage + 1) * clusterPageSize);
+  const clusterNumTotalPages = Math.ceil(clusterNum.length / clusterPageSize);
+  const freqTablePageData = freqTable.slice(freqTablePage * freqPageSize, (freqTablePage + 1) * freqPageSize);
+  const freqTableTotalPages = Math.ceil(freqTable.length / freqPageSize);
+
   // 提取亚类状态
   const [selectedClusters, setSelectedClusters] = useState<string[]>([]);
   const [submittingSubset, setSubmittingSubset] = useState(false);
@@ -661,7 +671,7 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
                 <table>
                   <thead><tr><th>Cluster</th><th>Sample</th><th className="text-right">细胞数</th></tr></thead>
                   <tbody>
-                    {clusterNum.map((row, i) => (
+                    {clusterNumPageData.map((row, i) => (
                       <tr key={i}>
                         <td className="font-mono font-semibold" style={{ color: "var(--clr-amber-dark)" }}>{row.Cluster}</td>
                         <td>{row.Sample}</td>
@@ -672,6 +682,24 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
                 </table>
               </div>
             ) : <div className="callout text-xs">数目统计数据暂未返回</div>}
+            
+            {clusterNumTotalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-3 text-xs" style={{ color: "var(--clr-text-muted)" }}>
+                <button
+                  disabled={clusterNumPage === 0}
+                  onClick={() => setClusterNumPage(p => p - 1)}
+                  className="px-2 py-1 rounded"
+                  style={{ border: "1px solid var(--clr-border)", opacity: clusterNumPage === 0 ? 0.4 : 1 }}
+                >‹ 上一页</button>
+                <span>{clusterNumPage + 1} / {clusterNumTotalPages}</span>
+                <button
+                  disabled={clusterNumPage >= clusterNumTotalPages - 1}
+                  onClick={() => setClusterNumPage(p => p + 1)}
+                  className="px-2 py-1 rounded"
+                  style={{ border: "1px solid var(--clr-border)", opacity: clusterNumPage >= clusterNumTotalPages - 1 ? 0.4 : 1 }}
+                >下一页 ›</button>
+              </div>
+            )}
           </div>
 
           {/* 样本聚类频率统计 */}
@@ -684,7 +712,7 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
                 <table>
                   <thead><tr><th>Cluster</th><th>Sample</th><th className="text-right">频率</th></tr></thead>
                   <tbody>
-                    {freqTable.map((row, i) => (
+                    {freqTablePageData.map((row, i) => (
                       <tr key={i}>
                         <td className="font-mono font-semibold" style={{ color: "var(--clr-amber-dark)" }}>{row.Cluster}</td>
                         <td>{row.Sample}</td>
@@ -695,6 +723,24 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
                 </table>
               </div>
             ) : <div className="callout text-xs">频率统计数据暂未返回</div>}
+            
+            {freqTableTotalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-3 text-xs" style={{ color: "var(--clr-text-muted)" }}>
+                <button
+                  disabled={freqTablePage === 0}
+                  onClick={() => setFreqTablePage(p => p - 1)}
+                  className="px-2 py-1 rounded"
+                  style={{ border: "1px solid var(--clr-border)", opacity: freqTablePage === 0 ? 0.4 : 1 }}
+                >‹ 上一页</button>
+                <span>{freqTablePage + 1} / {freqTableTotalPages}</span>
+                <button
+                  disabled={freqTablePage >= freqTableTotalPages - 1}
+                  onClick={() => setFreqTablePage(p => p + 1)}
+                  className="px-2 py-1 rounded"
+                  style={{ border: "1px solid var(--clr-border)", opacity: freqTablePage >= freqTableTotalPages - 1 ? 0.4 : 1 }}
+                >下一页 ›</button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1523,8 +1569,7 @@ function EnrichResult({ data, taskId }: { data: Record<string, unknown> | null; 
                   style={{ background: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", color: "var(--clr-amber-dark)" }}
                   title="下载表格数据 (CSV)"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                  数据
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                 </AuthDownloadLink>
               )}
               <AuthDownloadLink
