@@ -969,6 +969,7 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
   // Tab 3 State — 多选
   const [tab3Selected, setTab3Selected] = useState<string[]>([]);
   const [tab3TaskId, setTab3TaskId] = useState<string | null>(null);
+  const [tab3Task, setTab3Task] = useState<Task | null>(null);
   const [tab3Loading, setTab3Loading] = useState(false);
   const [tab3Error, setTab3Error] = useState<string | null>(null);
   const [tab3PlotMode, setTab3PlotMode] = useState<'feature' | 'vln'>('feature');
@@ -1030,7 +1031,7 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
     params: Record<string, unknown>,
     setLoader: (v: boolean) => void,
     setError: (v: string | null) => void,
-    onSuccess: (taskId: string, result: any) => void,
+    onSuccess: (taskId: string, result: any, completedTask: Task) => void,
   ) => {
     setLoader(true);
     setError(null);
@@ -1053,11 +1054,11 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
         return pollTask(id);
       };
 
-      await pollTask(t.id);
+      const completedTask = await pollTask(t.id);
       
       const rRes = await fetch(`/api/tasks/${t.id}/result`, { headers: { Authorization: `Bearer ${token}` } });
       const finalResult = await rRes.json();
-      onSuccess(t.id, finalResult);
+      onSuccess(t.id, finalResult, completedTask);
     } catch(err: any) {
       setError(err.message);
     } finally {
@@ -1243,7 +1244,10 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                  onClick={() => {
                    const clusterStr = tab3Selected.join(',');
                    const customStr = customGenes.join(',');
-                   runSubTask("plot_markers", { ...task.params, cluster: clusterStr, custom_genes: customStr }, setTab3Loading, setTab3Error, (tid: string) => setTab3TaskId(tid));
+                   runSubTask("plot_markers", { ...task.params, cluster: clusterStr, custom_genes: customStr }, setTab3Loading, setTab3Error, (tid: string, res: any, completedTask: Task) => {
+                     setTab3TaskId(tid);
+                     setTab3Task(completedTask);
+                   });
                  }}
                  disabled={tab3Loading || tab3Selected.length === 0}
                  className="px-6 py-2 text-white text-sm rounded shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 mt-2"
@@ -1255,7 +1259,7 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
              
              {tab3Error && <div className="callout callout-danger text-xs">{tab3Error}</div>}
              
-             {tab3TaskId && !tab3Loading && !tab3Error && (
+             {tab3TaskId && tab3Task && !tab3Loading && !tab3Error && (
                <div className="mt-4 w-full animate-fade-in">
                  <div className="flex gap-2 mb-4">
                    {([['feature', 'FeaturePlot 特征图 (UMAP)'], ['vln', 'VlnPlot 小提琴图 (Expression)']] as const).map(([mode, label]) => (
@@ -1272,10 +1276,18 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                  </div>
                  {/* 为每个选中的 cluster 渲染图片 */}
                  {tab3Selected.map(cl => {
+                   // 这里的 featureName 和 vlnName 是用于请求图片 src 的 canonical 名称
                    const featureName = `plot_markers_feature_${cl}.png`;
                    const vlnName = `plot_markers_vln_${cl}.png`;
                    const featureSrc = `/api/tasks/${tab3TaskId}/plot?name=${encodeURIComponent(featureName)}`;
                    const vlnSrc = `/api/tasks/${tab3TaskId}/plot?name=${encodeURIComponent(vlnName)}`;
+                   
+                   // 用于下载的格式化文件名: project_id_step_timestamp_suffix.png
+                   // 将 2026-04-23T14:59:41+08:00 转成 20260423145941
+                   const ts = tab3Task.completed_at ? tab3Task.completed_at.replace(/[-:T]/g, '').slice(0, 14) : "";
+                   const downloadFeatureName = `${tab3Task.project_id}_plot_markers_${ts}_feature_${cl}.png`;
+                   const downloadVlnName = `${tab3Task.project_id}_plot_markers_${ts}_vln_${cl}.png`;
+                   
                    return (
                    <div key={cl} className="mb-6">
                      <h4 className="text-xs font-semibold mb-2 px-1" style={{ color: 'var(--clr-text-muted)' }}>Cluster {cl}</h4>
@@ -1283,7 +1295,7 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                        <>
                          <div className="relative w-full max-w-4xl mx-auto">
                            <AuthImg src={featureSrc} alt={`Feature Plot ${cl}`} className="w-full border rounded shadow-sm bg-white block" />
-                           <AuthDownloadLink url={featureSrc} filename={featureName}
+                           <AuthDownloadLink url={featureSrc} filename={downloadFeatureName}
                              className="absolute bottom-3 right-3 inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
                              style={{ background: 'rgba(255,255,255,0.92)', boxShadow: '0 2px 8px rgba(0,0,0,0.10)', color: 'var(--clr-amber)' }}
                            >
@@ -1296,7 +1308,7 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                        <>
                          <div className="relative w-full max-w-4xl mx-auto">
                            <AuthImg src={vlnSrc} alt={`Vln Plot ${cl}`} className="w-full border rounded shadow-sm bg-white block" />
-                           <AuthDownloadLink url={vlnSrc} filename={vlnName}
+                           <AuthDownloadLink url={vlnSrc} filename={downloadVlnName}
                              className="absolute bottom-3 right-3 inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
                              style={{ background: 'rgba(255,255,255,0.92)', boxShadow: '0 2px 8px rgba(0,0,0,0.10)', color: 'var(--clr-amber)' }}
                            >
