@@ -1,7 +1,9 @@
 /**
- * scCloud v2 — 格式转换页面 (重写: 暖白学术风格)
+ * scCloud v2 — 格式转换页面 (暖白学术风格)
  * Tab 1: 单文件转换 (导入/导出)
  * Tab 2: 多样本 MTX 整合
+ *
+ * 设计: 三步走引导流程 (Step 1 → 2 → 3)
  */
 "use client";
 
@@ -37,6 +39,24 @@ interface SampleEntry {
   id: string;
   name: string;
   file: File | null;
+}
+
+/* ===== 步骤锚点组件 ===== */
+function StepAnchor({ step, title, subtitle }: { step: number; title: string; subtitle?: string }) {
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <div
+        className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white"
+        style={{ background: "linear-gradient(135deg, var(--clr-amber-dark), var(--clr-amber))" }}
+      >
+        {step}
+      </div>
+      <div>
+        <p className="text-sm font-semibold" style={{ color: "var(--clr-text)" }}>{title}</p>
+        {subtitle && <p className="text-xs" style={{ color: "var(--clr-text-faint)" }}>{subtitle}</p>}
+      </div>
+    </div>
+  );
 }
 
 /* ===== 带认证下载 ===== */
@@ -206,14 +226,14 @@ export default function ConvertPage() {
       {/* ===== Tab 1: 单文件转换 ===== */}
       {tab === "single" && (
         <div className="space-y-4">
-          {/* 方向选择 */}
-          <div className="card-section p-5 rounded-xl" style={{ background: "var(--clr-card)", border: "1px solid var(--clr-border)" }}>
-            <p className="card-label mb-3">转换方向</p>
+          {/* Step 1: 方向选择 */}
+          <div className="p-5 rounded-xl" style={{ background: "var(--clr-card)", border: "1px solid var(--clr-border)" }}>
+            <StepAnchor step={1} title="选择转换方向" />
             <div className="flex gap-3">
               {(
                 [
-                  ["import", "📥 导入 → RDS", "将其他格式转为 Seurat RDS"],
-                  ["export", "📤 RDS → 导出", "将 RDS 导出为其他格式"],
+                  ["import", "导入 → RDS", "将其他格式转为 Seurat RDS"],
+                  ["export", "RDS → 导出", "将 RDS 导出为其他格式"],
                 ] as const
               ).map(([dir, title, desc]) => (
                 <button
@@ -233,11 +253,12 @@ export default function ConvertPage() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
-            {/* 左侧: 上传 + 格式选择 */}
+            {/* Step 2: 上传 + 格式选择 */}
             <div className="p-5 rounded-xl" style={{ background: "var(--clr-card)", border: "1px solid var(--clr-border)" }}>
-              <p className="card-label mb-3">
-                {direction === "import" ? "上传源文件" : "上传 RDS 文件"}
-              </p>
+              <StepAnchor
+                step={2}
+                title={direction === "import" ? "上传源文件并选择格式" : "上传 RDS 并选择导出格式"}
+              />
 
               {/* 文件上传 */}
               <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-lg cursor-pointer transition-all hover:border-[var(--clr-amber)]" style={{ border: "2px dashed var(--clr-border)", background: "var(--clr-bg)" }}>
@@ -295,9 +316,9 @@ export default function ConvertPage() {
               </div>
             </div>
 
-            {/* 右侧: 转换按钮 + 结果 */}
+            {/* Step 3: 转换按钮 + 结果 */}
             <div className="p-5 rounded-xl flex flex-col" style={{ background: "var(--clr-card)", border: "1px solid var(--clr-border)" }}>
-              <p className="card-label mb-3">转换操作</p>
+              <StepAnchor step={3} title="执行转换" />
 
               <button
                 onClick={handleConvert}
@@ -321,14 +342,14 @@ export default function ConvertPage() {
               {/* 错误 */}
               {error && (
                 <div className="mt-4 p-3 rounded-lg text-xs" style={{ background: "rgba(220,38,38,0.06)", border: "1px solid rgba(220,38,38,0.15)", color: "#b91c1c" }}>
-                  ✗ {error}
+                  {error}
                 </div>
               )}
 
               {/* 成功 */}
               {result && result.status === "success" && (
                 <div className="mt-4 p-4 rounded-lg space-y-2" style={{ background: "rgba(22,163,74,0.05)", border: "1px solid rgba(22,163,74,0.15)" }}>
-                  <p className="text-sm font-semibold" style={{ color: "#15803d" }}>✓ 转换完成</p>
+                  <p className="text-sm font-semibold" style={{ color: "#15803d" }}>转换完成</p>
                   <div className="text-xs space-y-1" style={{ color: "var(--clr-text-faint)" }}>
                     {result.cells != null && <p>细胞数: <strong style={{ color: "var(--clr-text)" }}>{result.cells.toLocaleString()}</strong></p>}
                     {result.genes != null && <p>基因数: <strong style={{ color: "var(--clr-text)" }}>{result.genes.toLocaleString()}</strong></p>}
@@ -340,7 +361,7 @@ export default function ConvertPage() {
                       className="mt-2 w-full py-2 rounded-lg text-sm font-medium text-white transition-all"
                       style={{ background: "linear-gradient(135deg, #15803d, #22c55e)" }}
                     >
-                      📥 下载转换结果
+                      下载转换结果
                     </button>
                   )}
                 </div>
@@ -349,10 +370,10 @@ export default function ConvertPage() {
               {/* 说明 */}
               <div className="mt-auto pt-4">
                 <div className="p-3 rounded-lg text-xs" style={{ background: "var(--clr-bg)", color: "var(--clr-text-faint)" }}>
-                  <p className="font-medium mb-1" style={{ color: "var(--clr-text)" }}>📋 支持的转换</p>
-                  <p>• 导入: H5AD / 10X H5 / CSV / TSV → Seurat RDS</p>
-                  <p>• 导出: RDS → H5AD / H5Seurat</p>
-                  <p>• 转换后的 RDS 可直接用于分析流程</p>
+                  <p className="font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>支持的转换</p>
+                  <p>导入: H5AD / 10X H5 / CSV / TSV → Seurat RDS</p>
+                  <p>导出: RDS → H5AD / H5Seurat</p>
+                  <p className="mt-1">转换后的 RDS 可直接用于分析流程</p>
                 </div>
               </div>
             </div>
@@ -365,14 +386,14 @@ export default function ConvertPage() {
         <div className="space-y-4">
           {/* 说明 */}
           <div className="p-4 rounded-xl text-xs" style={{ background: "var(--clr-gold-soft)", border: "1px solid rgba(200,96,25,0.15)", color: "var(--clr-amber-dark)" }}>
-            <p className="font-semibold mb-1">📁 使用说明</p>
+            <p className="font-semibold mb-1">使用说明</p>
             <p>每个样本上传一个 ZIP 压缩包，包含 10X CellRanger 输出的 3 个文件：</p>
             <p className="font-mono mt-1">matrix.mtx.gz、features.tsv.gz、barcodes.tsv.gz</p>
           </div>
 
-          {/* 样本列表 */}
+          {/* Step 1: 样本列表 */}
           <div className="p-5 rounded-xl" style={{ background: "var(--clr-card)", border: "1px solid var(--clr-border)" }}>
-            <p className="card-label mb-3">样本列表</p>
+            <StepAnchor step={1} title="添加样本" subtitle="为每个样本命名并上传对应的 ZIP 包" />
             <div className="space-y-3" style={{ maxHeight: "400px", overflowY: "auto" }}>
               {samples.map((s, idx) => (
                 <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg" style={{ background: "var(--clr-bg)", border: "1px solid var(--clr-border)" }}>
@@ -395,7 +416,7 @@ export default function ConvertPage() {
                         setSamples((prev) => prev.map((x) => x.id === s.id ? { ...x, file: f } : x));
                       }}
                     />
-                    {s.file ? `✓ ${s.file.name} (${(s.file.size / 1024 / 1024).toFixed(1)}MB)` : "点击上传 ZIP"}
+                    {s.file ? `${s.file.name} (${(s.file.size / 1024 / 1024).toFixed(1)}MB)` : "点击上传 ZIP"}
                   </label>
                   {samples.length > 1 && (
                     <button
@@ -419,34 +440,37 @@ export default function ConvertPage() {
             </button>
           </div>
 
-          {/* 整合按钮 */}
-          <button
-            onClick={handleMerge}
-            disabled={merging || samples.filter((s) => s.file).length < 1}
-            className="w-full py-3 rounded-lg font-semibold text-sm text-white transition-all disabled:opacity-40 flex items-center justify-center gap-2"
-            style={{ background: "linear-gradient(135deg, var(--clr-amber-dark), var(--clr-amber))" }}
-          >
-            {merging ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                整合中...
-              </>
-            ) : (
-              `开始整合 (${samples.filter((s) => s.file).length} 个样本)`
-            )}
-          </button>
+          {/* Step 2: 整合按钮 */}
+          <div className="p-5 rounded-xl" style={{ background: "var(--clr-card)", border: "1px solid var(--clr-border)" }}>
+            <StepAnchor step={2} title="执行整合" subtitle={`已选 ${samples.filter((s) => s.file).length} / ${samples.length} 个样本`} />
+            <button
+              onClick={handleMerge}
+              disabled={merging || samples.filter((s) => s.file).length < 1}
+              className="w-full py-3 rounded-lg font-semibold text-sm text-white transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+              style={{ background: "linear-gradient(135deg, var(--clr-amber-dark), var(--clr-amber))" }}
+            >
+              {merging ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  整合中...
+                </>
+              ) : (
+                `开始整合 (${samples.filter((s) => s.file).length} 个样本)`
+              )}
+            </button>
+          </div>
 
           {/* 整合错误 */}
           {mergeError && (
             <div className="p-3 rounded-lg text-xs" style={{ background: "rgba(220,38,38,0.06)", border: "1px solid rgba(220,38,38,0.15)", color: "#b91c1c" }}>
-              ✗ {mergeError}
+              {mergeError}
             </div>
           )}
 
           {/* 整合结果 */}
           {mergeResult && mergeResult.status === "success" && (
             <div className="p-4 rounded-xl space-y-2" style={{ background: "rgba(22,163,74,0.05)", border: "1px solid rgba(22,163,74,0.15)" }}>
-              <p className="text-sm font-semibold" style={{ color: "#15803d" }}>✓ 整合完成</p>
+              <p className="text-sm font-semibold" style={{ color: "#15803d" }}>整合完成</p>
               <div className="text-xs space-y-1" style={{ color: "var(--clr-text-faint)" }}>
                 <p>样本数: <strong style={{ color: "var(--clr-text)" }}>{mergeResult.n_samples}</strong></p>
                 {mergeResult.cells != null && <p>总细胞数: <strong style={{ color: "var(--clr-text)" }}>{mergeResult.cells.toLocaleString()}</strong></p>}
@@ -459,7 +483,7 @@ export default function ConvertPage() {
                   className="mt-2 w-full py-2 rounded-lg text-sm font-medium text-white transition-all"
                   style={{ background: "linear-gradient(135deg, #15803d, #22c55e)" }}
                 >
-                  📥 下载整合 RDS
+                  下载整合 RDS
                 </button>
               )}
             </div>
