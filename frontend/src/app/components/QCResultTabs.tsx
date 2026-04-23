@@ -517,7 +517,7 @@ function CorrScatterPanel({ xData, yData, samples, xLabel, yLabel, corr }: CorrS
       xVal: xData[i],
       yVal: yData[i],
       nx: ((xData[i] - minX) / rangeX) * VISUAL_RANGE,
-      ny: ((yData[i] - minY) / rangeY) * VISUAL_RANGE,
+      ny: (1 - (yData[i] - minY) / rangeY) * VISUAL_RANGE,  // 翻转 Y：deck.gl 屏幕坐标 Y 向下
       sample: samples[i],
     }));
     return { points: pts, bounds: { minX, maxX, minY, maxY } };
