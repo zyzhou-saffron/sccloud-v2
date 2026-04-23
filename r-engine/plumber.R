@@ -831,6 +831,7 @@ function(req) {
       ident.2 = group2,
       min.pct = 0,
       logfc.threshold = 0,
+      return.thresh = 1,  # 强制返回所有 p 值的基因
       test.use = test_use,
       only.pos = FALSE
     )
