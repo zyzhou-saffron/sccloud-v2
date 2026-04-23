@@ -179,49 +179,99 @@ my_distPlot6 <- function(pro,group){
   p1/p2
 }
 
-my_distPlot7 <- function(pro,minPct,logFc,test,pos,ntop){
-    difG <-  data.frame()
-    newident <- levels(pro)
-    for (l in newident) {
-      cluster.markers <- FindMarkers(object = pro, ident.1 = l, min.pct = minPct, logfc.threshold = logFc,test.use=test,only.pos=pos)
-      diffTable <- data.frame(gene_id = rownames(cluster.markers), cluster.markers, Cluster=l)
-      difG <- rbind(difG,diffTable)
+my_distPlot7 <- function(pro, minPct, logFc, test, pos, ntop, rawC = "All") {
+    # 根据用户选择的 cluster 过滤
+    if (length(rawC) == 1 && rawC == "All") {
+      target_idents <- levels(pro)
+    } else {
+      target_idents <- rawC
+      pro <- subset(pro, idents = target_idents)
     }
-    difGtop3 <- difG %>% group_by(Cluster) %>% arrange(Cluster, p_val_adj, desc(avg_log2FC), desc(pct.1)) %>%  dplyr::slice(1:ntop)
- 
+
+    difG <- data.frame()
+    for (l in target_idents) {
+      cluster.markers <- FindMarkers(
+        object = pro, ident.1 = l,
+        min.pct = minPct, logfc.threshold = logFc,
+        test.use = test, only.pos = pos
+      )
+      diffTable <- data.frame(
+        gene_id = rownames(cluster.markers),
+        cluster.markers, Cluster = l
+      )
+      difG <- rbind(difG, diffTable)
+    }
+    difGtop3 <- difG %>%
+      group_by(Cluster) %>%
+      arrange(Cluster, p_val_adj, desc(avg_log2FC), desc(pct.1)) %>%
+      dplyr::slice(1:ntop)
+
     plotFeatures <- as.character(unique(difGtop3$gene_id))
     # dotplot
     p <- DotPlot(pro, features = plotFeatures) &
-      scale_color_viridis(option = 'D') &
-      guides(color = guide_colorbar(title.position = 'left', title.hjust = .5, title.theme = element_text(angle = 90)),
-         size = guide_legend(title.position = 'left', title.hjust = .5, title.theme = element_text(angle = 90))) &
+      scale_color_viridis(option = "D") &
+      guides(
+        color = guide_colorbar(
+          title.position = "left", title.hjust = .5,
+          title.theme = element_text(angle = 90)
+        ),
+        size = guide_legend(
+          title.position = "left", title.hjust = .5,
+          title.theme = element_text(angle = 90)
+        )
+      ) &
       theme_bw() + RotatedAxis()
     p
 }
 
 
-my_distPlot8 <- function(pro,minPct,logFc,test,pos,ntop){
-    difG <-  data.frame()
-    newident <- levels(pro)
-    for (l in newident) {
-      cluster.markers <- FindMarkers(object = pro, ident.1 = l, min.pct = minPct, logfc.threshold = logFc,test.use=test,only.pos=pos)
-      diffTable <- data.frame(gene_id = rownames(cluster.markers), cluster.markers, Cluster=l)
-      difG <- rbind(difG,diffTable)
+my_distPlot8 <- function(pro, minPct, logFc, test, pos, ntop, rawC = "All") {
+    # 根据用户选择的 cluster 过滤
+    if (length(rawC) == 1 && rawC == "All") {
+      target_idents <- levels(pro)
+    } else {
+      target_idents <- rawC
+      pro <- subset(pro, idents = target_idents)
     }
-    difGtop3 <- difG %>% group_by(Cluster) %>% arrange(Cluster, p_val_adj, desc(avg_log2FC), desc(pct.1)) %>%  dplyr::slice(1:ntop)
- 
+
+    difG <- data.frame()
+    for (l in target_idents) {
+      cluster.markers <- FindMarkers(
+        object = pro, ident.1 = l,
+        min.pct = minPct, logfc.threshold = logFc,
+        test.use = test, only.pos = pos
+      )
+      diffTable <- data.frame(
+        gene_id = rownames(cluster.markers),
+        cluster.markers, Cluster = l
+      )
+      difG <- rbind(difG, diffTable)
+    }
+    difGtop3 <- difG %>%
+      group_by(Cluster) %>%
+      arrange(Cluster, p_val_adj, desc(avg_log2FC), desc(pct.1)) %>%
+      dplyr::slice(1:ntop)
+
     plotFeatures <- as.character(unique(difGtop3$gene_id))
     featuresVar <- VariableFeatures(pro)
     plotFeatures2 <- intersect(plotFeatures, featuresVar)
-    
-    p <- DoHeatmap(pro, features = plotFeatures2, size = 3, group.bar = T, group.colors = clusterCols) &
+
+    p <- DoHeatmap(
+      pro, features = plotFeatures2,
+      size = 3, group.bar = TRUE, group.colors = clusterCols
+    ) &
     scale_fill_viridis() &
-    #scale_color_manual(values = clusterCols) &
-    guides(fill = guide_colorbar(title.position = 'left', title.hjust = 0.5,
-                               title.theme = element_text(angle = 90, size = 10), order = 1),
-         color = guide_legend(title.position = 'left', title.hjust = 0.5, ncol = 1,
-                              title.theme = element_text(angle = 90, size = 10),
-                              override.aes = list(size = 1, alpha = 1), order = 2))
+    guides(
+      fill = guide_colorbar(
+        title.position = "left", title.hjust = 0.5,
+        title.theme = element_text(angle = 90, size = 10), order = 1
+      ),
+      color = guide_legend(
+        title.position = "left", title.hjust = 0.5, ncol = 1,
+        title.theme = element_text(angle = 90, size = 10),
+        override.aes = list(size = 1, alpha = 1), order = 2
+      )
+    )
     p
 }
 

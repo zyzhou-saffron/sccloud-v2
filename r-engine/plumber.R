@@ -527,7 +527,7 @@ function(req) {
   dotplot_archive <- make_output_name(project_path, "5", "markers", "dotplot", "png")
   plot_path <- file.path(project_path, dotplot_archive)
   png(plot_path, width = 1600, height = 800, res = 150)
-  print(my_distPlot7(pro, min_pct, logfc, test_use, only_pos, ntop))
+  print(my_distPlot7(pro, min_pct, logfc, test_use, only_pos, ntop, cluster))
   dev.off()
 
   report(80, "生成 Heatmap...")
@@ -536,7 +536,7 @@ function(req) {
   heatmap_archive <- make_output_name(project_path, "5", "markers", "heatmap", "png")
   heatmap_path <- file.path(project_path, heatmap_archive)
   tryCatch({
-    heatmap_plot <- my_distPlot8(pro, min_pct, logfc, test_use, only_pos, ntop)
+    heatmap_plot <- my_distPlot8(pro, min_pct, logfc, test_use, only_pos, ntop, cluster)
     n_clusters <- length(levels(pro))
     heatmap_h <- max(800, 120 * n_clusters)
     png(heatmap_path, width = 1600, height = heatmap_h, res = 150)
