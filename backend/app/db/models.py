@@ -137,6 +137,7 @@ class Task(Base):
             "qc", "normalize", "reduce", "cluster",
             "markers", "enrich", "annotate", "convert",
             "markers_pairwise", "plot_markers",
+            "subset_cluster", "marker_expr",
             name="task_step",
         ),
         nullable=False,
