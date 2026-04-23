@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 
 // react-plotly.js 需要动态导入（SSR 不支持 Plotly）
@@ -38,6 +38,15 @@ interface VolcanoPlotProps {
 /** log2FC clamp 上限（±MAX_FC） */
 const MAX_FC = 10;
 
+/** 下载图标 SVG */
+const DownloadIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
+  </svg>
+);
+
 export default function VolcanoPlot({
   data,
   fcThreshold = 1,
@@ -45,6 +54,9 @@ export default function VolcanoPlot({
   height = 440,
   title,
 }: VolcanoPlotProps) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const plotRef = useRef<any>(null);
+
   const { upGenes, downGenes, nsGenes } = useMemo(() => {
     const up: VolcanoPoint[] = [];
     const down: VolcanoPoint[] = [];
@@ -127,8 +139,30 @@ export default function VolcanoPlot({
   // 动态 X 轴范围（基于 clamp 后 + padding）
   const xPad = MAX_FC + 1;
 
+  // 下载为 PNG
+  const handleDownloadPng = useCallback(async () => {
+    const el = plotRef.current?.el;
+    if (!el) return;
+    try {
+      const Plotly = await import("plotly.js-dist-min");
+      const imgData = await Plotly.toImage(el, {
+        format: "png",
+        width: 1200,
+        height: 600,
+        scale: 2,
+      });
+      const a = document.createElement("a");
+      a.href = imgData;
+      a.download = `volcano_${title?.replace(/\s+/g, "_") || "plot"}.png`;
+      a.click();
+    } catch {
+      // fallback: Plotly.downloadImage
+      console.warn("PNG export failed");
+    }
+  }, [title]);
+
   return (
-    <div style={{ width: "100%" }}>
+    <div style={{ width: "100%", position: "relative" }}>
       {title && (
         <p
           className="text-xs font-medium mb-1"
@@ -144,6 +178,7 @@ export default function VolcanoPlot({
         </p>
       )}
       <Plot
+        ref={plotRef}
         data={traces as Plotly.Data[]}
         layout={{
           width: undefined,
@@ -163,15 +198,7 @@ export default function VolcanoPlot({
           },
           plot_bgcolor: "#FFFFFF",
           paper_bgcolor: "transparent",
-          legend: {
-            x: 1,
-            xanchor: "right",
-            y: 1,
-            bgcolor: "rgba(255,255,255,0.85)",
-            bordercolor: "#E0E0E0",
-            borderwidth: 1,
-            font: { size: 10 },
-          },
+          showlegend: false,
           shapes: [
             // 水平线: -log10(pThreshold)
             {
@@ -204,14 +231,31 @@ export default function VolcanoPlot({
           hovermode: "closest",
         }}
         config={{
-          displayModeBar: true,
-          modeBarButtonsToRemove: ["lasso2d", "select2d"],
+          displayModeBar: false,
           displaylogo: false,
           responsive: true,
         }}
         useResizeHandler
         style={{ width: "100%", height }}
       />
+
+      {/* 右下角下载按钮 */}
+      <button
+        onClick={handleDownloadPng}
+        className="absolute flex items-center gap-1 text-[10px] px-2.5 py-1.5 rounded transition-all hover:shadow-sm"
+        style={{
+          bottom: 52,
+          right: 8,
+          color: "var(--clr-amber-dark)",
+          background: "rgba(200,96,25,0.06)",
+          border: "1px solid rgba(200,96,25,0.15)",
+        }}
+        title="下载火山图 PNG"
+      >
+        <DownloadIcon />
+        PNG
+      </button>
+
       {/* 统计概要 */}
       <div
         className="flex gap-4 text-xs mt-1"

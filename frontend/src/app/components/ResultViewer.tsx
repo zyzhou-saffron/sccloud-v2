@@ -1436,14 +1436,17 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                   </div>
                   {(() => {
                     const ts = tab4Task?.completed_at ? tab4Task.completed_at.replace(/[-:T]/g, '').slice(0, 14) : "";
-                    const canonicalCsvName = `diff_genes_${tab4G1.join('+')}_vs_${tab4G2.join('+')}.csv`;
+                    // 使用 task result_path 中的实际文件名（而非硬编码名）
+                    const actualCsvName = tab4Task?.result_path
+                      ? tab4Task.result_path.split('/').pop()!
+                      : `diff_genes_${tab4G1.join('+')}_vs_${tab4G2.join('+')}.csv`;
                     const downloadCsvName = tab4Task 
                       ? `${tab4Task.project_id}_markers_pairwise_${ts}_diff_genes.csv` 
-                      : canonicalCsvName;
+                      : actualCsvName;
 
                     return (
                       <AuthDownloadLink 
-                        url={`/api/tasks/${tab4TaskId}/plot?name=${encodeURIComponent(canonicalCsvName)}`} 
+                        url={`/api/tasks/${tab4TaskId}/plot?name=${encodeURIComponent(actualCsvName)}`} 
                         filename={downloadCsvName}
                         className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded transition-colors text-white hover:opacity-90"
                         style={{ background: "var(--clr-amber)", boxShadow: "0 2px 4px rgba(200,96,25,0.2)" }}
