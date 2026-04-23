@@ -79,7 +79,7 @@ export default function TaskHistory({
         </span>
       </div>
       {/* 限制显示 8 个任务高度，其余可滚动查看 */}
-      <div className="space-y-1 overflow-y-auto pr-0.5" style={{ maxHeight: "528px" }}>
+      <div className="space-y-1 overflow-y-auto pr-0.5" style={{ maxHeight: "440px" }}>
         {tasks.map((task) => {
           const style = STATUS_STYLES[task.status] || STATUS_STYLES.pending;
           return (
