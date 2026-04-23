@@ -795,22 +795,9 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
         </div>
       )}
 
-      {/* ── Tab 5: 细胞亚类结果（RenameIdents2 后的 cluster 标签） ── */}
+      {/* ── Tab 5: 细胞亚类提取 ── */}
       {activeTab === "subtype" && (
         <div className="space-y-4">
-          <div>
-            <SectionTitle>细胞亚类结果</SectionTitle>
-            {stats?.cluster_levels && stats.cluster_levels.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {stats.cluster_levels.map((cl, i) => (
-                  <span key={i} className="px-3 py-1.5 rounded-full text-xs font-semibold"
-                    style={{ background: "rgba(200,96,25,0.08)", color: "var(--clr-amber-dark)", border: "1px solid rgba(200,96,25,0.2)" }}>
-                    {cl}
-                  </span>
-                ))}
-              </div>
-            ) : <div className="callout text-xs">聚类标签数据暂未返回</div>}
-          </div>
 
           {/* 亚类提取 UI */}
           <div className="card mt-4">

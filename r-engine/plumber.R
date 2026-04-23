@@ -952,8 +952,8 @@ function(req) {
 
   report(30, paste0("提取亚类: ", paste(selected_clusters, collapse = ", "), "..."))
 
-  # 调用原始逻辑 — 与 v1 app-new.R 的 subset(hm_data(), Cluster == subC) 一致
-  sub_data <- subset(pro, Cluster %in% selected_clusters)
+  # 使用 Seurat 的 idents 参数根据 active identity 提取子集
+  sub_data <- subset(pro, idents = selected_clusters)
 
   report(70, "保存亚类数据...")
 
