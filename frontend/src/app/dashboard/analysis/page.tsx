@@ -299,6 +299,12 @@ function AnalysisPageContent() {
         : stepParams;
       const task = await submitTask({ project_id: project.id, step: step.apiStep, params: finalParams });
       updateTaskCache(step.id, task);
+
+      // 重新运行某步骤时，清除所有下游步骤的缓存（避免显示旧结果）
+      const currentIdx = STEPS.findIndex((s) => s.id === step.id);
+      for (let i = currentIdx + 1; i < STEPS.length; i++) {
+        clearTaskCache(STEPS[i].id);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "提交失败");
     } finally { setSubmitting(false); }
