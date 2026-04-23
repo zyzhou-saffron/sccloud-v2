@@ -165,7 +165,7 @@ export default function AuthModal({
               className="w-12 h-[3px] mx-auto mt-3 mb-2 rounded-full"
               style={{ background: "linear-gradient(90deg, #C86019, #FFD42A)" }}
             />
-            {(tab === "register" || upgradeMode) && (
+            {tab === "register" && (
               <p className="text-[13px] mt-3" style={{ color: "var(--clr-text-muted)", animation: "fadeIn 0.3s ease-in-out" }}>
                 注册后保留您所有的分析数据，并解锁更多项目
               </p>
@@ -224,7 +224,7 @@ export default function AuthModal({
           )}
 
           {/* Register Form */}
-          {(tab === "register" || upgradeMode) && (
+          {tab === "register" && (
             <form onSubmit={handleRegister} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>用户名</label>
