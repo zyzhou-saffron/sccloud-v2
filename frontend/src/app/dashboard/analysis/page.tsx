@@ -49,7 +49,7 @@ const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
   normalize: {},
   reduce: { method: "umap", n_pcs: 30, group_by: "Sample" },
   cluster: { method: "harmony", resolution: 0.5, n_dims: 30, group_by: "Sample" },
-  markers: { cluster: "All", min_pct: 0.1, logfc_threshold: 0.25, test_use: "wilcox", only_pos: true, ntop: 5 },
+  markers: { cluster: "All", min_pct: 0.1, logfc_threshold: 0.25, p_val_adj: 0.05, test_use: "wilcox", only_pos: true, ntop: 5 },
   enrich: { pathway: "GO", direction: "Up", p_adjust_method: "BH", pvalue_cutoff: 0.05, qvalue_cutoff: 0.2, n_term: 10 },
   marker_expr: {},
   annotate: { mode: "auto", group_by: "Sample" },
@@ -675,6 +675,15 @@ function AnalysisPageContent() {
                       </Tooltip>
                     </label>
                     <input type="number" value={stepParams.logfc_threshold as number} onChange={(e) => updateParam("logfc_threshold", Number(e.target.value))} step={0.05} className={inputCls} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                      <span>P value 阈值 (p_val_adj)</span>
+                      <Tooltip content="变量: p_val_adj\n\n经 Bonferroni 校正后的 P 值阈值。只有 p_val_adj 低于此值的基因才被视为显著差异表达基因 (DEG)，出现在结果表格和图中。默认: 0.05。">
+                        <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      </Tooltip>
+                    </label>
+                    <input type="number" value={stepParams.p_val_adj as number ?? 0.05} onChange={(e) => updateParam("p_val_adj", Number(e.target.value))} step={0.01} min={0} max={1} className={inputCls} style={inputStyle} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>检验方法</label>

@@ -499,12 +499,16 @@ function(req) {
   logfc <- params$logfc_threshold %||% 0.25
   test_use <- params$test_use %||% "wilcox"
   only_pos <- params$only_pos %||% TRUE
+  p_adj_cutoff <- params$p_val_adj %||% 0.05
 
   cluster_label <- if (length(cluster) == 1 && cluster == "All") "All" else paste(cluster, collapse = ", ")
   report(30, paste0("运行差异分析 (", cluster_label, ")..."))
 
   # 调用原始函数 — data_summary.R::my_diffTable()
   diffTable <- my_diffTable(pro, cluster, min_pct, logfc, test_use, only_pos)
+
+  # 按 p_val_adj 阈值过滤
+  diffTable <- diffTable[diffTable$p_val_adj < p_adj_cutoff, ]
 
   report(70, "生成 DotPlot...")
 
@@ -778,6 +782,7 @@ function(req) {
   logfc    <- params$logfc_threshold %||% 0.25
   test_use <- params$test_use %||% "wilcox"
   only_pos <- params$only_pos %||% FALSE
+  p_adj_cutoff <- params$p_val_adj %||% 0.05
 
   g1_label <- paste(group1, collapse = "+")
   g2_label <- paste(group2, collapse = "+")
@@ -787,6 +792,9 @@ function(req) {
   diffTable <- my_diffTable2(pro, min_pct, logfc, test_use, only_pos, group1, group2)
 
   if (is.character(diffTable)) stop(diffTable)
+
+  # 按 p_val_adj 阈值过滤
+  diffTable <- diffTable[diffTable$p_val_adj < p_adj_cutoff, ]
 
   report(80, "保存结果...")
 
