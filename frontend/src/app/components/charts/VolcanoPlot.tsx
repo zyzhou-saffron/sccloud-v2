@@ -8,13 +8,14 @@ const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
 /* ================================================================
  *  火山图组件 — 用于双簇差异基因的 log2FC vs -log10(p_val_adj) 展示
- *  
+ *
  *  参考标准：
  *    x 轴 = avg_log2FC（效应量）
  *    y 轴 = -log10(p_val_adj)（统计显著性）
  *    颜色 = 上调(红) / 下调(蓝) / 不显著(灰)
- *  
+ *
  *  阈值默认：|log2FC| > 1 且 p_adj < 0.05
+ *  log2FC clamp 范围：±10（防止 Inf/极端值拉伸坐标轴）
  * ================================================================ */
 
 export interface VolcanoPoint {
@@ -34,6 +35,9 @@ interface VolcanoPlotProps {
   title?: string;
 }
 
+/** log2FC clamp 上限（±MAX_FC） */
+const MAX_FC = 10;
+
 export default function VolcanoPlot({
   data,
   fcThreshold = 1,
@@ -47,10 +51,12 @@ export default function VolcanoPlot({
     const ns: VolcanoPoint[] = [];
 
     for (const pt of data) {
-      // 跳过无效值
+      // 跳过无效值（NaN / Inf）
       if (
         pt.avg_log2FC == null ||
         pt.p_val_adj == null ||
+        !isFinite(pt.avg_log2FC) ||
+        !isFinite(pt.p_val_adj) ||
         isNaN(pt.avg_log2FC) ||
         isNaN(pt.p_val_adj)
       )
@@ -69,8 +75,10 @@ export default function VolcanoPlot({
   }, [data, fcThreshold, pThreshold]);
 
   // 计算 -log10(p_val_adj)，p=0 时 cap 到 300
-  const negLog10 = (p: number) =>
-    p <= 0 ? 300 : -Math.log10(p);
+  const negLog10 = (p: number) => (p <= 0 ? 300 : -Math.log10(p));
+
+  // Clamp log2FC 到 ±MAX_FC，防止极端值拉伸 X 轴
+  const clampFC = (fc: number) => Math.max(-MAX_FC, Math.min(MAX_FC, fc));
 
   const makeTrace = (
     points: VolcanoPoint[],
@@ -78,7 +86,7 @@ export default function VolcanoPlot({
     color: string,
     symbol: string,
   ): Partial<Plotly.Data> => ({
-    x: points.map((p) => p.avg_log2FC),
+    x: points.map((p) => clampFC(p.avg_log2FC)),
     y: points.map((p) => negLog10(p.p_val_adj)),
     text: points.map(
       (p) =>
@@ -105,11 +113,19 @@ export default function VolcanoPlot({
   // 阈值参考线
   const maxY = Math.max(
     ...data
-      .filter((p) => p.p_val_adj != null && !isNaN(p.p_val_adj))
+      .filter(
+        (p) =>
+          p.p_val_adj != null &&
+          isFinite(p.p_val_adj) &&
+          !isNaN(p.p_val_adj),
+      )
       .map((p) => negLog10(p.p_val_adj)),
     5,
   );
   const pLine = negLog10(pThreshold);
+
+  // 动态 X 轴范围（基于 clamp 后 + padding）
+  const xPad = MAX_FC + 1;
 
   return (
     <div style={{ width: "100%" }}>
@@ -136,6 +152,7 @@ export default function VolcanoPlot({
           margin: { l: 55, r: 20, t: 10, b: 45 },
           xaxis: {
             title: { text: "log₂(Fold Change)", font: { size: 12 } },
+            range: [-xPad, xPad],
             zeroline: true,
             zerolinecolor: "#E0E0E0",
             gridcolor: "#F5F5F5",
@@ -159,8 +176,8 @@ export default function VolcanoPlot({
             // 水平线: -log10(pThreshold)
             {
               type: "line",
-              x0: -100,
-              x1: 100,
+              x0: -xPad,
+              x1: xPad,
               y0: pLine,
               y1: pLine,
               line: { color: "#C86019", width: 1, dash: "dash" },
