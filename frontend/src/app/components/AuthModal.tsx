@@ -159,7 +159,7 @@ export default function AuthModal({
               className="text-[22px] font-bold transition-all duration-300"
               style={{ fontFamily: "var(--font-serif)", color: "var(--clr-dark-deep)" }}
             >
-              {tab === "login" && !upgradeMode ? "scCloud" : "注册正式账号"}
+              {tab === "login" ? "scCloud" : upgradeMode ? "注册正式账号" : "注册"}
             </h2>
             <div
               className="w-12 h-[3px] mx-auto mt-3 mb-2 rounded-full"
@@ -172,8 +172,8 @@ export default function AuthModal({
             )}
           </div>
 
-          {/* Tabs (hide in upgrade mode) */}
-          {!upgradeMode && (
+          {/* Tabs — always shown so users can switch to login */}
+          {(
             <div className="flex mb-6 rounded-lg overflow-hidden" style={{ border: "1px solid var(--clr-border)" }}>
               {(["login", "register"] as const).map((t) => (
                 <button
@@ -192,7 +192,7 @@ export default function AuthModal({
           )}
 
           {/* Login Form */}
-          {tab === "login" && !upgradeMode && (
+          {tab === "login" && (
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>用户名</label>
