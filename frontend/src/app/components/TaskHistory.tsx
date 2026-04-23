@@ -78,36 +78,39 @@ export default function TaskHistory({
           {tasks.length}/20
         </span>
       </div>
-      {tasks.map((task) => {
-        const style = STATUS_STYLES[task.status] || STATUS_STYLES.pending;
-        return (
-          <button
-            key={task.id}
-            onClick={() => onSelect?.(task)}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded text-left transition-colors"
-            style={{ background: "var(--clr-bg-alt)" }}
-          >
-            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
-            <div className="flex-1 min-w-0">
-              <div className="text-xs truncate" style={{ color: "var(--clr-text)" }}>
-                {STEP_LABELS[task.step] || task.step}
+      {/* 限制显示 8 个任务高度，其余可滚动查看 */}
+      <div className="space-y-1 overflow-y-auto pr-0.5" style={{ maxHeight: "352px" }}>
+        {tasks.map((task) => {
+          const style = STATUS_STYLES[task.status] || STATUS_STYLES.pending;
+          return (
+            <button
+              key={task.id}
+              onClick={() => onSelect?.(task)}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded text-left transition-colors"
+              style={{ background: "var(--clr-bg-alt)" }}
+            >
+              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs truncate" style={{ color: "var(--clr-text)" }}>
+                  {STEP_LABELS[task.step] || task.step}
+                </div>
+                <div className="text-[10px]" style={{ color: "var(--clr-text-faint)", fontFamily: "var(--font-mono)" }}>
+                  {new Date(task.created_at + (!task.created_at.endsWith("Z") ? "Z" : "")).toLocaleString("zh-CN")}
+                </div>
               </div>
-              <div className="text-[10px]" style={{ color: "var(--clr-text-faint)", fontFamily: "var(--font-mono)" }}>
-                {new Date(task.created_at + (!task.created_at.endsWith("Z") ? "Z" : "")).toLocaleString("zh-CN")}
-              </div>
-            </div>
-            <span className={`text-[10px] font-mono shrink-0 ${style.text}`}>
-              {task.status === "completed"
-                ? "✓"
-                : task.status === "failed"
-                ? "✗"
-                : task.status === "running"
-                ? `${task.progress}%`
-                : "—"}
-            </span>
-          </button>
-        );
-      })}
+              <span className={`text-[10px] font-mono shrink-0 ${style.text}`}>
+                {task.status === "completed"
+                  ? "✓"
+                  : task.status === "failed"
+                  ? "✗"
+                  : task.status === "running"
+                  ? `${task.progress}%`
+                  : "—"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
