@@ -493,16 +493,34 @@ interface CorrScatterPanelProps {
 function CorrScatterPanel({ xData, yData, samples, xLabel, yLabel, corr }: CorrScatterPanelProps) {
   const [hoverInfo, setHoverInfo] = useState<{
     x: number; y: number;
-    object?: { xVal: number; yVal: number; sample: string };
+    object?: { xVal: number; yVal: number; nx: number; ny: number; sample: string };
   } | null>(null);
 
-  // 构建点数组
-  const points = useMemo(() => {
-    return xData.map((_, i) => ({
+  /**
+   * 归一化渲染：将 x/y 映射到 [0, VISUAL_RANGE]，
+   * 解决 nCount_RNA(400-1800) vs percent.mt(0-10) 量级差导致的压扁问题。
+   */
+  const VISUAL_RANGE = 100;
+
+  const { points, bounds } = useMemo(() => {
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < xData.length; i++) {
+      if (xData[i] < minX) minX = xData[i];
+      if (xData[i] > maxX) maxX = xData[i];
+      if (yData[i] < minY) minY = yData[i];
+      if (yData[i] > maxY) maxY = yData[i];
+    }
+    const rangeX = maxX - minX || 1;
+    const rangeY = maxY - minY || 1;
+    const pts = xData.map((_, i) => ({
       xVal: xData[i],
       yVal: yData[i],
+      nx: ((xData[i] - minX) / rangeX) * VISUAL_RANGE,
+      ny: ((yData[i] - minY) / rangeY) * VISUAL_RANGE,
       sample: samples[i],
     }));
+    return { points: pts, bounds: { minX, maxX, minY, maxY } };
   }, [xData, yData, samples]);
 
   // 样本列表（排序）
@@ -519,28 +537,17 @@ function CorrScatterPanel({ xData, yData, samples, xLabel, yLabel, corr }: CorrS
     return m;
   }, [sampleList]);
 
-  // 视口
+  // 视口 — 基于归一化后的坐标
   const initialViewState = useMemo(() => {
-    let minX = Infinity, maxX = -Infinity;
-    let minY = Infinity, maxY = -Infinity;
-    for (let i = 0; i < xData.length; i++) {
-      if (xData[i] < minX) minX = xData[i];
-      if (xData[i] > maxX) maxX = xData[i];
-      if (yData[i] < minY) minY = yData[i];
-      if (yData[i] > maxY) maxY = yData[i];
-    }
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    const rangeX = maxX - minX || 1;
-    const rangeY = maxY - minY || 1;
-    const maxRange = Math.max(rangeX, rangeY);
-    const zoom = Math.log2(380 / maxRange) - 0.3;
+    const cx = VISUAL_RANGE / 2;
+    const cy = VISUAL_RANGE / 2;
+    const zoom = Math.log2(380 / VISUAL_RANGE) - 0.3;
     return { target: [cx, cy], zoom: Math.max(-2, Math.min(zoom, 10)) };
-  }, [xData, yData]);
+  }, []);
 
   const onHover = useCallback((info: { x: number; y: number; object?: unknown }) => {
     if (info.object) {
-      setHoverInfo(info as { x: number; y: number; object: { xVal: number; yVal: number; sample: string } });
+      setHoverInfo(info as { x: number; y: number; object: { xVal: number; yVal: number; nx: number; ny: number; sample: string } });
     } else {
       setHoverInfo(null);
     }
@@ -549,7 +556,7 @@ function CorrScatterPanel({ xData, yData, samples, xLabel, yLabel, corr }: CorrS
   const layer = new ScatterplotLayer({
     id: `corr-${yLabel}`,
     data: points,
-    getPosition: (d: { xVal: number; yVal: number }) => [d.xVal, d.yVal],
+    getPosition: (d: { nx: number; ny: number }) => [d.nx, d.ny],
     getFillColor: (d: { sample: string }) => {
       const c = colorMap.get(d.sample) || [128, 128, 128];
       return [c[0], c[1], c[2], 180];
