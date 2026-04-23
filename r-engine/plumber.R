@@ -161,13 +161,16 @@ function(req) {
   dev.off()
 
   # ---- 提取散点原始数据供前端 WebGL 渲染 ----
+  # 注意：Seurat 的 [[ 运算符被重载为访问 assay/slot，
+  #       必须通过 @meta.data 访问元数据列。
+  md <- exp@meta.data
   corr_scatter_data <- list(
-    nCount_RNA  = as.numeric(exp$nCount_RNA),
-    nFeature_RNA = as.numeric(exp$nFeature_RNA),
-    percent_mt  = as.numeric(exp[["percent.mt"]]),
-    sample      = as.character(exp$Sample),
-    cor_mt      = round(cor(exp$nCount_RNA, exp[["percent.mt"]]), 2),
-    cor_feature = round(cor(exp$nCount_RNA, exp$nFeature_RNA), 2)
+    nCount_RNA  = as.numeric(md$nCount_RNA),
+    nFeature_RNA = as.numeric(md$nFeature_RNA),
+    percent_mt  = as.numeric(md[["percent.mt"]]),
+    sample      = as.character(md$Sample),
+    cor_mt      = round(cor(md$nCount_RNA, md[["percent.mt"]]), 2),
+    cor_feature = round(cor(md$nCount_RNA, md$nFeature_RNA), 2)
   )
 
   report(60, "过滤细胞...")
