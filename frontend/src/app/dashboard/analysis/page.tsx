@@ -299,15 +299,38 @@ function AnalysisPageContent() {
         : stepParams;
       const task = await submitTask({ project_id: project.id, step: step.apiStep, params: finalParams });
       updateTaskCache(step.id, task);
-
-      // 重新运行某步骤时，清除所有下游步骤的缓存（避免显示旧结果）
-      const currentIdx = STEPS.findIndex((s) => s.id === step.id);
-      for (let i = currentIdx + 1; i < STEPS.length; i++) {
-        clearTaskCache(STEPS[i].id);
-      }
+      // 不再立即清除下游缓存 —— 改为导航时懒清除
     } catch (e) {
       setError(e instanceof Error ? e.message : "提交失败");
     } finally { setSubmitting(false); }
+  };
+
+  /**
+   * 导航到目标步骤，同时懒清除过期的下游缓存。
+   * 规则：如果目标步骤有缓存结果，但任何上游步骤在它之后重新完成了，
+   *       说明该缓存已失效 → 清除缓存（显示参数面板）。
+   * 如果上游步骤仍在运行（未完成），则保留旧缓存（显示旧结果）。
+   */
+  const navigateToStep = (targetIdx: number) => {
+    const targetStepId = STEPS[targetIdx].id;
+    const targetTask = taskCache[targetStepId];
+    if (targetTask && targetTask.created_at) {
+      const targetCreatedAt = new Date(targetTask.created_at).getTime();
+      for (let i = 0; i < targetIdx; i++) {
+        const upstreamTask = taskCache[STEPS[i].id];
+        if (
+          upstreamTask?.status === "completed" &&
+          upstreamTask.completed_at &&
+          new Date(upstreamTask.completed_at).getTime() > targetCreatedAt
+        ) {
+          // 上游步骤在目标步骤之后重新完成了 → 目标缓存过期
+          clearTaskCache(targetStepId);
+          break;
+        }
+      }
+    }
+    setActiveStep(targetIdx);
+    setError(null);
   };
 
   /**
@@ -387,7 +410,7 @@ function AnalysisPageContent() {
           {STEPS.map((s, i) => (
             <button
               key={s.id}
-              onClick={() => { setActiveStep(i); setError(null); }}
+              onClick={() => navigateToStep(i)}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm text-left transition-all duration-200"
               style={
                 activeStep === i
@@ -1025,8 +1048,7 @@ function AnalysisPageContent() {
                   {activeStep < STEPS.length - 1 && currentTask?.status === 'completed' && (
                     <button
                       onClick={() => {
-                        setActiveStep((prev) => prev + 1);
-                        setError(null);
+                        navigateToStep(activeStep + 1);
                       }}
                       className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold text-white rounded transition-all duration-200 hover:shadow-md"
                       style={{ background: 'var(--clr-amber)' }}
