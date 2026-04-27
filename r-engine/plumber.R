@@ -772,7 +772,149 @@ function(req) {
 
 
 # ======================================================================
-# 7b. 成对聚类差异分析
+# 7c. Marker 基因表达可视化 (v1 Step 7 完整移植)
+#     用户上传 marker.txt → 解析 CellType 列表 → 选择后调用 my_distPlot11()
+#     调用: data_plot.R::my_distPlot11()
+# ======================================================================
+
+#* Marker 基因表达 — 解析 marker 文件 + 生成 FeaturePlot/VlnPlot
+#* @post /marker_expr
+function(req) {
+  body <- jsonlite::fromJSON(req$postBody)
+  project_path <- body$project_path
+  params <- body$params
+  task_id <- params$task_id
+  report <- create_progress_reporter(task_id)
+
+  report(5, "加载聚类数据...")
+
+  # ── 加载聚类后 RDS ──
+  input_path <- file.path(project_path, "seurat_clustered.rds")
+  if (!file.exists(input_path)) stop("请先运行聚类步骤")
+  pro <- readRDS(input_path)
+
+  report(15, "读取 Marker 基因文件...")
+
+  # ── 读取 marker 文件 ──
+  marker_file <- params$marker_file_path %||% NULL
+  if (is.null(marker_file) || !file.exists(marker_file)) {
+    stop("未找到 Marker 基因文件，请先上传 marker.txt")
+  }
+
+  mkfs <- read.delim(marker_file, header = TRUE, sep = "\t",
+                     check.names = FALSE, stringsAsFactors = FALSE,
+                     row.names = 1)
+
+  # 提取所有 cell types
+  cell_types <- sort(unique(rownames(mkfs)))
+
+  # 构建 marker 表格数据（前端表格展示用）
+  marker_table <- data.frame(
+    CellType = rownames(mkfs),
+    Markers = as.character(mkfs[, 1]),
+    stringsAsFactors = FALSE
+  )
+
+  report(25, paste0("解析完成，共 ", length(cell_types), " 种细胞类型"))
+
+  # ── 判断是否需要生成图（Phase B）──
+  cell_type <- params$cell_type %||% NULL
+
+  if (is.null(cell_type) || nchar(trimws(cell_type)) == 0) {
+    # Phase A：只解析文件，返回 cell_types 列表
+    report(100, "Marker 文件解析完成")
+
+    result_data <- list(
+      status = "success",
+      phase = "parse",
+      cell_types = cell_types,
+      marker_table = marker_table,
+      stats = list(
+        n_cell_types = length(cell_types),
+        n_total_markers = sum(sapply(mkfs[, 1], function(x) {
+          length(strsplit(x, "[\\t, ]+")[[1]])
+        }))
+      )
+    )
+
+    result_path <- file.path(project_path, "marker_expr_result.json")
+    jsonlite::write_json(result_data, result_path, auto_unbox = TRUE)
+
+    return(result_data)
+  }
+
+  # Phase B：生成指定 cell_type 的表达图
+  if (!(cell_type %in% cell_types)) {
+    stop(paste0("选择的细胞类型 '", cell_type, "' 不在 marker 文件中"))
+  }
+
+  report(35, paste0("生成 ", cell_type, " 的 Marker 表达图..."))
+
+  tryCatch({
+    out_dir <- file.path(project_path, "7.marker")
+    if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+
+    # 计算有效 marker 基因数以确定图片高度
+    marker_genes_raw <- strsplit(mkfs[cell_type, 1], "[\\t, ]+")[[1]]
+    marker_genes_raw <- marker_genes_raw[marker_genes_raw != ""]
+    allgenes <- rownames(GetAssayData(pro, assay = "SCT", layer = "data"))
+    if (all(sapply(allgenes, is_upper_strict))) {
+      n_markers <- length(intersect(marker_genes_raw, allgenes))
+    } else {
+      n_markers <- length(allgenes[toupper(allgenes) %in% toupper(marker_genes_raw)])
+    }
+    n_col <- max(1, min(n_markers, 4))
+    n_rows <- ceiling(n_markers / n_col)       # 每种图的行数
+    calc_width  <- n_col * 400 + 100           # 每列 400px + 图例空间
+    calc_height <- max(800, n_rows * 2 * 400)  # FeaturePlot + VlnPlot 各占 400px/行
+
+    report(50, paste0("找到 ", n_markers, " 个有效 marker 基因，绘图中..."))
+
+    # 生成组合图 (FeaturePlot / VlnPlot patchwork)
+    plot_name <- paste0("plot_marker_expr_",
+                        gsub("[^a-zA-Z0-9_]", "_", cell_type), ".png")
+    plot_path <- file.path(project_path, plot_name)
+
+    png(plot_path, width = calc_width, height = calc_height, res = 150)
+    print(my_distPlot11(pro, mkfs, cell_type))
+    dev.off()
+
+    report(90, "图片生成完成")
+
+    # 归档副本
+    archive_name <- make_output_name(project_path, "7", "marker_expr",
+                                     cell_type, "png")
+    archive_path <- file.path(project_path, archive_name)
+    file.copy(plot_path, archive_path, overwrite = TRUE)
+
+    result_data <- list(
+      status = "success",
+      phase = "plot",
+      cell_type = cell_type,
+      cell_types = cell_types,
+      marker_table = marker_table,
+      plot_path = plot_name,
+      n_markers = n_markers,
+      stats = list(
+        cell_type = cell_type,
+        n_markers = n_markers,
+        n_cell_types = length(cell_types)
+      )
+    )
+
+    result_path <- file.path(project_path, "marker_expr_result.json")
+    jsonlite::write_json(result_data, result_path, auto_unbox = TRUE)
+
+    report(100, paste0(cell_type, " Marker 表达图生成完成"))
+
+    return(result_data)
+  }, error = function(e) {
+    stop(paste0("Marker 表达图生成失败: ", e$message))
+  })
+}
+
+
+
 #     调用: data_summary.R::my_diffTable2()
 # ======================================================================
 

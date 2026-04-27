@@ -7,7 +7,7 @@ scCloud v2 — 任务管理路由
 import asyncio
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -25,7 +25,7 @@ class TaskSubmit(BaseModel):
     project_id: int
     step: str = Field(
         ...,
-        pattern=r"^(qc|normalize|reduce|cluster|markers|enrich|annotate|convert|markers_pairwise|plot_markers|subset_cluster)$",
+        pattern=r"^(qc|normalize|reduce|cluster|markers|enrich|annotate|convert|markers_pairwise|plot_markers|subset_cluster|marker_expr)$",
     )
     params: dict = Field(default_factory=dict)
 
@@ -201,6 +201,62 @@ async def list_tasks(
     return TaskListResponse(total=len(tasks), tasks=tasks)
 
 
+@router.get("/example-marker")
+async def download_example_marker():
+    """下载示例 Marker 基因文件（公开访问，无需认证）。"""
+    import os
+    from fastapi.responses import FileResponse
+
+    # 示例文件存放在 r-engine data 卷中
+    example_path = "/app/r-engine-data/examples/example.marker.txt"
+    if not os.path.exists(example_path):
+        # 兼容开发环境
+        alt_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "..", "r-engine", "data", "examples", "example.marker.txt"
+        )
+        example_path = alt_path if os.path.exists(alt_path) else example_path
+
+    if not os.path.exists(example_path):
+        raise HTTPException(status_code=404, detail="示例文件不存在")
+
+    return FileResponse(
+        example_path,
+        media_type="text/plain",
+        filename="example.marker.txt",
+    )
+
+
+@router.post("/marker-file")
+async def upload_marker_file(
+    project_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    上传 Marker 基因列表文件到项目目录。
+    文件格式: TSV（制表符分隔），包含 CellType 和 Markers 列。
+    """
+    import os
+
+    project = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.user_id == current_user.id)
+        .first()
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    # 保存到项目目录
+    save_path = os.path.join(project.storage_path, "marker_genes.txt")
+    content = await file.read()
+    with open(save_path, "wb") as f:
+        f.write(content)
+
+    return {"path": save_path, "filename": file.filename}
+
+
 @router.get("/{task_id}", response_model=TaskResponse)
 async def get_task(
     task_id: str,
@@ -299,6 +355,7 @@ async def get_task_plot(
     elif ext == ".rds": media_type = "application/octet-stream"
     else: media_type = "application/octet-stream"
     return FileResponse(file_path, media_type=media_type, filename=name)
+
 
 
 @router.post("/{task_id}/cancel", response_model=TaskResponse)

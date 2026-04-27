@@ -51,7 +51,7 @@ const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
   cluster: { method: "harmony", resolution: 0.5, n_dims: 30, group_by: "Sample" },
   markers: { cluster: "All", min_pct: 0.1, logfc_threshold: 0.25, p_val_adj: 0.05, test_use: "wilcox", only_pos: true, ntop: 5 },
   enrich: { pathway: "GO", direction: "Up", p_adjust_method: "BH", pvalue_cutoff: 0.05, qvalue_cutoff: 0.2, n_term: 10 },
-  marker_expr: {},
+  marker_expr: { cell_type: "" },
   annotate: { mode: "auto", group_by: "Sample" },
 };
 
@@ -100,8 +100,13 @@ function AnalysisPageContent() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 从聚类结果中提取的可用 cluster 列表（供差异基因步骤使用）
   const [clusterLevels, setClusterLevels] = useState<string[]>([]);
+
+  // Marker 基因文件上传状态
+  const [markerFile, setMarkerFile] = useState<{ name: string; path: string; cellTypes: string[] } | null>(null);
+  const markerInputRef = useRef<HTMLInputElement>(null);
+  // Phase A 解析完成标记：结果显示在右侧但不折叠参数面板
+  const [markerParseOnly, setMarkerParseOnly] = useState(false);
 
   const step = STEPS[activeStep];
   // 当前步骤的 task（来自 cache）
@@ -292,11 +297,19 @@ function AnalysisPageContent() {
     if (!project) { setError("请先选择项目"); return; }
     setError(null); setSubmitting(true);
     setShowResults(true);
+    // marker_expr Phase B 手动提交时，清除 Phase A 的「不折叠」标记
+    if (step.id === 'marker_expr') setMarkerParseOnly(false);
     try {
       // QC 步骤时把已上传文件路径注入参数
-      const finalParams = step.id === "qc" && uploadedFile
+      let finalParams = step.id === "qc" && uploadedFile
         ? { ...stepParams, rds_file_path: uploadedFile.path }
         : stepParams;
+
+      // marker_expr 步骤注入 marker 文件路径
+      if (step.id === "marker_expr" && markerFile) {
+        finalParams = { ...finalParams, marker_file_path: markerFile.path };
+      }
+
       const task = await submitTask({ project_id: project.id, step: step.apiStep, params: finalParams });
       updateTaskCache(step.id, task);
       // 不再立即清除下游缓存 —— 改为导航时懒清除
@@ -373,7 +386,8 @@ function AnalysisPageContent() {
   };
 
   // 参数面板折叠由当前步骤是否有任务自动驱动，不再依赖全局 showResults
-  const hasTaskForStep = currentTask !== null;
+  // marker_expr Phase A 解析完成后仅显示结果但不折叠参数面板（仅限该步骤）
+  const hasTaskForStep = currentTask !== null && !(step.id === 'marker_expr' && markerParseOnly);
 
   const inputCls = "w-full px-3 py-2 bg-white border rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#C86019]/30 transition-colors";
   const inputStyle = { borderColor: "var(--clr-border)", color: "var(--clr-text)" };
@@ -918,14 +932,126 @@ function AnalysisPageContent() {
               )}
 
               {step.id === "marker_expr" && (
-                <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>Marker 基因文件</label>
-                  <label className="flex items-center justify-center gap-2 w-full py-2 bg-white cursor-pointer hover:shadow-sm transition-all text-xs border border-dashed rounded" style={{ borderColor: 'var(--clr-border)', color: 'var(--clr-text-muted)' }}>
-                    <IconUpload size={14} className="text-[#C86019]" />
-                    <span>上传 Marker 列表 (.txt)</span>
-                    <input type="file" accept=".txt" className="hidden" />
-                  </label>
-                </div>
+                <>
+                  {/* Marker 文件上传 */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>Marker 基因文件</label>
+                    <div
+                      onClick={() => {
+                        if (!project) {
+                          setError("请先选择项目再上传文件");
+                          window.dispatchEvent(new CustomEvent("open-project-selector"));
+                          return;
+                        }
+                        markerInputRef.current?.click();
+                      }}
+                      className="flex items-center justify-center gap-2 w-full py-2 bg-white hover:shadow-sm transition-all text-xs border border-dashed rounded mb-1.5"
+                      style={{
+                        cursor: "pointer",
+                        borderColor: markerFile ? "#C86019" : "var(--clr-border)",
+                        color: markerFile ? "#C86019" : "var(--clr-text-muted)",
+                        background: markerFile ? "rgba(200,96,25,0.04)" : undefined,
+                      }}
+                    >
+                      <IconUpload size={14} className="text-[#C86019]" />
+                      <span>{markerFile ? "重新上传" : "上传 Marker 列表 (.txt)"}</span>
+                    </div>
+                    <input ref={markerInputRef} type="file" accept=".txt" className="hidden" onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f || !project) return;
+                      e.target.value = '';
+                      const token = localStorage.getItem('access_token');
+                      const fd = new FormData();
+                      fd.append('file', f);
+                      try {
+                        const res = await fetch(`/api/tasks/marker-file?project_id=${project.id}`, {
+                          method: 'POST',
+                          headers: { Authorization: `Bearer ${token}` },
+                          body: fd,
+                        });
+                        if (!res.ok) throw new Error(await res.text());
+                        const data = await res.json();
+                        // 提交 Phase A 解析任务获取 cell types
+                        const taskRes = await submitTask({
+                          project_id: project.id,
+                          step: 'marker_expr',
+                          params: { marker_file_path: data.path },
+                        });
+                        // 轮询等待完成
+                        let resolved = taskRes;
+                        for (let i = 0; i < 30; i++) {
+                          await new Promise(r => setTimeout(r, 2000));
+                          resolved = await getTask(taskRes.id);
+                          if (resolved.status === 'completed' || resolved.status === 'failed') break;
+                        }
+                        if (resolved.status === 'completed') {
+                          // 读取结果中的 cell_types
+                          const rRes = await fetch(`/api/tasks/${resolved.id}/result`, { headers: { Authorization: `Bearer ${token}` } });
+                          const result = rRes.ok ? await rRes.json() : {};
+                          const rawTypes = result?.cell_types || [];
+                          // R jsonlite 可能返回单元素数组，统一 unbox
+                          const types = (Array.isArray(rawTypes) ? rawTypes : [rawTypes]).map(
+                            (t: unknown) => Array.isArray(t) && t.length === 1 ? t[0] : t
+                          ) as string[];
+                          setMarkerFile({ name: f.name, path: data.path, cellTypes: types });
+                          if (types.length > 0) updateParam('cell_type', types[0]);
+                          // Phase A 结果写入缓存以便右侧面板展示，
+                          // 但标记为 parseOnly 不触发参数面板折叠。
+                          setMarkerParseOnly(true);
+                          updateTaskCache(step.id, resolved);
+                        }
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : 'Marker 文件上传失败');
+                      }
+                    }} />
+
+                    {/* 已上传文件名 + 删除按钮 */}
+                    {markerFile && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2D8A56" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span className="flex-1 truncate text-[11px]" style={{ color: "var(--clr-text-muted)" }}>{markerFile.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMarkerFile(null);
+                            updateParam('cell_type', '');
+                            updateParam('marker_file_path', '');
+                          }}
+                          title="移除文件"
+                          className="p-1 rounded hover:bg-red-50 transition-colors shrink-0"
+                          style={{ color: "var(--clr-danger)" }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                        </button>
+                      </div>
+                    )}
+
+                    <a
+                      href="/api/tasks/example-marker"
+                      download="example.marker.txt"
+                      className="text-[10px] mt-1 inline-block underline"
+                      style={{ color: 'var(--clr-amber-dark)' }}
+                    >
+                      下载示例 marker.txt
+                    </a>
+                  </div>
+
+                  {/* 细胞类型选择 */}
+                  {markerFile && markerFile.cellTypes.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>细胞类型</label>
+                      <select
+                        value={stepParams.cell_type as string}
+                        onChange={(e) => updateParam('cell_type', e.target.value)}
+                        className={selectCls} style={selectStyle}
+                      >
+                        {markerFile.cellTypes.map(ct => (
+                          <option key={ct} value={ct}>{ct}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </>
               )}
 
               {step.id === "annotate" && (
@@ -964,7 +1090,7 @@ function AnalysisPageContent() {
                 };
                 const prereq = PREREQS[step.id];
                 const prereqMissing = prereq && taskCache[prereq.stepId]?.status !== "completed";
-                const isDisabled = submitting || !project || (step.id === "qc" && !uploadedFile) || step.id === "marker_expr" || prereqMissing;
+                const isDisabled = submitting || !project || (step.id === "qc" && !uploadedFile) || (step.id === "marker_expr" && !markerFile) || prereqMissing;
 
                 return (
                   <>
@@ -983,7 +1109,7 @@ function AnalysisPageContent() {
 
                     {!project && <p className="text-[10px] text-center" style={{ color: "var(--clr-text-faint)" }}>请先在顶部选择一个项目</p>}
                     {project && step.id === "qc" && !uploadedFile && <p className="text-[10px] text-center" style={{ color: "var(--clr-warn)" }}>请先上传 .rds 数据文件</p>}
-                    {step.id === "marker_expr" && <p className="text-[10px] text-center" style={{ color: "var(--clr-text-faint)" }}>🚧 此功能正在开发中，敬请期待</p>}
+                    {step.id === "marker_expr" && !markerFile && <p className="text-[10px] text-center" style={{ color: "var(--clr-warn)" }}>请先上传 Marker 基因文件</p>}
                     {prereqMissing && <p className="text-[10px] text-center" style={{ color: "var(--clr-warn)" }}>⚠ 请先完成「{prereq.label}」步骤</p>}
                   </>
                 );

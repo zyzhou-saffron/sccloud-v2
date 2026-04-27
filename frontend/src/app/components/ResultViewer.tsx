@@ -294,7 +294,8 @@ export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCa
             {stepId === "cluster"   && <ClusterResult data={resultData} task={task} />}
             {stepId === "markers"   && <MarkersResult data={resultData} task={task} taskCache={taskCache} clusterLevels={clusterLevels} />}
             {stepId === "enrich"    && <EnrichResult data={resultData} taskId={task.id} />}
-            {!["qc","normalize","reduce","cluster","markers","enrich"].includes(stepId) && (
+            {stepId === "marker_expr" && <MarkerExprResult data={resultData} taskId={task.id} task={task} />}
+            {!["qc","normalize","reduce","cluster","markers","enrich","marker_expr"].includes(stepId) && (
               <div className="callout text-xs">分析完成，详细结果可在输出文件中查看</div>
             )}
           </>
@@ -582,10 +583,20 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
     <div className="space-y-4">
       {/* ── 顶部概览胶囊 ── */}
       {stats && (
-        <div className="flex flex-wrap gap-4 text-xs" style={{ color: "var(--clr-text-faint)" }}>
+        <div className="flex flex-wrap items-center gap-4 text-xs" style={{ color: "var(--clr-text-faint)" }}>
           <span>细胞数：<strong style={{ color: "var(--clr-text)" }}>{stats.cells?.toLocaleString()}</strong></span>
           <span>聚类数：<strong style={{ color: "var(--clr-amber)", fontSize: "1rem" }}>{stats.clusters ?? "—"}</strong></span>
           <span className="break-all">聚类标签：<strong style={{ color: "var(--clr-text)" }}>{(stats.cluster_levels ?? []).join(" · ")}</strong></span>
+          {/* 聚类后 RDS 下载 */}
+          <AuthDownloadLink
+            url={`/api/tasks/${taskId}/plot?name=seurat_clustered.rds`}
+            filename={`${task.project_id}_seurat_clustered.rds`}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-medium transition-all hover:shadow-sm ml-auto"
+            style={{ border: "1px solid var(--clr-border)", color: "var(--clr-amber-dark)", background: "rgba(200,96,25,0.04)" }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            .rds
+          </AuthDownloadLink>
         </div>
       )}
 
@@ -1599,6 +1610,195 @@ function EnrichResult({ data, taskId }: { data: Record<string, unknown> | null; 
         <div className="callout text-xs">
           富集数据暂未返回（可能无显著通路，或需重新运行富集步骤以生成新格式数据）
         </div>
+      )}
+    </div>
+  );
+}
+
+
+/** Marker 基因表达结果组件 (Step 7) */
+/**
+ * R/jsonlite 标量安全提取 —— plumber 默认将标量序列化为单元素数组
+ * 例如 ["plot"] → "plot"，同时保留真正的数组。
+ */
+function unboxScalar<T>(v: unknown): T {
+  return (Array.isArray(v) && v.length === 1 ? v[0] : v) as T;
+}
+
+function MarkerExprResult({ data, taskId, task }: { data: Record<string, unknown> | null; taskId?: string; task: Task }) {
+  const phase     = unboxScalar<string | undefined>(data?.phase);
+  const cellType  = unboxScalar<string | undefined>(data?.cell_type);
+  const cellTypes = data?.cell_types as string[] | undefined;
+  const markerTable = data?.marker_table as Array<{ CellType: string; Markers: string }> | undefined;
+  const plotPath  = unboxScalar<string | undefined>(data?.plot_path);
+  const nMarkers  = unboxScalar<number | undefined>(data?.n_markers);
+
+  // Phase B 子 Tab 状态
+  const [activeTab, setActiveTab] = useState<"plot" | "table">("plot");
+
+  // 表格分页
+  const ITEMS_PER_PAGE = 8;
+  const [tablePage, setTablePage] = useState(0);
+  const totalPages = markerTable ? Math.ceil(markerTable.length / ITEMS_PER_PAGE) : 0;
+  const pagedRows  = markerTable
+    ? markerTable.slice(tablePage * ITEMS_PER_PAGE, (tablePage + 1) * ITEMS_PER_PAGE)
+    : [];
+
+  // 图片 URL
+  const plotFileName = plotPath ? plotPath.split("/").pop() : null;
+  const plotSrc = plotFileName && taskId
+    ? `/api/tasks/${taskId}/plot?name=${encodeURIComponent(plotFileName)}`
+    : null;
+
+  if (!data) {
+    return <div className="callout text-xs">无结果数据</div>;
+  }
+
+  /* ── 通用表格渲染 ── */
+  const renderTable = () => (
+    markerTable && markerTable.length > 0 ? (
+      <div>
+        <p className="text-xs font-medium mb-2" style={{ color: "var(--clr-amber-dark)" }}>
+          Marker 基因列表
+          <span className="font-normal ml-1" style={{ color: "var(--clr-text-faint)" }}>
+            — 共 {markerTable.length} 种细胞类型
+          </span>
+        </p>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", fontSize: "12px", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", padding: "6px 8px", background: "var(--clr-bg)", borderBottom: "1px solid var(--clr-border)", fontWeight: 600, color: "var(--clr-text-muted)" }}>
+                  CellType
+                </th>
+                <th style={{ textAlign: "left", padding: "6px 8px", background: "var(--clr-bg)", borderBottom: "1px solid var(--clr-border)", fontWeight: 600, color: "var(--clr-text-muted)" }}>
+                  Markers
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedRows.map((row, i) => (
+                <tr key={i} style={{ borderBottom: "1px solid var(--clr-border)" }}>
+                  <td style={{ padding: "5px 8px", fontWeight: 500, color: "var(--clr-text)", whiteSpace: "nowrap" }}>
+                    {row.CellType}
+                  </td>
+                  <td style={{ padding: "5px 8px", color: "var(--clr-text-faint)", wordBreak: "break-word" }}>
+                    {row.Markers}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-2" style={{ fontSize: "11px", color: "var(--clr-text-faint)" }}>
+            <span>第 {tablePage + 1} / {totalPages} 页</span>
+            <div className="flex gap-2">
+              <button
+                disabled={tablePage === 0}
+                onClick={() => setTablePage(p => p - 1)}
+                className="px-2 py-0.5 rounded"
+                style={{ border: "1px solid var(--clr-border)", opacity: tablePage === 0 ? 0.4 : 1 }}
+              >
+                上一页
+              </button>
+              <button
+                disabled={tablePage >= totalPages - 1}
+                onClick={() => setTablePage(p => p + 1)}
+                className="px-2 py-0.5 rounded"
+                style={{ border: "1px solid var(--clr-border)", opacity: tablePage >= totalPages - 1 ? 0.4 : 1 }}
+              >
+                下一页
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    ) : null
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Phase A: 解析完成 — 直接显示表格 */}
+      {phase === "parse" && (
+        <>
+          <div className="callout text-xs" style={{
+            background: "rgba(22,163,74,0.05)",
+            border: "1px solid rgba(22,163,74,0.15)",
+          }}>
+            <p style={{ color: "#15803d" }}>
+              Marker 文件解析完成：共 <strong>{cellTypes?.length || 0}</strong> 种细胞类型。
+              请在左侧选择细胞类型后点击「执行 Marker 表达」生成图片。
+            </p>
+          </div>
+          {renderTable()}
+        </>
+      )}
+
+      {/* Phase B: 绘图完成 — Tab 切换 */}
+      {phase === "plot" && (
+        <>
+          {/* 状态提示 */}
+          {cellType && (
+            <div className="callout text-xs" style={{
+              background: "rgba(22,163,74,0.05)",
+              border: "1px solid rgba(22,163,74,0.15)",
+            }}>
+              <p style={{ color: "#15803d" }}>
+                当前细胞类型: <strong>{cellType}</strong>，
+                匹配到 <strong>{nMarkers}</strong> 个有效 Marker 基因
+              </p>
+            </div>
+          )}
+
+          {/* Tab 导航 */}
+          <div className="flex gap-2">
+            {([
+              { id: "plot" as const, label: "表达图" },
+              { id: "table" as const, label: "Marker 列表" },
+            ]).map(t => (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                className="px-3 py-1.5 rounded text-xs font-medium transition-all"
+                style={activeTab === t.id
+                  ? { background: "var(--clr-amber)", color: "#fff", boxShadow: "0 0 8px rgba(200,96,25,0.4)" }
+                  : { background: "transparent", color: "var(--clr-text-muted)", border: "1px solid var(--clr-border)" }
+                }
+              >{t.label}</button>
+            ))}
+          </div>
+
+          {/* Tab 内容 */}
+          {activeTab === "plot" && plotSrc && taskId && (
+            <div style={{
+              position: "relative",
+              maxWidth: (nMarkers ?? 4) <= 1 ? "50%" : (nMarkers ?? 4) <= 2 ? "65%" : (nMarkers ?? 4) <= 3 ? "80%" : "100%",
+            }}>
+              <p className="text-xs font-medium mb-2" style={{ color: "var(--clr-amber-dark)" }}>
+                {cellType} — FeaturePlot + VlnPlot
+              </p>
+              <AuthImg
+                src={plotSrc}
+                alt={`Marker expression: ${cellType}`}
+                style={{ width: "100%", borderRadius: 8, border: "1px solid var(--clr-border)" }}
+              />
+              {/* 下载按钮 */}
+              <div style={{ position: "absolute", bottom: 8, right: 8, display: "flex", gap: 4 }}>
+                <AuthDownloadLink
+                  url={`/api/tasks/${taskId}/plot?name=${encodeURIComponent(plotFileName!)}`}
+                  filename={`marker_expr_${cellType}.png`}
+                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:scale-110"
+                  style={{ background: "rgba(255,255,255,0.92)", boxShadow: "0 2px 8px rgba(0,0,0,0.10)", color: "var(--clr-amber)" }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </AuthDownloadLink>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "table" && renderTable()}
+        </>
       )}
     </div>
   );
