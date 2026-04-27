@@ -25,6 +25,9 @@ renv/staging/
 *.h5ad
 *.h5seurat
 user_projects/
+*.tar.gz
+*.zip
+*.db
 
 # IDE
 .vscode/
