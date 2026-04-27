@@ -732,11 +732,24 @@ my_distPlot11 <- function(pro,mkfs,cellType) {
   #print(class(pro))
   markers <- sort(na.omit(markers))
   if(length(markers)>=1){
-    p <- FeaturePlot(pro, features = markers, pt.size = 0.2, ncol = 4, slot = 'data') &
-      scale_color_gradientn(colours = rev(rainbow(7, start = 0, end = 0.7)))
+    # 计算所有 marker 基因的最大表达量，统一颜色范围
+    expr_mat <- GetAssayData(pro, assay = "SCT", layer = "data")
+    max_expr <- max(expr_mat[markers, ], na.rm = TRUE)
+    if (max_expr == 0) max_expr <- 1  # 避免 limits 退化
 
-    p2 <- VlnPlot(pro, features = markers, pt.size = 0, cols = clusterCols, ncol = 4)
-    return(p/p2)
+    # 列数随基因数动态调整，最多 4 列
+    n_col <- min(length(markers), 4)
+
+    p <- FeaturePlot(pro, features = markers, pt.size = 0.2, ncol = n_col, slot = 'data') &
+      scale_color_gradientn(
+        colours = c("lightgrey", "#FFF7BC", "#FEC44F", "#D95F0E", "#7F0000"),
+        limits  = c(0, max_expr),
+        name    = "Expression"
+      )
+
+    p2 <- VlnPlot(pro, features = markers, pt.size = 0, cols = clusterCols, ncol = n_col)
+
+    return(p / p2)
   }else{
     # 返回一个简单的文本图
     plot(0, 0, type = "n", xlab = "", ylab = "", axes = FALSE)

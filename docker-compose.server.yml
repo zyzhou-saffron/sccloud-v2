@@ -52,6 +52,7 @@ services:
       ENVIRONMENT: "production"
     volumes:
       - projects_data:/data/projects
+      - ./r-engine/data:/app/r-engine-data
 
   # ---- R 计算引擎 (Plumber :8787) ----
   r-engine:
