@@ -2,20 +2,33 @@
 
 > 从 R Shiny 迁移到现代全栈架构：**Next.js 16 + FastAPI + R Plumber**，支持完整的 scRNA-seq 8 步分析流程。
 
+<p align="left">
+  <img src="https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white" alt="Next.js" />
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/R_Engine-4.3.2-276DC3?style=flat-square&logo=r&logoColor=white" alt="R" />
+  <img src="https://img.shields.io/badge/Seurat-V5-4A90E2?style=flat-square" alt="Seurat V5" />
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker" />
+  <img src="https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis&logoColor=white" alt="Redis" />
+  <img src="https://img.shields.io/badge/MariaDB-003545?style=flat-square&logo=mariadb&logoColor=white" alt="MariaDB" />
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+</p>
+
 ![scCloud Dashboard 预览](docs/images/dashboard.png)
 
 ## 文档导览
 
 | 章节 | 内容 |
 |---|---|
-| 架构总览 | ASCII 架构图 + 技术栈表 |
-| 快速开始 | 4 步一键部署（clone → 配置 → R 镜像 → compose up） |
-| R 引擎构建 | 3 种方式：预编译库（10min）/ 预构建镜像（1min）/ 从零编译（2h） |
-| 服务器部署 | Host 网络模式 + 端口规划表 + 热更新命令 |
-| 环境变量 | 完整参考表，标注必填项 |
-| API 端点 | 全部 REST + WebSocket 端点 |
-| 常见问题 | R 引擎故障 / 数据库初始化 / 大文件超时 / OOM |
-| 开发模式 | 前后端热重载本地开发 |
+| [架构总览](#架构总览) | ASCII 架构图 + 技术栈表 |
+| [快速开始](#快速开始--docker-compose-一键部署) | 4 步一键部署（clone → 配置 → R 镜像 → compose up） |
+| [R 引擎构建](#step-3-构建-r-计算引擎镜像) | 3 种方式：预编译库（10min）/ 预构建镜像（1min）/ 从零编译（2h） |
+| [分析流程](#分析流程) | 8步标准 scRNA-seq 分析及 WebGL 可视化 |
+| [服务器部署](#服务器部署host-网络模式) | Host 网络模式 + 端口规划表 + 热更新命令 |
+| [环境变量](#环境变量参考) | 完整参考表，标注必填项 |
+| [API 端点](#api-端点) | 全部 REST + WebSocket 端点 |
+| [常见问题](#常见问题) | R 引擎故障 / 数据库初始化 / 大文件超时 / OOM |
+| [开发模式](#开发模式) | 前后端热重载本地开发 |
+
 
 ## 架构总览
 
