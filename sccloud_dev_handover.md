@@ -33,8 +33,16 @@
     *   执行 SSH 命令在服务端重新拉起容器。
     *   **⚠️ 致命红线操作 ⚠️**：重载远程服务时，必须！绝对必须带有 `--env-file .env.server` 参数！
     *   正确命令示例：`ssh GPU-zhouy1 "cd ~/sccloud-r-engine && docker compose -f docker-compose.server.yml --env-file .env.server up -d frontend --build"`。
-6.  **Git 提交固化**：
+6.  **Git 提交固化与推送**：
     *   远端确认无误后，在本地终端执行 `git commit -am "feat/fix(scope): xxx"`。
+    *   保持原子化提交，并视情况帮 USER 推送到远端仓库 (`git push`)。
+
+### 🤖 Agent 主动行为准则 (Crucial for AI)
+作为 AI Agent，请你具备“主人翁意识”，做到以下几点**无需 USER 提醒**的主动行为：
+1.  **主动提交 Git**：每当你完成了一个逻辑闭环（哪怕是一个小 Bug 的修复、UI 的微调、文档的更新），请**主动调用 `run_command` 进行 `git add`、`git commit` 甚至 `git push`**。永远保持工作区的干净，不要让 USER 催你提交。
+2.  **主动验证与排障**：代码修改后，如果能自己通过命令验证的（如 `npm run build`，或查看容器 logs），必须自己跑命令确认没报错，然后再回复 USER。
+3.  **遵循最佳工具论**：能用 `replace_file_content` 这种精确文件修改工具的，绝不滥用 `sed` 或 `echo` 写文件。
+4.  **遇阻即问**：如果发现报错信息极度隐蔽或者超出了当前日志的可见范围，主动提出在代码里“加 log”，然后再跑一次，绝不要靠猜来瞎改。
 
 ---
 
