@@ -259,6 +259,37 @@ const handleTaskComplete = async (partialTask: Task) => {
 
 👉 **核心原则**：在 Next.js + Tailwind 工程中做复杂的响应式 3D 布局时，优先使用 JS 动态计算 + 内联样式，而非依赖 CSS 类/媒体查询。后者在 SSR 构建、CSS 优先级竞争、以及浏览器缓存等环节容易出现样式不生效的问题。
 
+### 🖼️ 问题频发 10：Patchwork 子图对齐与图例挤压问题
+在 R 引擎中渲染复杂多图合并（如 `FeaturePlot` + `VlnPlot`）时，如果启用 Patchwork 的 `guides = "collect"` 来合并图例，在遇到子图坐标轴标签长度差异极大，或者某子图缺失图例时，会导致**整个拼图严重错位或某个大图被极度挤压变形**。
+
+👉 **解决对策**：放弃 `guides="collect"`。如果需要强制对齐不同子图的绘图区域，最好的方式是**统一坐标轴范围**。在 ggplot 中使用 `scale_x_continuous(limits = c(min, max))` 强制对齐，同时允许各个子图各自保留图例，以保证主图区的等宽视觉。
+
+### 📏 问题频发 11：后端生成图片的“过拉伸/过压缩”与前端响应式冲突
+Marker 基因可视化中，如果一次只查询了 1 个基因，R 后端生成的是一张小图。但如果前端在 `<img />` 或其父容器中硬编码了 `width: 100%` 或 `flex: 1`，这张小图会被**强行拉伸填满整个屏幕，导致极度模糊**（马赛克级）。反之，如果基因极多，又会被过度压缩。
+
+👉 **解决对策**：**前端与业务逻辑解耦，通过数量计算最大宽度**。在渲染组件时，根据查询的基因数量（`nMarkers`）动态限制容器最大宽度。
+例如：
+```tsx
+// 基因很少时，不让它拉伸填满
+const getDynamicWidth = (n: number) => {
+  if (n <= 2) return 'max-w-[40%]';
+  if (n <= 4) return 'max-w-[60%]';
+  return 'w-full';
+}
+<div className={`mx-auto ${getDynamicWidth(features.length)}`}>...</div>
+```
+
+### 🧮 问题频发 12：R (Plumber) 引擎中因除 0 导致的 NaN 画布崩溃
+在动态计算 `ggsave` 输出的画布宽高时（如 `height = ceiling(length(features) / n_col) * base_height`），一旦 `features` 为空或被过滤完（长度为 0），计算出的高/宽会变成 0，进而导致 `ggsave` 报 `dimensions exceed 50 inches` 或直接 NaN 崩溃，返回 HTTP 500。
+
+👉 **解决对策**：在 R 引擎中所有涉及动态计算长宽比的地方，**必须加入 `max(1, ...)` 的兜底保护**。
+```R
+# 错误写法
+n_col <- ceiling(length(features) / 2)
+# 正确写法 (永远不为 0)
+n_col <- max(1, ceiling(length(features) / 2))
+```
+
 ---
 
 ## 5. 项目代码量统计 (截至 2026-04-21)
