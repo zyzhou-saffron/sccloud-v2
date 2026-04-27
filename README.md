@@ -2,6 +2,8 @@
 
 > 从 R Shiny 迁移到现代全栈架构：**Next.js 16 + FastAPI + R Plumber**，支持完整的 scRNA-seq 8 步分析流程。
 
+![scCloud Dashboard 预览](docs/images/dashboard.png)
+
 ## 文档导览
 
 | 章节 | 内容 |
@@ -221,6 +223,23 @@ docker compose --env-file .env.server -f docker-compose.server.yml up -d --build
 - **WebGL 交互式散点图**：deck.gl 渲染百万级细胞点
 - **交互式火山图**：Plotly 双簇对比
 - **实时进度推送**：Redis Pub/Sub → WebSocket
+
+### 界面展示
+
+<details open>
+<summary><b>展开查看分析可视化图表</b></summary>
+
+**1. 降维聚类 (UMAP)**
+![UMAP 降维图](docs/images/umap.png)
+
+**2. 差异基因火山图**
+![差异基因火山图](docs/images/volcano.png)
+
+**3. Marker 基因表达可视化**
+![Marker 基因表达](docs/images/marker.png)
+
+</details>
+
 
 ---
 
