@@ -446,7 +446,7 @@ docker run -p 8787:8787 \
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/chart?repos=zyzhou-saffron/sccloud-v2&type=date&legend=top-left)](https://www.star-history.com/?type=date&repos=eze-is%2Fweb-access)
+[![Star History Chart](https://api.star-history.com/chart?repos=zyzhou-saffron/sccloud-v2&type=date&legend=top-left)](https://www.star-history.com/?repos=zyzhou-saffron%2Fsccloud-v2&type=date&legend=bottom-right)
 
 ## License
 
