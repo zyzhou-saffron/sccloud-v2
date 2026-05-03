@@ -13,7 +13,7 @@ from app.utils.r_bridge import call_r_engine
 
 logger = logging.getLogger(__name__)
 
-PIPELINE_STEPS = ["qc", "normalize", "reduce", "cluster", "markers", "enrich", "marker_expr", "annotate"]
+PIPELINE_STEPS = ["qc", "normalize", "reduce", "cluster", "markers", "annotate"]
 
 
 async def run_pipeline(pipeline_id: str) -> None:
@@ -39,34 +39,16 @@ async def run_pipeline(pipeline_id: str) -> None:
             logger.info(f"Pipeline {pipeline_id}: executing step {step}")
 
             try:
-                # 特殊处理 marker_expr：Phase A 已在 create_pipeline 时解析，这里对每个 cell_type 跑 Phase B
-                if step == "marker_expr":
-                    cell_types = pipeline.params.get("marker_expr", {}).get("cell_types", [])
-                    if not cell_types:
-                        # 没有 marker 文件或解析失败，跳过 marker_expr
-                        logger.warning(f"Pipeline {pipeline_id}: no cell_types for marker_expr, skipping")
-                        continue
+                # 普通步骤
+                step_params = dict(pipeline.params.get(step, {}))
 
-                    for cell_type in cell_types:
-                        step_params = {
-                            **pipeline.params.get("marker_expr", {}),
-                            "cell_type": cell_type
-                        }
-                        ok = await _execute_step(db, pipeline, step, step_params)
-                        if not ok:
-                            return  # 失败，流程停止
+                # Step 5 markers 强制覆盖 cluster = "All"（运行前不知道 cluster 列表）
+                if step == "markers":
+                    step_params["cluster"] = "All"
 
-                else:
-                    # 普通步骤
-                    step_params = dict(pipeline.params.get(step, {}))
-
-                    # Step 5 markers 强制覆盖 cluster = "All"（运行前不知道 cluster 列表）
-                    if step == "markers":
-                        step_params["cluster"] = "All"
-
-                    ok = await _execute_step(db, pipeline, step, step_params)
-                    if not ok:
-                        return  # 失败，流程停止
+                ok = await _execute_step(db, pipeline, step, step_params)
+                if not ok:
+                    return  # 失败，流程停止
 
             except Exception as e:
                 logger.exception(f"Pipeline {pipeline_id}: error in step {step}: {e}")
@@ -116,20 +98,41 @@ async def _execute_step(db: Session, pipeline: Pipeline, step: str, step_params:
         db.add(task)
         db.commit()
 
-        # 调用 R 引擎
-        success = await call_r_engine(task)
+        # 调用 R 引擎（正确的函数签名）
+        try:
+            # 从 db 中获取 project 以获取 storage_path
+            from app.db.models import Project
+            project = db.query(Project).filter(Project.id == pipeline.project_id).first()
+            if not project:
+                raise Exception("Project not found")
 
-        # 刷新 task 状态（r_bridge 会更新数据库）
-        db.refresh(task)
+            # 构造 payload（参考 tasks/router.py 的做法）
+            payload = {
+                "project_path": project.storage_path,
+                "params": {
+                    **(step_params or {}),
+                    "task_id": task.id,
+                },
+            }
 
-        if not success:
+            await call_r_engine(
+                endpoint=step,
+                payload=payload,
+                task=task,
+                db=db,
+            )
+        except Exception as e:
+            # call_r_engine 已更新 task.status = "failed" 和 task.error_msg
+            db.refresh(task)
             pipeline.status = "failed"
             pipeline.error_step = step
-            pipeline.error_msg = task.error_msg or f"Step {step} failed"
+            pipeline.error_msg = task.error_msg or str(e)
             db.commit()
             logger.error(f"Pipeline {pipeline.id}: step {step} failed: {pipeline.error_msg}")
             return False
 
+        # 成功完成
+        db.refresh(task)
         logger.info(f"Pipeline {pipeline.id}: step {step} completed successfully")
         return True
 

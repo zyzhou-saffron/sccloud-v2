@@ -3,9 +3,44 @@
  */
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { Task } from "../lib/api";
-import AuthImg from "./AuthImg";
+
+function getToken() {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("token") || "";
+  }
+  return "";
+}
+
+function AuthImg({ src, alt, token, className, style }: {
+  src: string | null;
+  alt: string;
+  token?: string;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!src) return;
+    let objectUrl = "";
+    setFailed(false);
+    setBlobUrl(null);
+    const authToken = token || getToken();
+    fetch(src, { headers: { Authorization: `Bearer ${authToken}` } })
+      .then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.blob(); })
+      .then((blob) => { objectUrl = URL.createObjectURL(blob); setBlobUrl(objectUrl); })
+      .catch(() => setFailed(true));
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [src, token]);
+
+  if (failed) return <div className={className} style={style}>❌ Failed to load image</div>;
+  if (!blobUrl) return <div className={className} style={style} />;
+
+  return <img src={blobUrl} alt={alt} className={className} style={style} />;
+}
 
 interface AnnotateData {
   status: string;

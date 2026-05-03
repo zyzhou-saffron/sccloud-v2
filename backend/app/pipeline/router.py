@@ -137,9 +137,20 @@ async def create_pipeline(
 
                 # 同步执行 Phase A
                 import asyncio
-                success = asyncio.run(call_r_engine(marker_task))
+                try:
+                    asyncio.run(call_r_engine(
+                        endpoint="marker_expr",
+                        payload={"marker_file_path": marker_file_path},
+                        task=marker_task,
+                        db=db,
+                    ))
+                    db.refresh(marker_task)
+                    success = marker_task.status == "completed"
+                except Exception as e:
+                    db.refresh(marker_task)
+                    success = False
+                    logger.warning(f"Pipeline {pipeline_id}: marker_expr Phase A failed: {e}")
 
-                db.refresh(marker_task)
                 if success and marker_task.result_path:
                     # 从 result_path 解析 cell_types
                     import json

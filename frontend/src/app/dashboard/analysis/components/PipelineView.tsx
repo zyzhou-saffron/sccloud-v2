@@ -1,10 +1,6 @@
 /**
- * Pipeline 全流程视图 — 最小化版本
- *
- * 功能：
- * 1. 显示 Pipeline 整体状态
- * 2. 列出 8 个步骤的执行进度
- * 3. 对已完成步骤展示结果（复用 ResultViewer）
+ * Pipeline 全流程执行视图
+ * 风格与单步分析保持一致
  */
 "use client";
 
@@ -15,14 +11,12 @@ import ResultViewer from "../../../components/ResultViewer";
 import type { Task } from "../../../lib/api";
 
 const STEPS = [
-  { id: "qc", label: "数据预处理", apiStep: "qc" },
-  { id: "normalize", label: "数据标准化", apiStep: "normalize" },
-  { id: "reduce", label: "数据降维", apiStep: "reduce" },
-  { id: "cluster", label: "批次聚类", apiStep: "cluster" },
-  { id: "markers", label: "差异基因", apiStep: "markers" },
-  { id: "enrich", label: "通路富集", apiStep: "enrich" },
-  { id: "marker_expr", label: "Marker 表达", apiStep: "marker_expr" },
-  { id: "annotate", label: "细胞注释", apiStep: "annotate" },
+  { id: "qc", num: 1, label: "数据预处理", apiStep: "qc" },
+  { id: "normalize", num: 2, label: "数据标准化", apiStep: "normalize" },
+  { id: "reduce", num: 3, label: "数据降维", apiStep: "reduce" },
+  { id: "cluster", num: 4, label: "批次聚类", apiStep: "cluster" },
+  { id: "markers", num: 5, label: "差异基因", apiStep: "markers" },
+  { id: "annotate", num: 6, label: "细胞注释", apiStep: "annotate" },
 ];
 
 interface PipelineViewProps {
@@ -37,7 +31,6 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
   const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null);
 
-  // 轮询 Pipeline 状态
   useEffect(() => {
     const fetch = async () => {
       try {
@@ -45,8 +38,7 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
         setPipeline(data);
         setLoading(false);
 
-        // 如果仍在运行，继续轮询
-        if (data.status === "running") {
+        if (data.status === "running" || data.status === "pending") {
           setPollInterval(
             setTimeout(fetch, 2000) as unknown as NodeJS.Timeout
           );
@@ -65,23 +57,40 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
   }, [pipelineId, token]);
 
   if (loading) {
-    return <div className="callout text-xs">加载 Pipeline 状态中...</div>;
+    return (
+      <div className="card p-4" style={{ textAlign: "center", color: "var(--clr-text-muted)" }}>
+        <div className="text-xs">加载 Pipeline 状态中...</div>
+      </div>
+    );
   }
 
   if (error) {
     return (
-      <div className="callout callout-danger text-xs">
-        <p className="font-semibold">❌ 错误</p>
-        <p>{error}</p>
+      <div
+        className="card p-4 border"
+        style={{
+          borderColor: "var(--clr-danger)",
+          background: "rgba(220, 53, 69, 0.05)",
+        }}
+      >
+        <div className="text-xs font-semibold" style={{ color: "var(--clr-danger)" }}>
+          ❌ 错误
+        </div>
+        <div className="text-xs mt-1" style={{ color: "var(--clr-text-muted)" }}>
+          {error}
+        </div>
       </div>
     );
   }
 
   if (!pipeline) {
-    return <div className="callout text-xs">Pipeline 未找到</div>;
+    return (
+      <div className="card p-4" style={{ color: "var(--clr-text-muted)" }}>
+        <div className="text-xs">Pipeline 未找到</div>
+      </div>
+    );
   }
 
-  // 根据状态显示胶囊
   const statusLabel = {
     pending: "待执行",
     running: "运行中",
@@ -91,22 +100,25 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
   }[pipeline.status] || "未知";
 
   const statusStyle = {
-    pending: { background: "rgba(128,128,128,0.1)", color: "var(--clr-text-muted)" },
-    running: { background: "rgba(255,215,0,0.1)", color: "var(--clr-amber)" },
-    completed: { background: "rgba(144,238,144,0.1)", color: "var(--clr-text)" },
-    failed: { background: "rgba(255,99,71,0.1)", color: "var(--clr-text)" },
-    cancelled: { background: "rgba(128,128,128,0.1)", color: "var(--clr-text-muted)" },
+    pending: { bg: "rgba(128,128,128,0.1)", color: "var(--clr-text-muted)" },
+    running: { bg: "rgba(200, 96, 25, 0.1)", color: "var(--clr-amber)" },
+    completed: { bg: "rgba(45,138,86,0.1)", color: "var(--clr-success)" },
+    failed: { bg: "rgba(220,53,69,0.1)", color: "var(--clr-danger)" },
+    cancelled: { bg: "rgba(128,128,128,0.1)", color: "var(--clr-text-muted)" },
   }[pipeline.status] || {};
 
-  // 构建 Task 映射
   const taskMap = new Map(pipeline.tasks.map((t) => [t.step, t]));
 
   return (
-    <div className="space-y-4">
-      {/* 顶部状态胶囊 */}
+    <div className="animate-fade-in space-y-3">
+      {/* 状态胶囊 */}
       <div
-        className="px-4 py-3 rounded-lg text-sm font-semibold flex justify-between items-center"
-        style={statusStyle}
+        className="card px-4 py-3 flex items-center justify-between text-sm font-semibold"
+        style={{
+          background: statusStyle.bg,
+          color: statusStyle.color,
+          borderColor: "var(--clr-border)",
+        }}
       >
         <span>Pipeline 状态: {statusLabel}</span>
         {pipeline.error_msg && (
@@ -123,57 +135,65 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
           const isRunning = pipeline.current_step === step.id;
           const isCompleted = task?.status === "completed";
           const isFailed = task?.status === "failed";
-          const isWaiting = !task || task.status === "pending";
+          const isPending = !task || task.status === "pending";
 
-          let stepStatus = "待执行";
-          let stepBgColor = "rgba(200,200,200,0.1)";
+          let stepStatusLabel = "○ 待执行";
+          let stepBgColor = "rgba(200,200,200,0.05)";
 
           if (isRunning) {
-            stepStatus = "运行中...";
-            stepBgColor = "rgba(255,215,0,0.1)";
+            stepStatusLabel = "⟳ 运行中";
+            stepBgColor = "rgba(200, 96, 25, 0.08)";
           } else if (isCompleted) {
-            stepStatus = "✓ 完成";
-            stepBgColor = "rgba(144,238,144,0.1)";
+            stepStatusLabel = "✓ 完成";
+            stepBgColor = "rgba(45,138,86,0.05)";
           } else if (isFailed) {
-            stepStatus = "✗ 失败";
-            stepBgColor = "rgba(255,99,71,0.1)";
+            stepStatusLabel = "✗ 失败";
+            stepBgColor = "rgba(220,53,69,0.05)";
           }
 
           return (
             <div
               key={step.id}
-              className="rounded-lg border transition-all"
+              className="card border transition-all"
               style={{
                 borderColor: "var(--clr-border)",
-                background: isRunning ? "rgba(255,255,255,0.6)" : undefined,
+                background: isRunning ? "var(--clr-bg)" : stepBgColor,
               }}
             >
               {/* Step 头部 */}
               <div
                 className="px-4 py-3 flex justify-between items-center cursor-pointer"
-                style={{ background: stepBgColor }}
                 onClick={() => {
                   if (isCompleted) {
                     setExpandedStep(expandedStep === step.id ? null : step.id);
                   }
                 }}
+                style={{
+                  background: stepBgColor,
+                  borderRadius: expandedStep === step.id ? "6px 6px 0 0" : "6px",
+                }}
               >
-                <div className="flex items-center gap-3">
-                  <span className="font-semibold text-sm">
-                    Step {idx + 1}. {step.label}
-                  </span>
-                  <span className="text-xs" style={{ color: "var(--clr-text-muted)" }}>
-                    {stepStatus}
-                  </span>
+                <div className="flex items-center gap-3 flex-1">
+                  <div className="section-num" style={{ minWidth: "20px" }}>
+                    {step.num}
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold" style={{ color: "var(--clr-text)" }}>
+                      {step.label}
+                    </div>
+                    <div className="text-xs" style={{ color: "var(--clr-text-muted)" }}>
+                      {stepStatusLabel}
+                    </div>
+                  </div>
                 </div>
 
                 {isCompleted && (
                   <button
-                    className="text-xs px-2 py-1 rounded"
+                    className="px-2.5 py-1 text-xs rounded border transition-all hover:shadow-sm"
                     style={{
-                      border: "1px solid var(--clr-border)",
+                      borderColor: "var(--clr-border)",
                       background: "var(--clr-bg-alt)",
-                      cursor: "pointer",
+                      color: "var(--clr-text-muted)",
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -185,25 +205,31 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
                 )}
               </div>
 
-              {/* 运行中：显示 ProgressTracker */}
+              {/* 运行中：ProgressTracker */}
               {isRunning && task && (
-                <div className="px-4 py-3 border-t" style={{ borderColor: "var(--clr-border)" }}>
+                <div
+                  className="px-4 py-3 border-t"
+                  style={{ borderColor: "var(--clr-border)" }}
+                >
                   <ProgressTracker
                     taskId={task.id}
-                    // 模拟 task 对象来自 ResultViewer 的参数
-                    onMessage={(msg) => console.log(msg)}
-                    onProgress={(pct) => console.log(`Progress: ${pct}%`)}
+                    onMessage={() => {}}
+                    onProgress={() => {}}
                     onComplete={() => {
-                      // 刷新 Pipeline 状态
-                      getPipeline(token, pipelineId).then(setPipeline).catch(setError);
+                      getPipeline(token, pipelineId)
+                        .then(setPipeline)
+                        .catch(() => {});
                     }}
                   />
                 </div>
               )}
 
-              {/* 已完成且展开：显示结果 */}
+              {/* 已完成且展开：ResultViewer */}
               {isCompleted && expandedStep === step.id && task && (
-                <div className="px-4 py-3 border-t space-y-3" style={{ borderColor: "var(--clr-border)" }}>
+                <div
+                  className="px-4 py-3 border-t space-y-3"
+                  style={{ borderColor: "var(--clr-border)" }}
+                >
                   <ResultViewer
                     stepId={step.id}
                     task={{
@@ -213,7 +239,7 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
                       params: {},
                       progress: 100,
                       result_path: task.result_path,
-                      result: null, // ResultViewer 会根据 result_path 重新 fetch
+                      result: null,
                       project_id: pipeline.project_id,
                     } as Task}
                     token={token}
@@ -221,10 +247,16 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
                 </div>
               )}
 
-              {/* 失败：显示错误信息 */}
+              {/* 失败：错误信息 */}
               {isFailed && (
-                <div className="px-4 py-3 border-t text-xs" style={{ borderColor: "var(--clr-border)", color: "var(--clr-text-muted)" }}>
-                  错误: {task.error_msg || "未知错误"}
+                <div
+                  className="px-4 py-2 border-t text-xs"
+                  style={{
+                    borderColor: "var(--clr-border)",
+                    color: "var(--clr-danger)",
+                  }}
+                >
+                  ❌ {task.error_msg || "未知错误"}
                 </div>
               )}
             </div>
