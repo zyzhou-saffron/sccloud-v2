@@ -1,0 +1,243 @@
+"""
+Pipeline 路由 — 全流程分析 API。
+"""
+
+import logging
+from uuid import uuid4
+from datetime import datetime
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from sqlalchemy import desc
+from sqlalchemy.orm import Session
+
+from app.db.models import Pipeline, Task, get_db, User
+from app.auth.deps import get_current_user
+from app.pipeline.executor import run_pipeline
+from app.utils.r_bridge import call_r_engine
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
+
+
+class PipelineCreateRequest:
+    """Pipeline 创建请求（字典化）"""
+    def __init__(self, data: dict):
+        self.project_id = data.get("project_id")
+        self.params = data.get("params", {})  # 全 8 步参数
+        self.marker_file_path = data.get("marker_file_path")  # marker_expr 的文件路径
+
+
+class PipelineResponse:
+    """Pipeline 响应"""
+    def __init__(self, pipeline: Pipeline):
+        self.id = pipeline.id
+        self.project_id = pipeline.project_id
+        self.user_id = pipeline.user_id
+        self.status = pipeline.status
+        self.current_step = pipeline.current_step
+        self.error_step = pipeline.error_step
+        self.error_msg = pipeline.error_msg
+        self.created_at = pipeline.created_at.isoformat() if pipeline.created_at else None
+        self.started_at = pipeline.started_at.isoformat() if pipeline.started_at else None
+        self.completed_at = pipeline.completed_at.isoformat() if pipeline.completed_at else None
+        # 关联的 task 列表（简化视图）
+        self.tasks = [
+            {
+                "id": t.id,
+                "step": t.step,
+                "status": t.status,
+                "progress": t.progress,
+                "progress_message": t.progress_message,
+                "result_path": t.result_path,
+                "error_msg": t.error_msg,
+            }
+            for t in pipeline.tasks
+        ]
+
+    def dict(self):
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "user_id": self.user_id,
+            "status": self.status,
+            "current_step": self.current_step,
+            "error_step": self.error_step,
+            "error_msg": self.error_msg,
+            "created_at": self.created_at,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+            "tasks": self.tasks,
+        }
+
+
+@router.post("")
+async def create_pipeline(
+    data: dict,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    POST /api/pipeline
+
+    创建并启动全流程分析。
+    - 若 marker_file_path 存在，先同步执行 Phase A 解析，得到 cell_types
+    - 写入 Pipeline 记录
+    - 后台启动 run_pipeline 顺序执行 8 步
+
+    Request body:
+    {
+      "project_id": 1,
+      "params": {
+        "qc": {...},
+        "normalize": {...},
+        ...
+        "annotate": {...}
+      },
+      "marker_file_path": "/path/to/markers.xlsx"  (可选)
+    }
+    """
+    try:
+        project_id = data.get("project_id")
+        params = data.get("params", {})
+        marker_file_path = data.get("marker_file_path")
+
+        if not project_id or not isinstance(params, dict):
+            raise HTTPException(status_code=400, detail="Missing project_id or params")
+
+        # 检查项目权限（简化版本，实际应该更复杂）
+        # 这里假设 user_id 等于当前 token 的 user_id
+
+        pipeline_id = str(uuid4())
+
+        # 若有 marker 文件，先执行 Phase A（同步）
+        if marker_file_path and params.get("marker_expr"):
+            logger.info(f"Pipeline {pipeline_id}: parsing marker file {marker_file_path}")
+            try:
+                # 创建临时 task 运行 Phase A
+                from app.utils.r_bridge import call_r_engine
+                from app.db.models import Task, Project
+
+                project = db.query(Project).filter(Project.id == project_id).first()
+                if not project:
+                    raise HTTPException(status_code=404, detail="Project not found")
+
+                marker_task = Task(
+                    id=str(uuid4()),
+                    project_id=project_id,
+                    user_id=user.id,
+                    step="marker_expr",
+                    status="pending",
+                    params={"marker_file_path": marker_file_path},  # Phase A：不指定 cell_type
+                )
+                db.add(marker_task)
+                db.commit()
+
+                # 同步执行 Phase A
+                import asyncio
+                try:
+                    asyncio.run(call_r_engine(
+                        endpoint="marker_expr",
+                        payload={"marker_file_path": marker_file_path},
+                        task=marker_task,
+                        db=db,
+                    ))
+                    db.refresh(marker_task)
+                    success = marker_task.status == "completed"
+                except Exception as e:
+                    db.refresh(marker_task)
+                    success = False
+                    logger.warning(f"Pipeline {pipeline_id}: marker_expr Phase A failed: {e}")
+
+                if success and marker_task.result_path:
+                    # 从 result_path 解析 cell_types
+                    import json
+                    try:
+                        with open(marker_task.result_path, "r") as f:
+                            result_data = json.load(f)
+                            cell_types = result_data.get("cell_types", [])
+                            params["marker_expr"]["cell_types"] = cell_types
+                            logger.info(f"Pipeline {pipeline_id}: parsed {len(cell_types)} cell types from marker file")
+                    except Exception as e:
+                        logger.warning(f"Failed to parse marker result: {e}")
+                        params["marker_expr"]["cell_types"] = []
+                else:
+                    logger.warning(f"Pipeline {pipeline_id}: marker_expr Phase A failed")
+                    params["marker_expr"]["cell_types"] = []
+
+            except Exception as e:
+                logger.error(f"Pipeline {pipeline_id}: marker file parsing error: {e}")
+                raise HTTPException(status_code=400, detail=f"Marker file parsing failed: {str(e)}")
+
+        # 创建 Pipeline 记录
+        pipeline = Pipeline(
+            id=pipeline_id,
+            project_id=project_id,
+            user_id=user.id,
+            params=params,
+            status="pending",
+        )
+        db.add(pipeline)
+        db.commit()
+
+        # 后台启动流程执行
+        background_tasks.add_task(run_pipeline, pipeline_id)
+
+        return {
+            "pipeline_id": pipeline_id,
+            "status": "pending",
+            "message": "Pipeline started, 8 steps will be executed in background"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error creating pipeline: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{pipeline_id}")
+async def get_pipeline(
+    pipeline_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    GET /api/pipeline/{pipeline_id}
+
+    获取 Pipeline 状态和关联的 tasks。
+    """
+    pipeline = db.query(Pipeline).filter(Pipeline.id == pipeline_id).first()
+    if not pipeline:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+
+    # 权限检查（简化）
+    if pipeline.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    return PipelineResponse(pipeline).dict()
+
+
+@router.get("")
+async def list_pipelines(
+    project_id: Optional[int] = None,
+    limit: int = 10,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    GET /api/pipeline?project_id=1&limit=10
+
+    列出项目的 Pipeline 历史记录。
+    """
+    user_id = user.id
+
+    query = db.query(Pipeline).filter(Pipeline.user_id == user_id)
+    if project_id:
+        query = query.filter(Pipeline.project_id == project_id)
+
+    pipelines = query.order_by(desc(Pipeline.created_at)).limit(limit).all()
+
+    return [PipelineResponse(p).dict() for p in pipelines]

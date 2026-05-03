@@ -19,6 +19,8 @@ import {
   IconTestTube, IconPathway, IconWaveform, IconTag, IconUpload, IconQuestion
 } from "../../components/Icons";
 import { getTask, submitTask, type Project, type Task } from "../../lib/api";
+import PipelineForm from "./components/PipelineForm";
+import PipelineView from "./components/PipelineView";
 
 /* ===== 步骤定义 ===== */
 
@@ -101,6 +103,10 @@ function AnalysisPageContent() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [clusterLevels, setClusterLevels] = useState<string[]>([]);
+
+  // Pipeline 模式切换
+  const [analysisMode, setAnalysisMode] = useState<"single" | "pipeline">("single");
+  const [activePipelineId, setActivePipelineId] = useState<string | null>(null);
 
   // Marker 基因文件上传状态
   const [markerFile, setMarkerFile] = useState<{ name: string; path: string; cellTypes: string[] } | null>(null);
@@ -418,6 +424,83 @@ function AnalysisPageContent() {
         </div>
       </div>
 
+      {/* ===== 分析模式 Tab 切换 ===== */}
+      <div className="flex gap-2 mb-6 border-b" style={{ borderColor: "var(--clr-border)" }}>
+        <button
+          className={`px-4 py-2 text-sm font-semibold transition-all ${
+            analysisMode === "single"
+              ? "border-b-2"
+              : "opacity-60 hover:opacity-80"
+          }`}
+          style={
+            analysisMode === "single"
+              ? { borderColor: "var(--clr-amber)", color: "var(--clr-amber)" }
+              : { color: "var(--clr-text-muted)" }
+          }
+          onClick={() => {
+            setAnalysisMode("single");
+            setActivePipelineId(null);
+          }}
+        >
+          单步分析
+        </button>
+        <button
+          className={`px-4 py-2 text-sm font-semibold transition-all ${
+            analysisMode === "pipeline"
+              ? "border-b-2"
+              : "opacity-60 hover:opacity-80"
+          }`}
+          style={
+            analysisMode === "pipeline"
+              ? { borderColor: "var(--clr-amber)", color: "var(--clr-amber)" }
+              : { color: "var(--clr-text-muted)" }
+          }
+          onClick={() => setAnalysisMode("pipeline")}
+        >
+          全流程分析
+        </button>
+      </div>
+
+      {/* ===== Pipeline 模式内容 ===== */}
+      {analysisMode === "pipeline" && project ? (
+        <div className="space-y-6">
+          {!activePipelineId ? (
+            <PipelineForm
+              projectId={project.id}
+              token={localStorage.getItem("access_token") || ""}
+              onSubmit={(pipelineId) => setActivePipelineId(pipelineId)}
+              hasUploadedFile={!!uploadedFile}
+              uploadedFile={uploadedFile}
+              onFileUpload={setUploadedFile}
+            />
+          ) : (
+            <div className="space-y-4">
+              <button
+                className="px-3 py-1 text-sm rounded"
+                style={{
+                  border: "1px solid var(--clr-border)",
+                  background: "var(--clr-bg-alt)",
+                  cursor: "pointer",
+                }}
+                onClick={() => setActivePipelineId(null)}
+              >
+                ← 返回参数设置
+              </button>
+              <PipelineView
+                pipelineId={activePipelineId}
+                token={localStorage.getItem("access_token") || ""}
+              />
+            </div>
+          )}
+        </div>
+      ) : analysisMode === "pipeline" ? (
+        <div className="p-6 rounded-lg border" style={{ borderColor: "var(--clr-border)", background: "rgba(255,0,0,0.05)" }}>
+          <p style={{ color: "var(--clr-warn)" }}>请先选择一个项目</p>
+        </div>
+      ) : null}
+
+      {/* ===== 单步分析模式内容 ===== */}
+      {analysisMode === "single" && (
       <div className="flex gap-6">
         {/* ===== Step Sidebar ===== */}
         <div className="w-56 shrink-0 space-y-1">
@@ -1189,6 +1272,7 @@ function AnalysisPageContent() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
