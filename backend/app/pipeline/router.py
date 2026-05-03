@@ -12,7 +12,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.db.models import Pipeline, Task, get_db, User
-from app.auth.utils import verify_token
+from app.auth.deps import get_current_user
 from app.pipeline.executor import run_pipeline
 from app.utils.r_bridge import call_r_engine
 
@@ -77,7 +77,7 @@ async def create_pipeline(
     data: dict,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    token: str = Depends(verify_token),
+    user: User = Depends(get_current_user),
 ):
     """
     POST /api/pipeline
@@ -100,7 +100,6 @@ async def create_pipeline(
     }
     """
     try:
-        user = token  # verify_token 返回 User 对象
         project_id = data.get("project_id")
         params = data.get("params", {})
         marker_file_path = data.get("marker_file_path")
@@ -128,7 +127,7 @@ async def create_pipeline(
                 marker_task = Task(
                     id=str(uuid4()),
                     project_id=project_id,
-                    user_id=user.id if hasattr(user, 'id') else user,
+                    user_id=user.id,
                     step="marker_expr",
                     status="pending",
                     params={"marker_file_path": marker_file_path},  # Phase A：不指定 cell_type
@@ -165,7 +164,7 @@ async def create_pipeline(
         pipeline = Pipeline(
             id=pipeline_id,
             project_id=project_id,
-            user_id=user.id if hasattr(user, 'id') else user,
+            user_id=user.id,
             params=params,
             status="pending",
         )
@@ -192,7 +191,7 @@ async def create_pipeline(
 async def get_pipeline(
     pipeline_id: str,
     db: Session = Depends(get_db),
-    token: str = Depends(verify_token),
+    user: User = Depends(get_current_user),
 ):
     """
     GET /api/pipeline/{pipeline_id}
@@ -204,8 +203,7 @@ async def get_pipeline(
         raise HTTPException(status_code=404, detail="Pipeline not found")
 
     # 权限检查（简化）
-    user = token
-    if pipeline.user_id != (user.id if hasattr(user, 'id') else user):
+    if pipeline.user_id != user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
 
     return PipelineResponse(pipeline).dict()
@@ -216,15 +214,14 @@ async def list_pipelines(
     project_id: Optional[int] = None,
     limit: int = 10,
     db: Session = Depends(get_db),
-    token: str = Depends(verify_token),
+    user: User = Depends(get_current_user),
 ):
     """
     GET /api/pipeline?project_id=1&limit=10
 
     列出项目的 Pipeline 历史记录。
     """
-    user = token
-    user_id = user.id if hasattr(user, 'id') else user
+    user_id = user.id
 
     query = db.query(Pipeline).filter(Pipeline.user_id == user_id)
     if project_id:
