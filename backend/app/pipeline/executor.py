@@ -8,9 +8,8 @@ from typing import Dict, Any, Optional
 
 from sqlalchemy.orm import Session
 
-from app.db.models import Pipeline, Task, engine
+from app.db.models import Pipeline, Task, engine, SessionLocal
 from app.utils.r_bridge import call_r_engine
-from app.db import SessionLocal
 
 logger = logging.getLogger(__name__)
 
