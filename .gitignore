@@ -36,3 +36,6 @@ user_projects/
 # OS
 .DS_Store
 Thumbs.db
+
+# Agent Handover docs
+sccloud_dev_handover.md

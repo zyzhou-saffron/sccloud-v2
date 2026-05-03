@@ -25,6 +25,7 @@ from sqlalchemy.orm import (
 )
 
 from app.config import get_settings
+import uuid as uuid_lib
 
 
 # ===== 数据库引擎 =====
@@ -158,6 +159,45 @@ class Task(Base):
     completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    pipeline_id = Column(String(36), ForeignKey("pipelines.id"), nullable=True)
+
     # 关系
     project = relationship("Project", back_populates="tasks")
     user = relationship("User", back_populates="tasks")
+    pipeline = relationship("Pipeline", back_populates="tasks")
+
+
+# ===== Pipeline 表 (全新) =====
+
+class Pipeline(Base):
+    """
+    Pipeline 表 — 全流程分析编排。
+    一条 pipeline 记录关联 8 个步骤的 task，记录整体执行状态和参数。
+    """
+
+    __tablename__ = "pipelines"
+
+    id = Column(String(36), primary_key=True)  # UUID
+    project_id = Column(
+        Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    params = Column(JSON, nullable=False)  # 全 8 步的参数集合：{"qc": {...}, "normalize": {...}, ...}
+    status = Column(
+        Enum(
+            "pending", "running", "completed", "failed", "cancelled",
+            name="pipeline_status",
+        ),
+        default="pending",
+    )
+    current_step = Column(String(50), nullable=True)  # 当前正在执行的步骤 ID
+    error_step = Column(String(50), nullable=True)  # 失败的步骤 ID
+    error_msg = Column(Text, nullable=True)  # 错误信息
+    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    # 关系
+    project = relationship("Project")
+    user = relationship("User")
+    tasks = relationship("Task", back_populates="pipeline", cascade="all, delete-orphan")
