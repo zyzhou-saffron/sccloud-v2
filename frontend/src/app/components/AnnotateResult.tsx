@@ -55,28 +55,21 @@ interface AnnotateData {
 }
 
 export default function AnnotateResult({
+  data,
   task,
   token,
 }: {
+  data: Record<string, unknown> | null;
   task: Task;
   token?: string;
 }) {
   const taskId = task.id;
 
-  // 解析结果数据
-  let data: AnnotateData | null = null;
-  try {
-    if (task.result && typeof task.result === "string") {
-      data = JSON.parse(task.result);
-    } else if (task.result && typeof task.result === "object") {
-      data = task.result as AnnotateData;
-    }
-  } catch (e) {
-    console.error("Failed to parse annotate result:", e);
-  }
+  // 直接使用 ResultViewer 已 fetch 的数据
+  const annotateData = data as AnnotateData | null;
 
-  const stats = data?.stats;
-  const freqTable = data?.freq_table ?? [];
+  const stats = annotateData?.stats;
+  const freqTable = annotateData?.freq_table ?? [];
 
   // ── 图片 URL 构建 ──
   const extractName = (val: unknown) => {
@@ -85,7 +78,7 @@ export default function AnnotateResult({
       return (val[0] as string).split("/").pop();
     return null;
   };
-  const plotName = extractName(data?.plot_path) ?? "plot_annotate.png";
+  const plotName = extractName(annotateData?.plot_path) ?? "plot_annotate.png";
   const plotSrc = taskId ? `/api/tasks/${taskId}/plot?name=${encodeURIComponent(plotName)}` : null;
 
   // ── 频率表分页 ──
@@ -219,7 +212,7 @@ export default function AnnotateResult({
       )}
 
       {/* ── 无数据状态 ── */}
-      {!data && (
+      {!annotateData && (
         <div className="callout text-xs" style={{ background: "rgba(255,215,0,0.08)", borderLeft: "3px solid var(--clr-gold)" }}>
           注释结果加载中或暂未返回...
         </div>

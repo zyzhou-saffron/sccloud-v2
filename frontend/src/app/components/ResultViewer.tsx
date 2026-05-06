@@ -294,7 +294,7 @@ export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCa
             {stepId === "reduce"    && <ReduceResult data={resultData} taskId={task.id} />}
             {stepId === "cluster"   && <ClusterResult data={resultData} task={task} />}
             {stepId === "markers"   && <MarkersResult data={resultData} task={task} taskCache={taskCache} clusterLevels={clusterLevels} />}
-            {stepId === "annotate" && <AnnotateResult task={task} token={getToken()} />}
+            {stepId === "annotate" && <AnnotateResult data={resultData} task={task} token={getToken()} />}
             {!["qc","normalize","reduce","cluster","markers","annotate"].includes(stepId) && (
               <div className="callout text-xs">分析完成，详细结果可在输出文件中查看</div>
             )}
