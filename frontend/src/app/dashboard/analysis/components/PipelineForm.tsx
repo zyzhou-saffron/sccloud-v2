@@ -82,7 +82,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
   /* ===== 输入样式（与单步分析 page.tsx 保持一致） ===== */
   const inputCls = "w-full px-3 py-2 bg-white border rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#C86019]/30 transition-colors";
   const inputStyle: React.CSSProperties = { borderColor: "var(--clr-border)", color: "var(--clr-text)" };
-  const selectCls = inputCls + " cursor-pointer";
+  const selectCls = inputCls.replace("w-full", "w-auto min-w-[120px]") + " cursor-pointer";
   const selectStyle: React.CSSProperties = {
     ...inputStyle,
     appearance: "none",
