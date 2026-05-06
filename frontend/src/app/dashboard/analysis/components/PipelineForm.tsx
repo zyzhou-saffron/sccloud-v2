@@ -8,6 +8,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPipeline, listPipelines, type Pipeline } from "../../../lib/pipeline-api";
 import { IconUpload, IconQuestion } from "../../../components/Icons";
 import Tooltip from "../../../components/Tooltip";
+import FileUploadModal from "../../../components/FileUploadModal";
 
 interface PipelineFormProps {
   projectId: number;
@@ -43,12 +44,11 @@ const STATUS_MAP: Record<string, { dot: string; text: string }> = {
 export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFile = false, uploadedFile = null, onFileUpload }: PipelineFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [params, setParams] = useState<Record<string, Record<string, unknown>>>(
     JSON.parse(JSON.stringify(DEFAULT_PARAMS))
   );
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   /* ===== Pipeline 历史记录 ===== */
   const [showHistory, setShowHistory] = useState(false);
@@ -96,62 +96,6 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
 
   const updateStepParam = (stepId: string, key: string, value: unknown) => {
     setParams(prev => ({ ...prev, [stepId]: { ...prev[stepId], [key]: value } }));
-  };
-
-  const handleFileUpload = async (file: File) => {
-    const CHUNK = 5 * 1024 * 1024;
-    setUploadProgress(0);
-    setError(null);
-
-    try {
-      // 1. 初始化
-      const initForm = new FormData();
-      initForm.append("filename", file.name);
-      initForm.append("file_size", String(file.size));
-      const initRes = await fetch("/api/upload/init", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: initForm,
-      });
-      if (!initRes.ok) throw new Error("初始化上传失败");
-      const { upload_id } = await initRes.json() as { upload_id: string };
-
-      // 2. 分片上传
-      const totalChunks = Math.ceil(file.size / CHUNK);
-      for (let i = 0; i < totalChunks; i++) {
-        const blob = file.slice(i * CHUNK, (i + 1) * CHUNK);
-        const chunkForm = new FormData();
-        chunkForm.append("upload_id", upload_id);
-        chunkForm.append("chunk_index", String(i));
-        chunkForm.append("chunk", blob, file.name);
-        const chunkRes = await fetch("/api/upload/chunk", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: chunkForm,
-        });
-        if (!chunkRes.ok) throw new Error(`分片 ${i + 1} 上传失败`);
-        setUploadProgress(Math.round(((i + 1) / totalChunks) * 95));
-      }
-
-      // 3. 合并
-      const completeForm = new FormData();
-      completeForm.append("upload_id", upload_id);
-      completeForm.append("project_id", String(projectId));
-      const completeRes = await fetch("/api/upload/complete", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: completeForm,
-      });
-      if (!completeRes.ok) throw new Error("合并文件失败");
-      const { path: filePath } = await completeRes.json() as { path: string };
-
-      setUploadProgress(100);
-      onFileUpload?.({ name: file.name, path: filePath });
-      setTimeout(() => setUploadProgress(null), 1200);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "上传失败");
-      setUploadProgress(null);
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -286,40 +230,26 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
         </div>
       )}
 
-      {/* 文件上传区域（如果还没有上传文件） */}
+      {/* 文件上传按钮 */}
       {!uploadedFile && !hasUploadedFile && (
-        <div
-          className="card p-6 border-2 border-dashed text-center mb-6"
-          style={{
-            borderColor: "var(--clr-amber)",
-            background: "rgba(200,96,25,0.03)",
-            cursor: "pointer",
-          }}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <IconUpload size={32} className="mx-auto mb-3 text-[#C86019]" />
-          <div className="text-sm font-semibold mb-1" style={{ color: "var(--clr-amber-dark)" }}>
-            点击上传或拖拽文件
-          </div>
-          <div className="text-xs" style={{ color: "var(--clr-text-muted)" }}>
-            支持: .rds, .h5seurat, .h5ad, .rdata
-          </div>
-
-          {/* 上传进度 */}
-          {uploadProgress !== null && (
-            <div className="mt-4 space-y-2">
-              <div className="flex justify-between text-xs" style={{ color: "var(--clr-amber-dark)" }}>
-                <span>上传中...</span>
-                <span>{uploadProgress}%</span>
-              </div>
-              <div className="w-full h-2 rounded-full" style={{ background: "var(--clr-border)" }}>
-                <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{ width: `${uploadProgress}%`, background: "var(--clr-amber)" }}
-                />
-              </div>
+        <div className="mb-6">
+          <button
+            onClick={() => setShowUploadModal(true)}
+            className="w-full card p-6 border-2 border-dashed text-center transition-all hover:border-[#C86019] hover:bg-[rgba(200,96,25,0.02)]"
+            style={{
+              borderColor: "var(--clr-amber)",
+              background: "rgba(200,96,25,0.03)",
+              cursor: "pointer",
+            }}
+          >
+            <IconUpload size={32} className="mx-auto mb-3 text-[#C86019]" />
+            <div className="text-sm font-semibold mb-1" style={{ color: "var(--clr-amber-dark)" }}>
+              点击上传数据文件
             </div>
-          )}
+            <div className="text-xs" style={{ color: "var(--clr-text-muted)" }}>
+              支持: .rds, .h5seurat, .h5ad, .rdata
+            </div>
+          </button>
         </div>
       )}
 
@@ -342,18 +272,6 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
           </div>
         </div>
       )}
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".rds,.h5seurat,.h5ad,.rdata"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) handleFileUpload(f);
-          e.target.value = '';
-        }}
-      />
 
       <form onSubmit={handleSubmit} className="space-y-3">
         {/* Steps 1-4: 基础分析参数 */}
@@ -666,6 +584,15 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
           )}
         </button>
       </form>
+
+      {/* 文件上传模态框 */}
+      <FileUploadModal
+        isOpen={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        onFileUploaded={(file) => onFileUpload?.(file)}
+        projectId={projectId}
+        token={token}
+      />
     </div>
   );
 }
