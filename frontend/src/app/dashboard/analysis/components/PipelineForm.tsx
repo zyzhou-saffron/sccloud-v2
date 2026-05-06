@@ -238,15 +238,15 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
           </div>
           <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-4">
             {/* Step 1 QC */}
-            <div className="text-[11px] font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
+            <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
               Step 1: 数据预处理
             </div>
             <div className="space-y-2">
               <div>
-                <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                   <span>最大线粒体基因比例 (%)</span>
                   <Tooltip content="变量: max_mt_ratio\n\n设定细胞内线粒体基因表达占比的最大阈值。\n线粒体占比居高(如>10~20%)通常标志着由于膜破裂导致的胞质转录本大规模流失，细胞处于濒死受损状态。">
-                    <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                   </Tooltip>
                 </label>
                 <input type="range" min="0" max="100" value={params.qc.max_mt_ratio as number} onChange={(e) => updateStepParam("qc", "max_mt_ratio", Number(e.target.value))} className="w-full accent-[#C86019]" />
@@ -254,37 +254,37 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
               </div>
               <div className="grid grid-cols-4 gap-3">
                 <div>
-                  <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                     <span>最小基因数</span>
                     <Tooltip content="变量: min_features\n\n细胞必须检测到的最小独特基因数量。基因数过少通常意味着测序深度不足或细胞破裂。">
-                      <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
                   <input type="number" value={params.qc.min_features as number} onChange={(e) => updateStepParam("qc", "min_features", Number(e.target.value))} min={1} className={inputCls} style={inputStyle} />
                 </div>
                 <div>
-                  <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                     <span>最大基因数</span>
                     <Tooltip content="变量: max_features\n\n细胞内检测到的最大独特基因数量。基因数过高往往是因为液滴内包裹了多个细胞。">
-                      <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
                   <input type="number" value={params.qc.max_features as number} onChange={(e) => updateStepParam("qc", "max_features", Number(e.target.value))} min={1} className={inputCls} style={inputStyle} />
                 </div>
                 <div>
-                  <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                     <span>nUMI 底部分位</span>
                     <Tooltip content="变量: umi_min_pct\n\n基于全群细胞UMI总数分布计算下限截取分位。0 意味着不裁选。">
-                      <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
                   <input type="number" value={params.qc.umi_min_pct as number} onChange={(e) => updateStepParam("qc", "umi_min_pct", Number(e.target.value))} min={0} max={1} step={0.01} className={inputCls} style={inputStyle} />
                 </div>
                 <div>
-                  <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                     <span>nUMI 顶部分位</span>
                     <Tooltip content="变量: umi_max_pct\n\n基于全群细胞UMI总数分布计算上限截取分位。1 意味着不裁选。">
-                      <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
                   <input type="number" value={params.qc.umi_max_pct as number} onChange={(e) => updateStepParam("qc", "umi_max_pct", Number(e.target.value))} min={0} max={1} step={0.01} className={inputCls} style={inputStyle} />
@@ -296,11 +296,11 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
             <div className="col-span-2" style={{ borderTop: "1px solid var(--clr-border)" }} />
 
             {/* Step 2 Normalize */}
-            <div className="text-[11px] font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
+            <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
               Step 2: 数据标准化
             </div>
             <div>
-              <p className="text-[11px]" style={{ color: "var(--clr-text-faint)" }}>
+              <p className="text-[10px]" style={{ color: "var(--clr-text-faint)" }}>
                 使用 SCTransform + glmGamPoi 方法进行标准化。
               </p>
             </div>
@@ -309,15 +309,15 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
             <div className="col-span-2" style={{ borderTop: "1px solid var(--clr-border)" }} />
 
             {/* Step 3 Reduce */}
-            <div className="text-[11px] font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
+            <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
               Step 3: 数据降维
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                   <span>降维方法</span>
                   <Tooltip content="变量: method\n\nUMAP / t-SNE 注重局部近邻结构的非线性拓扑保留，适合可视化；PCA 则是寻找全局方差最大的线性组合。">
-                    <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                   </Tooltip>
                 </label>
                 <select value={params.reduce.method as string} onChange={(e) => updateStepParam("reduce", "method", e.target.value)} className={selectCls} style={selectStyle}>
@@ -325,16 +325,16 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                 </select>
               </div>
               <div>
-                <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                   <span>PCA 维度</span>
                   <Tooltip content="变量: n_pcs\n\n参与下游降维和聚类的主成分数量。">
-                    <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                   </Tooltip>
                 </label>
                 <input type="number" value={params.reduce.n_pcs as number} onChange={(e) => updateStepParam("reduce", "n_pcs", Number(e.target.value))} min={2} className={inputCls} style={inputStyle} />
               </div>
               <div>
-                <label className="block text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
                 <div className="flex gap-3">
                   {["Sample", "Group"].map((v) => (
                     <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
@@ -350,15 +350,15 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
             <div className="col-span-2" style={{ borderTop: "1px solid var(--clr-border)" }} />
 
             {/* Step 4 Cluster */}
-            <div className="text-[11px] font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
+            <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
               Step 4: 批次聚类
             </div>
             <div className="grid grid-cols-4 gap-3">
               <div>
-                <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                   <span>校正方法</span>
                   <Tooltip content="变量: method\n\nHarmony 是目前最流行的单细胞批次校正算法。">
-                    <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                   </Tooltip>
                 </label>
                 <select value={params.cluster.method as string} onChange={(e) => updateStepParam("cluster", "method", e.target.value)} className={selectCls} style={selectStyle}>
@@ -366,19 +366,19 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                 </select>
               </div>
               <div>
-                <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                   <span>降维维度</span>
                   <Tooltip content="变量: n_dims\n\nPCA/Harmony 使用的维度数，通常 20~30 维。">
-                    <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                   </Tooltip>
                 </label>
                 <input type="number" value={params.cluster.n_dims as number} onChange={(e) => updateStepParam("cluster", "n_dims", Number(e.target.value))} min={2} max={50} className={inputCls} style={inputStyle} />
               </div>
               <div>
-                <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                   <span>校正分组</span>
                   <Tooltip content="变量: group_by\n\n指定按哪个元数据字段进行批次校正。">
-                    <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                   </Tooltip>
                 </label>
                 <div className="flex gap-3">
@@ -391,10 +391,10 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                 </div>
               </div>
               <div>
-                <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                   <span>聚类分辨率</span>
                   <Tooltip content="变量: resolution\n\n决定聚类敏感度。数值越大亚群越细密（0.8+）；越小越粗放（0.2）。">
-                    <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                   </Tooltip>
                 </label>
                 <input type="range" min="0" max="2" step="0.01" value={params.cluster.resolution as number} onChange={(e) => updateStepParam("cluster", "resolution", Number(e.target.value))} className="w-full accent-[#C86019]" />
@@ -413,34 +413,34 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
           </div>
           <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-4">
             {/* Step 5 Markers */}
-            <div className="text-[11px] font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
+            <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
               Step 5: 差异基因
             </div>
             <div className="space-y-2">
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                     <span>最小细胞比例</span>
                     <Tooltip content="变量: min_pct\n\n只在各对比组内最少 x% 分数的细胞中表达的基因才会参与统计检验。">
-                      <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
                   <input type="number" value={params.markers.min_pct as number} onChange={(e) => updateStepParam("markers", "min_pct", Number(e.target.value))} min={0} max={1} step={0.01} className={inputCls} style={inputStyle} />
                 </div>
                 <div>
-                  <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                     <span>log2FC 阈值</span>
                     <Tooltip content="变量: logfc_threshold\n\n两簇间平均基因表达量差异。差异绝对值必须超过此限制才被定性为差异表达基因。">
-                      <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
                   <input type="number" value={params.markers.logfc_threshold as number} onChange={(e) => updateStepParam("markers", "logfc_threshold", Number(e.target.value))} step={0.05} className={inputCls} style={inputStyle} />
                 </div>
                 <div>
-                  <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                     <span>P value 阈值</span>
                     <Tooltip content="变量: p_val_adj\n\n经 Bonferroni 校正后的 P 值阈值。默认: 0.05。">
-                      <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
                   <input type="number" value={params.markers.p_val_adj as number ?? 0.05} onChange={(e) => updateStepParam("markers", "p_val_adj", Number(e.target.value))} step={0.01} min={0} max={1} className={inputCls} style={inputStyle} />
@@ -448,25 +448,25 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
               </div>
               <div className="grid grid-cols-4 gap-3">
                 <div>
-                  <label className="block text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>检验方法</label>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>检验方法</label>
                   <select value={params.markers.test_use as string} onChange={(e) => updateStepParam("markers", "test_use", e.target.value)} className={selectCls} style={selectStyle}>
                     <option value="wilcox">Wilcoxon</option><option value="t">t-test</option><option value="bimod">Bimod</option><option value="roc">ROC</option>
                   </select>
                 </div>
                 <div>
-                  <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                     <span>Top 基因数</span>
                     <Tooltip content="变量: ntop\n\n在热图和点图中提取每个簇的前多少个最显著基因进行展示。">
-                      <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
                   <input type="number" value={params.markers.ntop as number ?? 5} onChange={(e) => updateStepParam("markers", "ntop", Number(e.target.value))} min={1} max={50} className={inputCls} style={inputStyle} />
                 </div>
                 <div>
-                  <label className="flex items-center gap-1 text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                     <span>仅正向差异</span>
                     <Tooltip content="变量: only_pos\n\n若为 TRUE，则只返回上调基因。">
-                      <IconQuestion size={12} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
                   <select value={String(params.markers.only_pos ?? true)} onChange={(e) => updateStepParam("markers", "only_pos", e.target.value === "true")} className={selectCls} style={selectStyle}>
@@ -475,7 +475,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>分析聚类</label>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分析聚类</label>
                   <div
                     className="px-2 py-1.5 rounded text-[11px] border"
                     style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-alt)", color: "var(--clr-text-muted)" }}
@@ -490,12 +490,12 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
             <div className="col-span-2" style={{ borderTop: "1px solid var(--clr-border)" }} />
 
             {/* Step 6 Annotate */}
-            <div className="text-[11px] font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
+            <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
               Step 6: 细胞注释
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>注释方式</label>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>注释方式</label>
                 <div className="flex gap-3">
                   {[{ v: "auto", l: "自动注释" }, { v: "manual", l: "手动注释" }].map(({ v, l }) => (
                     <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
@@ -505,7 +505,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                 </div>
               </div>
               <div>
-                <label className="block text-[11px] font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
                 <select value={params.annotate.group_by as string} onChange={(e) => updateStepParam("annotate", "group_by", e.target.value)} className={selectCls} style={selectStyle}>
                   <option value="Sample">Sample</option><option value="Group">Group</option><option value="CellType">CellType</option>
                 </select>
