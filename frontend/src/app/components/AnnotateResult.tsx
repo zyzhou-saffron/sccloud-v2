@@ -51,7 +51,7 @@ interface AnnotateData {
     cell_types: number;
     anno_type: string;  // "自动注释" or "手动注释"
   };
-  freq_table?: Array<{ CellType: string; n: number; pct: number }>;
+  freq_table?: Array<{ CellType: string; Sample?: string; Freq?: number; n?: number; pct?: number }>;
 }
 
 export default function AnnotateResult({
@@ -152,7 +152,7 @@ export default function AnnotateResult({
                     细胞类型
                   </th>
                   <th className="px-3 py-2 text-right font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
-                    细胞数
+                    样本
                   </th>
                   <th className="px-3 py-2 text-right font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
                     占比
@@ -172,10 +172,10 @@ export default function AnnotateResult({
                       {row.CellType ?? "—"}
                     </td>
                     <td className="px-3 py-2 text-right" style={{ color: "var(--clr-text)" }}>
-                      {row.n?.toLocaleString() ?? "—"}
+                      {row.Sample ?? "—"}
                     </td>
                     <td className="px-3 py-2 text-right" style={{ color: "var(--clr-text)" }}>
-                      {((row.pct ?? 0) * 100).toFixed(1)}%
+                      {((row.Freq ?? row.pct ?? 0) * 100).toFixed(1)}%
                     </td>
                   </tr>
                 ))}
