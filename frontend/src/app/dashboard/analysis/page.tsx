@@ -54,7 +54,7 @@ const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
   markers: { cluster: "All", min_pct: 0.1, logfc_threshold: 0.25, p_val_adj: 0.05, test_use: "wilcox", only_pos: true, ntop: 5 },
   enrich: { pathway: "GO", direction: "Up", p_adjust_method: "BH", pvalue_cutoff: 0.05, qvalue_cutoff: 0.2, n_term: 10 },
   marker_expr: { cell_type: "" },
-  annotate: { mode: "auto", group_by: "Sample" },
+  annotate: { anno_type: "自动注释", group_by: "Sample" },
 };
 
 /* ===== 主组件 ===== */
@@ -1142,9 +1142,9 @@ function AnalysisPageContent() {
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>注释方式</label>
                     <div className="flex gap-4">
-                      {[{ v: "auto", l: "自动注释" }, { v: "manual", l: "手动注释" }].map(({ v, l }) => (
+                      {["自动注释", "手动注释"].map((v) => (
                         <label key={v} className="flex items-center gap-1 text-sm cursor-pointer" style={{ color: "var(--clr-text)" }}>
-                          <input type="radio" name="anno_mode" value={v} checked={stepParams.mode === v} onChange={() => updateParam("mode", v)} className="accent-[#C86019]" /> {l}
+                          <input type="radio" name="anno_type" value={v} checked={stepParams.anno_type === v} onChange={() => updateParam("anno_type", v)} className="accent-[#C86019]" /> {v}
                         </label>
                       ))}
                     </div>

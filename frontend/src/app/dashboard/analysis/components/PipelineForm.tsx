@@ -24,7 +24,7 @@ const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
   reduce: { method: "umap", n_pcs: 30, group_by: "Sample" },
   cluster: { method: "harmony", resolution: 0.5, n_dims: 30, group_by: "Sample" },
   markers: { cluster: "All", min_pct: 0.1, logfc_threshold: 0.25, p_val_adj: 0.05, test_use: "wilcox", only_pos: true, ntop: 5 },
-  annotate: { mode: "auto", group_by: "Sample" },
+  annotate: { anno_type: "自动注释", group_by: "Sample" },
 };
 
 export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFile = false, uploadedFile = null, onFileUpload }: PipelineFormProps) {
@@ -487,9 +487,9 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>注释方式</label>
                 <div className="flex gap-3">
-                  {[{ v: "auto", l: "自动注释" }, { v: "manual", l: "手动注释" }].map(({ v, l }) => (
+                  {["自动注释", "手动注释"].map((v) => (
                     <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
-                      <input type="radio" name="pipeline_anno_mode" value={v} checked={params.annotate.mode === v} onChange={() => updateStepParam("annotate", "mode", v)} className="accent-[#C86019]" /> {l}
+                      <input type="radio" name="pipeline_anno_type" value={v} checked={params.annotate.anno_type === v} onChange={() => updateStepParam("annotate", "anno_type", v)} className="accent-[#C86019]" /> {v}
                     </label>
                   ))}
                 </div>
