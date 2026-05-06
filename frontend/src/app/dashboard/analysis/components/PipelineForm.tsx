@@ -156,8 +156,8 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
     switch (stepId) {
       case "qc":
         return (
-          <>
-            <div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <div className="col-span-2">
               <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                 <span>最大线粒体基因比例 (%)</span>
                 <Tooltip content="变量: max_mt_ratio\n\n设定细胞内线粒体基因表达占比的最大阈值。\n线粒体占比居高(如>10~20%)通常标志着由于膜破裂导致的胞质转录本大规模流失，细胞处于濒死受损状态。">
@@ -203,7 +203,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
               </label>
               <input type="number" value={p.umi_max_pct as number} onChange={(e) => updateStepParam(stepId, "umi_max_pct", Number(e.target.value))} min={0} max={1} step={0.01} className={inputCls} style={inputStyle} />
             </div>
-          </>
+          </div>
         );
 
       case "normalize":
@@ -215,7 +215,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
 
       case "reduce":
         return (
-          <>
+          <div className="grid grid-cols-3 gap-x-4 gap-y-3">
             <div>
               <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                 <span>降维方法</span>
@@ -247,12 +247,12 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                 ))}
               </div>
             </div>
-          </>
+          </div>
         );
 
       case "cluster":
         return (
-          <>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
             <div>
               <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                 <span>校正方法</span>
@@ -301,12 +301,12 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                 <span>0</span><span style={{ color: "var(--clr-amber)", fontWeight: 600 }}>{p.resolution as number}</span><span>2</span>
               </div>
             </div>
-          </>
+          </div>
         );
 
       case "markers":
         return (
-          <>
+          <div className="grid grid-cols-3 gap-x-4 gap-y-3">
             <div>
               <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                 <span>最小细胞比例</span>
@@ -327,7 +327,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
             </div>
             <div>
               <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
-                <span>P value 阈值 (p_val_adj)</span>
+                <span>P value 阈值</span>
                 <Tooltip content="变量: p_val_adj\n\n经 Bonferroni 校正后的 P 值阈值。只有 p_val_adj 低于此值的基因才被视为显著差异表达基因 (DEG)。默认: 0.05。">
                   <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                 </Tooltip>
@@ -342,7 +342,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
             </div>
             <div>
               <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
-                <span>Top 基因数 (ntop)</span>
+                <span>Top 基因数</span>
                 <Tooltip content="变量: ntop\n\n决定在「热图」和「点图」中提取每个簇的前多少个最显著基因进行展示（默认: 5）。">
                   <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                 </Tooltip>
@@ -351,7 +351,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
             </div>
             <div>
               <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
-                <span>仅正向差异 (only_pos)</span>
+                <span>仅正向差异</span>
                 <Tooltip content="变量: only_pos\n\n若为 TRUE，则只返回上调基因(avg_log2FC > 0)。">
                   <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                 </Tooltip>
@@ -361,7 +361,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                 <option value="false">FALSE（上下调均返回）</option>
               </select>
             </div>
-            <div>
+            <div className="col-span-3">
               <label className="flex items-center gap-1.5 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                 <span>分析聚类</span>
                 <Tooltip content="变量: cluster\n\n全流程模式下固定使用 All（所有聚类），运行前无法获知具体聚类列表。">
@@ -375,12 +375,12 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                 All（所有聚类）— 全流程模式固定使用全部聚类
               </div>
             </div>
-          </>
+          </div>
         );
 
       case "annotate":
         return (
-          <>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
             <div>
               <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>注释方式</label>
               <div className="flex gap-4">
@@ -397,7 +397,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                 <option value="Sample">Sample</option><option value="Group">Group</option><option value="CellType">CellType</option>
               </select>
             </div>
-          </>
+          </div>
         );
 
       default:
@@ -536,7 +536,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
 
               {/* 参数内容 */}
               {!isCollapsed && (
-                <div className="px-4 py-3 space-y-3 border-t" style={{ borderColor: "var(--clr-border)" }}>
+                <div className="px-4 py-3 border-t" style={{ borderColor: "var(--clr-border)" }}>
                   {renderStepParams(step.id)}
                 </div>
               )}
