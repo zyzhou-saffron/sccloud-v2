@@ -237,9 +237,9 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
             基础分析参数
           </div>
           <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-4">
-            {/* Step 1 QC */}
+            {/* Step 1-2 QC + Normalize */}
             <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
-              Step 1: 数据预处理
+              Step 1-2: 预处理 + 标准化
             </div>
             <div className="space-y-2">
               <div>
@@ -290,18 +290,8 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                   <input type="number" value={params.qc.umi_max_pct as number} onChange={(e) => updateStepParam("qc", "umi_max_pct", Number(e.target.value))} min={0} max={1} step={0.01} className={inputCls} style={inputStyle} />
                 </div>
               </div>
-            </div>
-
-            {/* 分隔线 */}
-            <div className="col-span-2" style={{ borderTop: "1px solid var(--clr-border)" }} />
-
-            {/* Step 2 Normalize */}
-            <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
-              Step 2: 数据标准化
-            </div>
-            <div>
-              <p className="text-[10px]" style={{ color: "var(--clr-text-faint)" }}>
-                使用 SCTransform + glmGamPoi 方法进行标准化。
+              <p className="text-[10px] mt-1" style={{ color: "var(--clr-text-faint)" }}>
+                标准化: SCTransform + glmGamPoi
               </p>
             </div>
 
