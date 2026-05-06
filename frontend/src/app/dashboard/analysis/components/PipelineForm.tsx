@@ -4,8 +4,8 @@
  */
 "use client";
 
-import React, { useRef, useState } from "react";
-import { createPipeline } from "../../../lib/pipeline-api";
+import React, { useEffect, useRef, useState } from "react";
+import { createPipeline, listPipelines, type Pipeline } from "../../../lib/pipeline-api";
 import { IconUpload, IconQuestion } from "../../../components/Icons";
 import Tooltip from "../../../components/Tooltip";
 
@@ -27,6 +27,19 @@ const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
   annotate: { anno_type: "自动注释", group_by: "Sample" },
 };
 
+const STEP_LABELS: Record<string, string> = {
+  qc: "数据预处理", normalize: "数据标准化", reduce: "数据降维",
+  cluster: "批次聚类", markers: "差异基因", annotate: "细胞注释",
+};
+
+const STATUS_MAP: Record<string, { dot: string; text: string }> = {
+  pending:   { dot: "bg-[#999]", text: "text-[#999]" },
+  running:   { dot: "bg-[#C86019] animate-pulse", text: "text-[#C86019]" },
+  completed: { dot: "bg-[#2D8A56]", text: "text-[#2D8A56]" },
+  failed:    { dot: "bg-[#B85450]", text: "text-[#B85450]" },
+  cancelled: { dot: "bg-[#E0DCD6]", text: "text-[#999]" },
+};
+
 export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFile = false, uploadedFile = null, onFileUpload }: PipelineFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +48,23 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
     JSON.parse(JSON.stringify(DEFAULT_PARAMS))
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /* ===== Pipeline 历史记录 ===== */
+  const [showHistory, setShowHistory] = useState(false);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+
+  useEffect(() => {
+    if (!showHistory || !projectId) return;
+    const fetchPipelines = async () => {
+      try {
+        const data = await listPipelines(token, projectId, 10);
+        setPipelines(data);
+      } catch { /* 静默失败 */ }
+    };
+    fetchPipelines();
+    const interval = setInterval(fetchPipelines, 5000);
+    return () => clearInterval(interval);
+  }, [showHistory, projectId, token]);
 
   /* ===== 输入样式（与单步分析 page.tsx 保持一致） ===== */
   const inputCls = "w-full px-3 py-2 bg-white border rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#C86019]/30 transition-colors";
@@ -120,6 +150,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
 
     setLoading(true);
     setError(null);
+    setShowHistory(false);
 
     try {
       const data = {
@@ -137,15 +168,68 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
 
   return (
     <div className="animate-fade-in">
-      {/* 标题 */}
-      <div className="mb-4">
-        <h2 className="text-lg font-bold" style={{ fontFamily: "var(--font-serif)", color: "var(--clr-dark-deep)" }}>
-          全流程一键分析
-        </h2>
-        <p className="text-xs mt-1" style={{ color: "var(--clr-text-muted)" }}>
-          配置参数后依次执行全部 6 步，无需手动干预。
-        </p>
+      {/* 标题 + 历史记录按钮 */}
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold" style={{ fontFamily: "var(--font-serif)", color: "var(--clr-dark-deep)" }}>
+            全流程一键分析
+          </h2>
+          <p className="text-xs mt-1" style={{ color: "var(--clr-text-muted)" }}>
+            配置参数后依次执行全部 6 步，无需手动干预。
+          </p>
+        </div>
+        <button
+          onClick={() => setShowHistory(v => !v)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium shrink-0 transition-colors"
+          style={{
+            border: "1px solid var(--clr-border)",
+            color: showHistory ? "#fff" : "var(--clr-text-muted)",
+            background: showHistory ? "var(--clr-amber)" : "var(--clr-bg-alt)",
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          历史记录{pipelines.length > 0 && ` (${pipelines.length})`}
+        </button>
       </div>
+
+      {/* 历史记录面板 */}
+      {showHistory && (
+        <div className="mb-4 border rounded-lg overflow-hidden" style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-alt)" }}>
+          {pipelines.length === 0 ? (
+            <div className="px-3 py-6 text-xs text-center" style={{ color: "var(--clr-text-faint)" }}>
+              暂无历史记录
+            </div>
+          ) : (
+            <div className="max-h-[300px] overflow-y-auto">
+              {pipelines.map((p) => {
+                const style = STATUS_MAP[p.status] || STATUS_MAP.pending;
+                const stepLabel = p.current_step ? STEP_LABELS[p.current_step] : "";
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => { setShowHistory(false); onSubmit(p.id); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-white/60"
+                    style={{ borderBottom: "1px solid var(--clr-border)" }}
+                  >
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${style.dot}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium truncate" style={{ color: "var(--clr-text)" }}>
+                        {p.status === "completed" ? "全流程完成" : p.status === "running" ? `运行中 — ${stepLabel}` : p.status === "failed" ? `失败 — ${p.error_step ? STEP_LABELS[p.error_step] || p.error_step : ""}` : "等待中"}
+                      </div>
+                      <div className="text-[10px] mt-0.5" style={{ color: "var(--clr-text-faint)", fontFamily: "var(--font-mono)" }}>
+                        {new Date((p.created_at || "") + (!(p.created_at || "").endsWith("Z") ? "Z" : "")).toLocaleString("zh-CN")}
+                      </div>
+                    </div>
+                    <span className={`text-[10px] font-mono shrink-0 ${style.text}`}>
+                      {p.status === "completed" ? "✓" : p.status === "failed" ? "✗" : p.status === "running" ? `${p.tasks?.filter(t => t.status === "completed").length}/6` : "—"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 错误提示 */}
       {error && (
