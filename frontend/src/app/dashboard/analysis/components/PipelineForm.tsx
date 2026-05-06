@@ -48,6 +48,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
     JSON.parse(JSON.stringify(DEFAULT_PARAMS))
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
 
   /* ===== Pipeline 历史记录 ===== */
   const [showHistory, setShowHistory] = useState(false);
@@ -65,6 +66,18 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
     const interval = setInterval(fetchPipelines, 5000);
     return () => clearInterval(interval);
   }, [showHistory, projectId, token]);
+
+  // 点击外部关闭历史面板
+  useEffect(() => {
+    if (!showHistory) return;
+    const handleClick = (e: MouseEvent) => {
+      if (historyRef.current && !historyRef.current.contains(e.target as Node)) {
+        setShowHistory(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showHistory]);
 
   /* ===== 输入样式（与单步分析 page.tsx 保持一致） ===== */
   const inputCls = "w-full px-3 py-2 bg-white border rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#C86019]/30 transition-colors";
@@ -168,7 +181,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
 
   return (
     <div className="animate-fade-in">
-      {/* 标题 + 历史记录按钮 */}
+      {/* 标题 + 历史记录下拉 */}
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold" style={{ fontFamily: "var(--font-serif)", color: "var(--clr-dark-deep)" }}>
@@ -178,58 +191,85 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
             配置参数后依次执行全部 6 步，无需手动干预。
           </p>
         </div>
-        <button
-          onClick={() => setShowHistory(v => !v)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium shrink-0 transition-colors"
-          style={{
-            border: "1px solid var(--clr-border)",
-            color: showHistory ? "#fff" : "var(--clr-text-muted)",
-            background: showHistory ? "var(--clr-amber)" : "var(--clr-bg-alt)",
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          历史记录{pipelines.length > 0 && ` (${pipelines.length})`}
-        </button>
-      </div>
+        <div className="relative shrink-0" ref={historyRef}>
+          <button
+            onClick={() => setShowHistory(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors"
+            style={{
+              border: "1px solid var(--clr-border)",
+              color: showHistory ? "#fff" : "var(--clr-text-muted)",
+              background: showHistory ? "var(--clr-amber)" : "var(--clr-bg-alt)",
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            历史记录{pipelines.length > 0 && ` (${pipelines.length})`}
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ transform: showHistory ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}><polyline points="6 9 12 15 18 9" /></svg>
+          </button>
 
-      {/* 历史记录面板 */}
-      {showHistory && (
-        <div className="mb-4 border rounded-lg overflow-hidden" style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-alt)" }}>
-          {pipelines.length === 0 ? (
-            <div className="px-3 py-6 text-xs text-center" style={{ color: "var(--clr-text-faint)" }}>
-              暂无历史记录
+          {/* 浮动下拉面板 */}
+          <div
+            className="absolute top-full right-0 mt-2 w-80 z-50 rounded-lg overflow-hidden"
+            style={{
+              background: "var(--clr-bg-card)",
+              border: showHistory ? "1px solid var(--clr-border)" : "1px solid transparent",
+              boxShadow: showHistory ? "var(--shadow-lg, 0 10px 25px rgba(0,0,0,0.12))" : "none",
+              maxHeight: showHistory ? 400 : 0,
+              opacity: showHistory ? 1 : 0,
+              transform: showHistory ? "translateY(0)" : "translateY(-8px)",
+              transition: "max-height 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease, transform 0.25s cubic-bezier(0.4,0,0.2,1), border-color 0.2s ease, box-shadow 0.2s ease",
+              pointerEvents: showHistory ? "auto" : "none",
+            }}
+          >
+            {/* 标题栏 */}
+            <div className="flex items-center justify-between px-3 py-2.5" style={{ borderBottom: "1px solid var(--clr-border)", background: "var(--clr-bg-alt)" }}>
+              <span className="text-xs font-semibold" style={{ fontFamily: "var(--font-serif)", color: "var(--clr-dark)" }}>历史流程</span>
+              <span className="text-[10px]" style={{ color: "var(--clr-text-faint)" }}>{pipelines.length}/10</span>
             </div>
-          ) : (
-            <div className="max-h-[300px] overflow-y-auto">
-              {pipelines.map((p) => {
-                const style = STATUS_MAP[p.status] || STATUS_MAP.pending;
-                const stepLabel = p.current_step ? STEP_LABELS[p.current_step] : "";
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => { setShowHistory(false); onSubmit(p.id); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-white/60"
-                    style={{ borderBottom: "1px solid var(--clr-border)" }}
-                  >
-                    <div className={`w-2 h-2 rounded-full shrink-0 ${style.dot}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium truncate" style={{ color: "var(--clr-text)" }}>
-                        {p.status === "completed" ? "全流程完成" : p.status === "running" ? `运行中 — ${stepLabel}` : p.status === "failed" ? `失败 — ${p.error_step ? STEP_LABELS[p.error_step] || p.error_step : ""}` : "等待中"}
+
+            {/* 列表 */}
+            <div className="max-h-72 overflow-y-auto">
+              {pipelines.length === 0 ? (
+                <div className="px-3 py-8 text-center">
+                  <svg className="mx-auto mb-2 opacity-30" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  <p className="text-xs" style={{ color: "var(--clr-text-muted)" }}>暂无历史记录</p>
+                </div>
+              ) : (
+                pipelines.map((p) => {
+                  const style = STATUS_MAP[p.status] || STATUS_MAP.pending;
+                  const stepLabel = p.current_step ? STEP_LABELS[p.current_step] : "";
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => { setShowHistory(false); onSubmit(p.id); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-white/60"
+                      style={{ borderBottom: "1px solid var(--clr-border)" }}
+                    >
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${style.dot}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium truncate" style={{ color: "var(--clr-text)" }}>
+                          {p.status === "completed" ? "全流程完成" : p.status === "running" ? `运行中 — ${stepLabel}` : p.status === "failed" ? `失败 — ${p.error_step ? STEP_LABELS[p.error_step] || p.error_step : ""}` : "等待中"}
+                        </div>
+                        <div className="text-[10px] mt-0.5" style={{ color: "var(--clr-text-faint)", fontFamily: "var(--font-mono)" }}>
+                          {new Date((p.created_at || "") + (!(p.created_at || "").endsWith("Z") ? "Z" : "")).toLocaleString("zh-CN")}
+                        </div>
                       </div>
-                      <div className="text-[10px] mt-0.5" style={{ color: "var(--clr-text-faint)", fontFamily: "var(--font-mono)" }}>
-                        {new Date((p.created_at || "") + (!(p.created_at || "").endsWith("Z") ? "Z" : "")).toLocaleString("zh-CN")}
-                      </div>
-                    </div>
-                    <span className={`text-[10px] font-mono shrink-0 ${style.text}`}>
-                      {p.status === "completed" ? "✓" : p.status === "failed" ? "✗" : p.status === "running" ? `${p.tasks?.filter(t => t.status === "completed").length}/6` : "—"}
-                    </span>
-                  </button>
-                );
-              })}
+                      <span className={`text-[10px] font-mono shrink-0 ${style.text}`}>
+                        {p.status === "completed" ? "✓" : p.status === "failed" ? "✗" : p.status === "running" ? `${p.tasks?.filter(t => t.status === "completed").length}/6` : "—"}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
             </div>
-          )}
+
+            {pipelines.length > 0 && (
+              <div className="px-3 py-1.5 text-[10px] text-center" style={{ borderTop: "1px solid var(--clr-border)", background: "var(--clr-bg-alt)", color: "var(--clr-text-faint)" }}>
+                共 {pipelines.length} 条记录
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </div>
 
       {/* 错误提示 */}
       {error && (
