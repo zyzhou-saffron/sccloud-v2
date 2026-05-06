@@ -108,6 +108,13 @@ function AnalysisPageContent() {
   const [analysisMode, setAnalysisMode] = useState<"single" | "pipeline">("single");
   const [activePipelineId, setActivePipelineId] = useState<string | null>(null);
 
+  // PipelineView 返回按钮事件监听
+  useEffect(() => {
+    const handlePipelineBack = () => setActivePipelineId(null);
+    window.addEventListener("pipeline-back", handlePipelineBack);
+    return () => window.removeEventListener("pipeline-back", handlePipelineBack);
+  }, []);
+
   // Marker 基因文件上传状态
   const [markerFile, setMarkerFile] = useState<{ name: string; path: string; cellTypes: string[] } | null>(null);
   const markerInputRef = useRef<HTMLInputElement>(null);
@@ -474,23 +481,10 @@ function AnalysisPageContent() {
               onFileUpload={setUploadedFile}
             />
           ) : (
-            <div className="space-y-4">
-              <button
-                className="px-3 py-1 text-sm rounded"
-                style={{
-                  border: "1px solid var(--clr-border)",
-                  background: "var(--clr-bg-alt)",
-                  cursor: "pointer",
-                }}
-                onClick={() => setActivePipelineId(null)}
-              >
-                ← 返回参数设置
-              </button>
-              <PipelineView
-                pipelineId={activePipelineId}
-                token={localStorage.getItem("access_token") || ""}
-              />
-            </div>
+            <PipelineView
+              pipelineId={activePipelineId}
+              token={localStorage.getItem("access_token") || ""}
+            />
           )}
         </div>
       ) : analysisMode === "pipeline" ? (
@@ -1210,7 +1204,7 @@ function AnalysisPageContent() {
                   {/* 完成胶囊标志 */}
                   {currentTask?.status === 'completed' && (
                     <span
-                      className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium"
+                      className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium"
                       style={{ background: '#E6F6ED', color: '#2D8A56', border: '1px solid #C3E6D1' }}
                     >
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
@@ -1224,7 +1218,7 @@ function AnalysisPageContent() {
                   )}
                   {currentTask?.status === 'failed' && (
                     <span
-                      className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium"
+                      className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium"
                       style={{ background: '#FFF3F3', color: '#B85450', border: '1px solid #F5C6C6' }}
                     >
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>

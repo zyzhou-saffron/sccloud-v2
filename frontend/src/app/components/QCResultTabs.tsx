@@ -205,7 +205,7 @@ export default function QCResultTabs({ taskId, token }: QCResultTabsProps) {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all duration-200"
+            className="px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-all duration-200"
             style={activeTab === tab.id ? {
               background: "var(--clr-amber)",
               color: "#fff",

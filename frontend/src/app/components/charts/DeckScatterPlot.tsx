@@ -17,29 +17,91 @@ import { ScatterplotLayer } from "@deck.gl/layers";
 import DeckGL from "@deck.gl/react";
 import type { ScatterData } from "./ScatterPlot";
 
-/* ── 色板：暖色系高饱和度，匹配 ComputaBio 学术调性 ── */
-const PALETTE: [number, number, number][] = [
-  [245, 158, 11],  // amber
-  [239, 68, 68],   // red
-  [16, 185, 129],  // emerald
-  [59, 130, 246],  // blue
-  [139, 92, 246],  // violet
-  [236, 72, 153],  // pink
-  [6, 182, 212],   // cyan
-  [249, 115, 22],  // orange
-  [20, 184, 166],  // teal
-  [168, 85, 247],  // purple
-  [225, 29, 72],   // rose
-  [14, 165, 233],  // sky
-  [132, 204, 22],  // lime
-  [244, 63, 94],   // red-rose
-  [99, 102, 241],  // indigo
-  [217, 70, 239],  // fuchsia
-  [34, 211, 238],  // cyan-light
-  [234, 179, 8],   // yellow
-  [100, 116, 139], // slate
-  [251, 146, 60],  // orange-light
-];
+/* ── 多色板（可切换） ── */
+const PALETTES: Record<string, { name: string; colors: [number, number, number][] }> = {
+  tol: {
+    name: "Tol (色盲安全)",
+    colors: [
+      [68, 119, 170],   // Blue    #4477AA
+      [102, 204, 238],  // Cyan    #66CCEE
+      [34, 136, 51],    // Green   #228833
+      [204, 187, 68],   // Yellow  #CCBB44
+      [238, 102, 119],  // Red     #EE6677
+      [170, 51, 119],   // Purple  #AA3377
+      [187, 187, 187],  // Grey    #BBBBBB
+      [0, 153, 136],    // Teal    #009988
+      [238, 119, 51],   // Orange  #EE7733
+      [238, 51, 119],   // Magenta #EE3377
+      [51, 34, 136],    // Indigo  #332288
+      [153, 153, 51],   // Olive   #999933
+      [221, 204, 119],  // Sand    #DDCC77
+      [204, 102, 119],  // Rose    #CC6677
+      [136, 34, 85],    // Wine    #882255
+    ],
+  },
+  vivid: {
+    name: "Vivid (高饱和)",
+    colors: [
+      [228, 26, 28],    // Red
+      [55, 126, 184],   // Blue
+      [77, 175, 74],    // Green
+      [255, 127, 0],    // Orange
+      [152, 78, 163],   // Purple
+      [247, 129, 191],  // Pink
+      [166, 86, 40],    // Brown
+      [255, 215, 0],    // Gold
+      [0, 128, 128],    // Teal
+      [148, 103, 189],  // Amethyst
+      [31, 119, 180],   // Steel Blue
+      [174, 199, 232],  // Light Blue
+      [255, 152, 150],  // Salmon
+      [197, 176, 213],  // Lavender
+      [128, 128, 128],  // Grey
+    ],
+  },
+  nature: {
+    name: "Nature (经典)",
+    colors: [
+      [0, 114, 178],    // Blue    #0072B2
+      [230, 159, 0],    // Orange  #E69F00
+      [0, 158, 115],    // Teal    #009E73
+      [213, 94, 0],     // Vermil. #D55E00
+      [86, 180, 233],   // Sky     #56B4E9
+      [204, 121, 167],  // Purple  #CC79A7
+      [240, 228, 66],   // Yellow  #F0E442
+      [153, 153, 153],  // Grey    #999999
+      [68, 119, 170],   // Blue2
+      [17, 119, 51],    // Green
+      [153, 153, 51],   // Olive
+      [136, 34, 85],    // Wine
+      [221, 204, 119],  // Sand
+      [68, 170, 153],   // Teal2
+      [51, 34, 136],    // Indigo
+    ],
+  },
+  pastel: {
+    name: "Pastel (柔和)",
+    colors: [
+      [102, 194, 165],  // Teal    #66C2A5
+      [252, 141, 98],   // Orange  #FC8D62
+      [141, 160, 203],  // Blue    #8DA0CB
+      [231, 138, 195],  // Pink    #E78AC3
+      [166, 216, 84],   // Green   #A6D854
+      [255, 217, 47],   // Yellow  #FFD92F
+      [229, 196, 148],  // Sand    #E5C494
+      [179, 179, 179],  // Grey    #B3B3B3
+      [166, 86, 40],    // Brown
+      [247, 129, 191],  // Pink2
+      [0, 128, 128],    // Teal2
+      [148, 103, 189],  // Amethyst
+      [166, 216, 84],   // Lime
+      [255, 152, 150],  // Salmon
+      [128, 128, 128],  // Grey2
+    ],
+  },
+};
+
+const DEFAULT_PALETTE = "tol";
 
 interface DeckScatterPlotProps {
   data: ScatterData | null;
@@ -77,6 +139,10 @@ export default function DeckScatterPlot({
   // 图例：哪些聚类被隐藏
   const [hiddenClusters, setHiddenClusters] = useState<Set<string>>(new Set());
 
+  // 色板选择
+  const [paletteKey, setPaletteKey] = useState(DEFAULT_PALETTE);
+  const currentPalette = PALETTES[paletteKey]?.colors || PALETTES[DEFAULT_PALETTE].colors;
+
   // 将平行数组 → 对象数组（仅在数据变化时重算）
   const points = useMemo(() => (data ? toPoints(data) : []), [data]);
 
@@ -97,10 +163,10 @@ export default function DeckScatterPlot({
   const colorMap = useMemo(() => {
     const map = new Map<string, [number, number, number]>();
     clusters.forEach((c, i) => {
-      map.set(c, PALETTE[i % PALETTE.length]);
+      map.set(c, currentPalette[i % currentPalette.length]);
     });
     return map;
-  }, [clusters]);
+  }, [clusters, currentPalette]);
 
   // 计算数据边界 → 初始视口
   const initialViewState = useMemo(() => {
@@ -181,16 +247,17 @@ export default function DeckScatterPlot({
     getPosition: (d: { x: number; y: number }) => [d.x, d.y],
     getFillColor: (d: { cluster: string }) => {
       const c = colorMap.get(d.cluster) || [128, 128, 128];
-      return [c[0], c[1], c[2], 180];
+      return [c[0], c[1], c[2], 102]; // alpha ~0.4
     },
-    getRadius: 3,
+    stroked: false,
+    getRadius: 4,
     radiusUnits: "pixels" as const,
-    radiusMinPixels: 1.5,
+    radiusMinPixels: 2,
     radiusMaxPixels: 8,
     pickable: true,
     onHover,
     updateTriggers: {
-      getFillColor: [hiddenClusters.size],
+      getFillColor: [hiddenClusters.size, paletteKey],
     },
   });
 
@@ -251,6 +318,24 @@ export default function DeckScatterPlot({
           boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
         }}
       >
+        {/* 色板选择器 */}
+        <div className="mb-2">
+          <select
+            value={paletteKey}
+            onChange={(e) => setPaletteKey(e.target.value)}
+            className="w-full text-[10px] px-1.5 py-1 rounded"
+            style={{
+              border: "1px solid var(--clr-border)",
+              background: "var(--clr-bg-alt)",
+              color: "var(--clr-text)",
+              cursor: "pointer",
+            }}
+          >
+            {Object.entries(PALETTES).map(([key, pal]) => (
+              <option key={key} value={key}>{pal.name}</option>
+            ))}
+          </select>
+        </div>
         <p
           className="text-[10px] font-semibold mb-1.5 uppercase tracking-wider"
           style={{ color: "var(--clr-text-faint)" }}
