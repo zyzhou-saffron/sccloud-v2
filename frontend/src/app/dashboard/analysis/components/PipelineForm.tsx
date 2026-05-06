@@ -82,7 +82,8 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
   /* ===== 输入样式（与单步分析 page.tsx 保持一致） ===== */
   const inputCls = "w-full px-3 py-2 bg-white border rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#C86019]/30 transition-colors";
   const inputStyle: React.CSSProperties = { borderColor: "var(--clr-border)", color: "var(--clr-text)" };
-  const selectCls = inputCls.replace("w-full", "w-auto min-w-[120px]") + " cursor-pointer";
+  const selectCls = inputCls.replace("w-full", "w-auto min-w-[100px]") + " cursor-pointer";
+  const numberCls = inputCls.replace("w-full", "w-[100px]");
   const selectStyle: React.CSSProperties = {
     ...inputStyle,
     appearance: "none",
@@ -384,7 +385,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                       <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
-                  <input type="number" value={params.qc.min_features as number} onChange={(e) => updateStepParam("qc", "min_features", Number(e.target.value))} min={1} className={inputCls} style={inputStyle} />
+                  <input type="number" value={params.qc.min_features as number} onChange={(e) => updateStepParam("qc", "min_features", Number(e.target.value))} min={1} className={numberCls} style={inputStyle} />
                 </div>
                 <div>
                   <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
@@ -393,7 +394,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                       <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
-                  <input type="number" value={params.qc.max_features as number} onChange={(e) => updateStepParam("qc", "max_features", Number(e.target.value))} min={1} className={inputCls} style={inputStyle} />
+                  <input type="number" value={params.qc.max_features as number} onChange={(e) => updateStepParam("qc", "max_features", Number(e.target.value))} min={1} className={numberCls} style={inputStyle} />
                 </div>
                 <div>
                   <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
@@ -402,7 +403,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                       <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
-                  <input type="number" value={params.qc.umi_min_pct as number} onChange={(e) => updateStepParam("qc", "umi_min_pct", Number(e.target.value))} min={0} max={1} step={0.01} className={inputCls} style={inputStyle} />
+                  <input type="number" value={params.qc.umi_min_pct as number} onChange={(e) => updateStepParam("qc", "umi_min_pct", Number(e.target.value))} min={0} max={1} step={0.01} className={numberCls} style={inputStyle} />
                 </div>
                 <div>
                   <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
@@ -411,7 +412,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                       <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
-                  <input type="number" value={params.qc.umi_max_pct as number} onChange={(e) => updateStepParam("qc", "umi_max_pct", Number(e.target.value))} min={0} max={1} step={0.01} className={inputCls} style={inputStyle} />
+                  <input type="number" value={params.qc.umi_max_pct as number} onChange={(e) => updateStepParam("qc", "umi_max_pct", Number(e.target.value))} min={0} max={1} step={0.01} className={numberCls} style={inputStyle} />
                 </div>
               </div>
               <p className="text-[10px] mt-1" style={{ color: "var(--clr-text-faint)" }}>
@@ -445,7 +446,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                     <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                   </Tooltip>
                 </label>
-                <input type="number" value={params.reduce.n_pcs as number} onChange={(e) => updateStepParam("reduce", "n_pcs", Number(e.target.value))} min={2} className={inputCls} style={inputStyle} />
+                <input type="number" value={params.reduce.n_pcs as number} onChange={(e) => updateStepParam("reduce", "n_pcs", Number(e.target.value))} min={2} className={numberCls} style={inputStyle} />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
@@ -486,7 +487,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                     <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                   </Tooltip>
                 </label>
-                <input type="number" value={params.cluster.n_dims as number} onChange={(e) => updateStepParam("cluster", "n_dims", Number(e.target.value))} min={2} max={50} className={inputCls} style={inputStyle} />
+                <input type="number" value={params.cluster.n_dims as number} onChange={(e) => updateStepParam("cluster", "n_dims", Number(e.target.value))} min={2} max={50} className={numberCls} style={inputStyle} />
               </div>
               <div>
                 <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
@@ -539,7 +540,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                       <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
-                  <input type="number" value={params.markers.min_pct as number} onChange={(e) => updateStepParam("markers", "min_pct", Number(e.target.value))} min={0} max={1} step={0.01} className={inputCls} style={inputStyle} />
+                  <input type="number" value={params.markers.min_pct as number} onChange={(e) => updateStepParam("markers", "min_pct", Number(e.target.value))} min={0} max={1} step={0.01} className={numberCls} style={inputStyle} />
                 </div>
                 <div>
                   <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
@@ -548,7 +549,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                       <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
-                  <input type="number" value={params.markers.logfc_threshold as number} onChange={(e) => updateStepParam("markers", "logfc_threshold", Number(e.target.value))} step={0.05} className={inputCls} style={inputStyle} />
+                  <input type="number" value={params.markers.logfc_threshold as number} onChange={(e) => updateStepParam("markers", "logfc_threshold", Number(e.target.value))} step={0.05} className={numberCls} style={inputStyle} />
                 </div>
                 <div>
                   <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
@@ -557,7 +558,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                       <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
-                  <input type="number" value={params.markers.p_val_adj as number ?? 0.05} onChange={(e) => updateStepParam("markers", "p_val_adj", Number(e.target.value))} step={0.01} min={0} max={1} className={inputCls} style={inputStyle} />
+                  <input type="number" value={params.markers.p_val_adj as number ?? 0.05} onChange={(e) => updateStepParam("markers", "p_val_adj", Number(e.target.value))} step={0.01} min={0} max={1} className={numberCls} style={inputStyle} />
                 </div>
               </div>
               <div className="grid grid-cols-4 gap-3">
@@ -574,7 +575,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                       <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
                     </Tooltip>
                   </label>
-                  <input type="number" value={params.markers.ntop as number ?? 5} onChange={(e) => updateStepParam("markers", "ntop", Number(e.target.value))} min={1} max={50} className={inputCls} style={inputStyle} />
+                  <input type="number" value={params.markers.ntop as number ?? 5} onChange={(e) => updateStepParam("markers", "ntop", Number(e.target.value))} min={1} max={50} className={numberCls} style={inputStyle} />
                 </div>
                 <div>
                   <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
