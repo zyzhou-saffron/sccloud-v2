@@ -213,6 +213,7 @@ class InspectResponse(BaseModel):
     genes: list[str]  # 基因名列表
     gene_ids: list[str]  # Ensemble ID 列表
     file_size_mb: float
+    metadata_columns: list[str] = []  # 元数据列名（Sample, Group, CellType 等）
 
 
 @router.post("/inspect", response_model=InspectResponse)
@@ -318,12 +319,16 @@ def _parse_rds_file(file_path: str, filename: str) -> InspectResponse:
         rep("N/A", length(genes))
     })
 
+    # 获取元数据列名
+    meta_cols <- colnames(obj@meta.data)
+
     # 输出 JSON
     result <- list(
         n_rows = n_rows,
         n_cols = n_cols,
         genes = genes,
-        gene_ids = gene_ids
+        gene_ids = gene_ids,
+        metadata_columns = meta_cols
     )
 
     cat(toJSON(result, auto_unbox = TRUE))
@@ -359,7 +364,8 @@ def _parse_rds_file(file_path: str, filename: str) -> InspectResponse:
             n_cols=data["n_cols"],
             genes=data["genes"][:100],  # 只返回前 100 个基因
             gene_ids=data["gene_ids"][:100],
-            file_size_mb=round(file_size_mb, 2)
+            file_size_mb=round(file_size_mb, 2),
+            metadata_columns=data.get("metadata_columns", [])
         )
 
     finally:
@@ -408,7 +414,8 @@ def _parse_h5ad_file(file_path: str, filename: str) -> InspectResponse:
             n_cols=n_cols,
             genes=genes[:100],  # 只返回前 100 个基因
             gene_ids=gene_ids[:100],
-            file_size_mb=round(file_size_mb, 2)
+            file_size_mb=round(file_size_mb, 2),
+            metadata_columns=list(adata.obs.columns)
         )
 
     except ImportError:

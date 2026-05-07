@@ -17,6 +17,7 @@ interface PipelineFormProps {
   hasUploadedFile?: boolean;
   uploadedFile?: { name: string; path: string } | null;
   onFileUpload?: (file: { name: string; path: string }) => void;
+  metadataColumns?: string[];
 }
 
 const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
@@ -41,7 +42,7 @@ const STATUS_MAP: Record<string, { dot: string; text: string }> = {
   cancelled: { dot: "bg-[#E0DCD6]", text: "text-[#999]" },
 };
 
-export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFile = false, uploadedFile = null, onFileUpload }: PipelineFormProps) {
+export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFile = false, uploadedFile = null, onFileUpload, metadataColumns = [] }: PipelineFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [params, setParams] = useState<Record<string, Record<string, unknown>>>(
@@ -49,6 +50,25 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
   );
   const historyRef = useRef<HTMLDivElement>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+
+  // 从上传文件的元数据列中筛选适合做分组的列（排除数值型特征列）
+  const GROUP_EXCLUDE = new Set(["nCount_RNA", "nFeature_RNA", "percent.mt", "n_genes", "n_counts", "barcode"]);
+  const groupColumns = metadataColumns.filter(c => !GROUP_EXCLUDE.has(c) && !c.startsWith("n_") && !c.startsWith("percent."));
+  // 确保至少有 Sample 和 Group 作为 fallback
+  const effectiveGroupCols = groupColumns.length > 0 ? groupColumns : ["Sample", "Group"];
+
+  // 当 metadataColumns 变化时，更新默认分组
+  useEffect(() => {
+    if (effectiveGroupCols.length > 0 && !effectiveGroupCols.includes(params.reduce.group_by as string)) {
+      const defaultGroup = effectiveGroupCols[0];
+      setParams(prev => ({
+        ...prev,
+        reduce: { ...prev.reduce, group_by: defaultGroup },
+        cluster: { ...prev.cluster, group_by: defaultGroup },
+        annotate: { ...prev.annotate, group_by: defaultGroup },
+      }));
+    }
+  }, [metadataColumns]);
 
   /* ===== Pipeline 历史记录 ===== */
   const [showHistory, setShowHistory] = useState(false);
@@ -370,10 +390,10 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
                   <div className="flex gap-3">
-                    {["Sample", "Group"].map((v) => (
+                    {effectiveGroupCols.map((v) => (
                       <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
                         <input type="radio" name="pipeline_group_by" value={v} checked={params.reduce.group_by === v} onChange={() => updateStepParam("reduce", "group_by", v)} className="accent-[#C86019]" />
-                        {v === "Sample" ? "样本" : "处理组"}
+                        {v}
                       </label>
                     ))}
                   </div>
@@ -408,10 +428,10 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                     </Tooltip>
                   </label>
                   <div className="flex gap-3">
-                    {["Sample", "group"].map((v) => (
+                    {effectiveGroupCols.map((v) => (
                       <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
                         <input type="radio" name="pipeline_cluster_group_by" value={v} checked={(params.cluster.group_by ?? "Sample") === v} onChange={() => updateStepParam("cluster", "group_by", v)} className="accent-[#C86019]" />
-                        {v === "Sample" ? "样本" : "处理组"}
+                        {v}
                       </label>
                     ))}
                   </div>
@@ -534,7 +554,10 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
                 <select value={params.annotate.group_by as string} onChange={(e) => updateStepParam("annotate", "group_by", e.target.value)} className={selectCls} style={selectStyle}>
-                  <option value="Sample">Sample</option><option value="Group">Group</option><option value="CellType">CellType</option>
+                  {effectiveGroupCols.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                  <option value="CellType">CellType</option>
                 </select>
               </div>
             </div>

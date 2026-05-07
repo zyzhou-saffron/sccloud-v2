@@ -14,12 +14,13 @@ interface FileInfo {
   genes: string[];
   gene_ids: string[];
   file_size_mb: number;
+  metadata_columns: string[];
 }
 
 interface FileUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onFileUploaded: (file: { name: string; path: string }) => void;
+  onFileUploaded: (file: { name: string; path: string; metadata_columns?: string[] }) => void;
   projectId: number;
   token: string;
 }
@@ -118,7 +119,10 @@ export default function FileUploadModal({
 
   const handleConfirm = () => {
     if (uploadedFile) {
-      onFileUploaded(uploadedFile);
+      onFileUploaded({
+        ...uploadedFile,
+        metadata_columns: fileInfo?.metadata_columns,
+      });
       onClose();
     }
   };

@@ -95,7 +95,7 @@ function AnalysisPageContent() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // uploadedFile: { name: 原文件名, path: 服务器路径 } 或 null
-  const [uploadedFile, setUploadedFile] = useState<{ name: string; path: string } | null>(
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; path: string; metadata_columns?: string[] } | null>(
     ss?.uploadedFile ?? null
   );
   // 上传进度（0-100）
@@ -479,6 +479,7 @@ function AnalysisPageContent() {
               hasUploadedFile={!!uploadedFile}
               uploadedFile={uploadedFile}
               onFileUpload={setUploadedFile}
+              metadataColumns={uploadedFile?.metadata_columns}
             />
           ) : (
             <PipelineView
