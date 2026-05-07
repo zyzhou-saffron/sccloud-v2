@@ -3,8 +3,10 @@
  */
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import type { Task } from "../lib/api";
+import DeckScatterPlot from "./charts/DeckScatterPlot";
+import type { ScatterData } from "./charts/ScatterPlot";
 
 function getToken() {
   if (typeof window !== "undefined") {
@@ -46,12 +48,23 @@ interface AnnotateData {
   status: string;
   result_path?: string;
   plot_path?: string;
+  scatter_data?: { x: number[]; y: number[]; cluster: string[] };
   stats?: {
     cells: number;
     cell_types: number;
     anno_type: string;  // "自动注释" or "手动注释"
   };
   freq_table?: Array<{ CellType: string; Sample?: string; Freq?: number; n?: number; pct?: number }>;
+}
+
+function safeScatter(raw: unknown): ScatterData | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const x = (r.x ?? r.X) as number[] | undefined;
+  const y = (r.y ?? r.Y) as number[] | undefined;
+  const cluster = (r.cluster ?? r.Cluster ?? r.label) as string[] | undefined;
+  if (!Array.isArray(x) || !Array.isArray(y)) return undefined;
+  return { x, y, cluster: Array.isArray(cluster) ? cluster : x.map(() => "0") };
 }
 
 export default function AnnotateResult({
@@ -70,6 +83,7 @@ export default function AnnotateResult({
 
   const stats = annotateData?.stats;
   const freqTable = annotateData?.freq_table ?? [];
+  const rawScatter = useMemo(() => safeScatter(annotateData?.scatter_data), [annotateData]);
 
   // ── 图片 URL 构建 ──
   const extractName = (val: unknown) => {
@@ -114,7 +128,17 @@ export default function AnnotateResult({
       )}
 
       {/* ── UMAP 注释图 ── */}
-      {plotSrc && (
+      {rawScatter ? (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
+            细胞类型 UMAP 标注图
+            <span className="font-normal ml-1" style={{ color: "var(--clr-text-muted)" }}>
+              — WebGL 交互式 · {rawScatter.x.length.toLocaleString()} 个细胞
+            </span>
+          </p>
+          <DeckScatterPlot data={rawScatter} method="UMAP" height={520} />
+        </div>
+      ) : plotSrc && (
         <div className="space-y-2">
           <p className="text-xs font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
             细胞类型 UMAP 标注图

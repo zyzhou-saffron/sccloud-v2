@@ -11,7 +11,7 @@
 "use client";
 
 import React, { Component, type ComponentType, type ReactNode, useEffect, useMemo, useState } from "react";
-import { type Task, submitTask, getTask } from "../lib/api";
+import { type Task, submitTask, getTask, apiFetch, tryRefresh } from "../lib/api";
 import ProgressTracker from "./ProgressTracker";
 import QCResultTabs from "./QCResultTabs";
 import MultiSelectDropdown from "./MultiSelectDropdown";
@@ -113,7 +113,7 @@ function AuthImg({ src, alt, className, style }: {
     let objectUrl = "";
     setFailed(false);
     setBlobUrl(null);
-    fetch(src, { headers: { Authorization: `Bearer ${getToken()}` } })
+    fetchWithAuth(src)
       .then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.blob(); })
       .then((blob) => { objectUrl = URL.createObjectURL(blob); setBlobUrl(objectUrl); })
       .catch(() => setFailed(true));
@@ -137,7 +137,7 @@ function AuthDownloadLink({ url, filename, className, style, children }: { url: 
     if (downloading) return;
     setDownloading(true);
     try {
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } });
+      const res = await fetchWithAuth(url);
       if (!res.ok) throw new Error("下载失败");
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
@@ -177,14 +177,28 @@ function getToken(): string {
   return localStorage.getItem("access_token") || "";
 }
 
-/** 获取任务结果 JSON */
+/**
+ * 带 401 自动续期的 fetch 封装（用于 blob/非 JSON 响应）。
+ * apiFetch 只处理 JSON，图片/blob 下载需要单独处理。
+ */
+async function fetchWithAuth(url: string, init?: RequestInit): Promise<Response> {
+  const token = getToken();
+  const headers = { ...(init?.headers as Record<string, string>), Authorization: `Bearer ${token}` };
+  const res = await fetch(url, { ...init, headers });
+  if (res.status === 401) {
+    const newToken = await tryRefresh();
+    if (newToken) {
+      const retry = await fetch(url, { ...init, headers: { ...(init?.headers as Record<string, string>), Authorization: `Bearer ${newToken}` } });
+      if (retry.ok) return retry;
+    }
+  }
+  return res;
+}
+
+/** 获取任务结果 JSON — 使用 apiFetch 自动处理 401 token 续期 */
 async function fetchTaskResult(taskId: string): Promise<Record<string, unknown> | null> {
   try {
-    const res = await fetch(`/api/tasks/${taskId}/result`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
-    });
-    if (!res.ok) return null;
-    return await res.json();
+    return await apiFetch<Record<string, unknown>>(`/api/tasks/${taskId}/result`);
   } catch {
     return null;
   }
@@ -329,7 +343,7 @@ function NormalizeResult({ data, taskId }: { data: Record<string, unknown>; task
     if (!resultFileName || !taskId) return;
     const url = `/api/tasks/${taskId}/plot?name=${encodeURIComponent(resultFileName)}`;
     try {
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } });
+      const res = await fetchWithAuth(url);
       if (!res.ok) throw new Error(`${res.status}`);
       const blob = await res.blob();
       const a = document.createElement("a");
@@ -1028,10 +1042,7 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
   useEffect(() => {
     if (activeTab === 2 && !genesFetched && task?.project_id) {
       setGenesLoading(true);
-      const token = getToken();
-      fetch(`/api/projects/${task.project_id}/genes`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      fetchWithAuth(`/api/projects/${task.project_id}/genes`)
         .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
         .then((data) => {
           setAllGenes(data.genes || []);
@@ -1081,18 +1092,17 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
     setLoader(true);
     setError(null);
     try {
-      const token = getToken();
-      const res = await fetch("/api/tasks", {
+      const res = await fetchWithAuth("/api/tasks", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: task.project_id, step, params })
       });
       if (!res.ok) throw new Error(`提交失败: ${res.statusText}`);
       const t = await res.json();
-      
+
       const pollTask = async (id: string): Promise<Task> => {
-        const res = await fetch(`/api/tasks/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-        const fresh = await res.json();
+        const r = await fetchWithAuth(`/api/tasks/${id}`);
+        const fresh = await r.json();
         if (fresh.status === "failed") throw new Error(fresh.error_msg || "任务失败");
         if (fresh.status === "completed") return fresh;
         await new Promise(r => setTimeout(r, 2000));
@@ -1100,8 +1110,8 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
       };
 
       const completedTask = await pollTask(t.id);
-      
-      const rRes = await fetch(`/api/tasks/${t.id}/result`, { headers: { Authorization: `Bearer ${token}` } });
+
+      const rRes = await fetchWithAuth(`/api/tasks/${t.id}/result`);
       const finalResult = await rRes.json();
       onSuccess(t.id, finalResult, completedTask);
     } catch(err: any) {

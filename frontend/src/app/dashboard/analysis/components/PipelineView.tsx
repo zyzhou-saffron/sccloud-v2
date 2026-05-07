@@ -16,12 +16,11 @@ import {
 } from "../../../components/Icons";
 
 const STEPS = [
-  { id: "qc", num: 1, label: "数据预处理", desc: "质控过滤", Icon: IconMicroscope, apiStep: "qc" },
-  { id: "normalize", num: 2, label: "数据标准化", desc: "SCTransform", Icon: IconBarChart, apiStep: "normalize" },
-  { id: "reduce", num: 3, label: "数据降维", desc: "PCA/UMAP/tSNE", Icon: IconAxis, apiStep: "reduce" },
-  { id: "cluster", num: 4, label: "批次聚类", desc: "Harmony 校正", Icon: IconCluster, apiStep: "cluster" },
-  { id: "markers", num: 5, label: "差异基因", desc: "FindMarkers", Icon: IconTestTube, apiStep: "markers" },
-  { id: "annotate", num: 6, label: "细胞注释", desc: "SingleR/手动", Icon: IconTag, apiStep: "annotate" },
+  { id: "preprocess", num: 1, label: "数据预处理与标准化", desc: "质控过滤 · SCTransform", Icon: IconMicroscope, subSteps: ["qc", "normalize"] },
+  { id: "reduce", num: 2, label: "数据降维", desc: "PCA/UMAP/tSNE", Icon: IconAxis, subSteps: ["reduce"] },
+  { id: "cluster", num: 3, label: "批次聚类", desc: "Harmony 校正", Icon: IconCluster, subSteps: ["cluster"] },
+  { id: "markers", num: 4, label: "差异基因", desc: "FindMarkers", Icon: IconTestTube, subSteps: ["markers"] },
+  { id: "annotate", num: 5, label: "细胞注释", desc: "SingleR/手动", Icon: IconTag, subSteps: ["annotate"] },
 ];
 
 const STATUS_DOT: Record<string, string> = {
@@ -53,11 +52,14 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
 
         // 自动选中：运行中步骤 > 最后一个已完成步骤 > 第一个步骤
         if (data.status === "running" && data.current_step) {
-          setActiveStep(data.current_step);
+          const runningStep = STEPS.find(s => s.subSteps.includes(data.current_step!));
+          if (runningStep) setActiveStep(runningStep.id);
         } else {
           const lastCompleted = [...STEPS].reverse().find(s => {
-            const t = data.tasks.find(tt => tt.step === s.id);
-            return t?.status === "completed";
+            return s.subSteps.some(id => {
+              const t = data.tasks.find(tt => tt.step === id);
+              return t?.status === "completed";
+            });
           });
           if (lastCompleted) setActiveStep(lastCompleted.id);
         }
@@ -106,13 +108,20 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
   }[pipeline.status] || {};
 
   const taskMap = new Map(pipeline.tasks.map(t => [t.step, t]));
-  const activeTask = taskMap.get(activeStep);
   const activeStepDef = STEPS.find(s => s.id === activeStep)!;
 
+  // 组合步骤状态：优先级 running > failed > pending > completed
   const getStepStatus = (stepId: string) => {
-    if (pipeline.current_step === stepId) return "running";
-    const t = taskMap.get(stepId);
-    return t?.status || "pending";
+    const step = STEPS.find(s => s.id === stepId)!;
+    const subSteps = step.subSteps;
+    const statuses = subSteps.map(id => {
+      if (pipeline.current_step === id) return "running";
+      return taskMap.get(id)?.status || "pending";
+    });
+    if (statuses.includes("running")) return "running";
+    if (statuses.includes("failed")) return "failed";
+    if (statuses.includes("pending")) return "pending";
+    return "completed";
   };
 
   return (
@@ -190,62 +199,80 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
                   return <span className="text-xs" style={{ color }}>{label}</span>;
                 })()}
               </div>
-              {pipeline.error_msg && activeStep === pipeline.error_step && (
+              {pipeline.error_msg && activeStepDef.subSteps.includes(pipeline.error_step || "") && (
                 <span className="text-xs" style={{ color: "var(--clr-danger)" }}>{pipeline.error_msg}</span>
               )}
             </div>
 
             {/* 内容区主体 */}
-            <div className="p-4 flex-1 min-h-0 overflow-y-auto">
-              {/* 运行中 */}
-              {getStepStatus(activeStep) === "running" && activeTask && (
-                <ProgressTracker
-                  taskId={activeTask.id}
-                  onMessage={() => {}}
-                  onProgress={() => {}}
-                  onComplete={() => { getPipeline(token, pipelineId).then(setPipeline).catch(() => {}); }}
-                />
-              )}
+            <div className="p-4 flex-1 min-h-0 overflow-y-auto space-y-6">
+              {activeStepDef.subSteps.map((subId) => {
+                const subTask = taskMap.get(subId);
+                const subLabel = { qc: "数据预处理", normalize: "数据标准化" }[subId] || subId;
+                const subStatus = (() => {
+                  if (pipeline.current_step === subId) return "running";
+                  return subTask?.status || "pending";
+                })();
 
-              {/* 已完成 */}
-              {getStepStatus(activeStep) === "completed" && activeTask && (
-                <ResultViewer
-                  stepId={activeStep}
-                  task={{
-                    id: activeTask.id,
-                    step: activeTask.step,
-                    status: activeTask.status,
-                    params: {},
-                    progress: 100,
-                    result_path: activeTask.result_path,
-                    result: null,
-                    project_id: pipeline.project_id,
-                  } as Task}
-                  token={token}
-                />
-              )}
+                return (
+                  <div key={subId}>
+                    {activeStepDef.subSteps.length > 1 && (
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-xs font-semibold" style={{ color: "var(--clr-amber-dark)" }}>{subLabel}</span>
+                        <span className="text-[10px]" style={{ color: { completed: "#2D8A56", running: "var(--clr-amber)", failed: "var(--clr-danger)", pending: "var(--clr-text-muted)" }[subStatus] || "" }}>
+                          {{ completed: "已完成", running: "运行中", failed: "已失败", pending: "待执行" }[subStatus] || ""}
+                        </span>
+                      </div>
+                    )}
 
-              {/* 失败 */}
-              {getStepStatus(activeStep) === "failed" && activeTask && (
-                <div className="text-center py-12">
-                  <div className="w-12 h-12 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ background: "#FFF3F3", color: "var(--clr-danger)" }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                    {/* 运行中 */}
+                    {subStatus === "running" && subTask && (
+                      <ProgressTracker
+                        taskId={subTask.id}
+                        onMessage={() => {}}
+                        onProgress={() => {}}
+                        onComplete={() => { getPipeline(token, pipelineId).then(setPipeline).catch(() => {}); }}
+                      />
+                    )}
+
+                    {/* 已完成 */}
+                    {subStatus === "completed" && subTask && (
+                      <ResultViewer
+                        stepId={subId}
+                        task={{
+                          id: subTask.id,
+                          step: subTask.step,
+                          status: subTask.status,
+                          params: {},
+                          progress: 100,
+                          result_path: subTask.result_path,
+                          result: null,
+                          project_id: pipeline.project_id,
+                        } as Task}
+                        token={token}
+                      />
+                    )}
+
+                    {/* 失败 */}
+                    {subStatus === "failed" && subTask && (
+                      <div className="text-center py-8">
+                        <div className="w-10 h-10 mx-auto mb-3 rounded-full flex items-center justify-center" style={{ background: "#FFF3F3", color: "var(--clr-danger)" }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                        </div>
+                        <p className="text-xs font-medium mb-1" style={{ color: "var(--clr-danger)" }}>{subLabel}执行失败</p>
+                        <div className="text-xs" style={{ color: "var(--clr-text-muted)" }}>{subTask.error_msg || "未知错误"}</div>
+                      </div>
+                    )}
+
+                    {/* 待执行 */}
+                    {subStatus === "pending" && (
+                      <div className="text-center py-8" style={{ color: "var(--clr-text-faint)" }}>
+                        <p className="text-xs">等待执行</p>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-sm font-medium mb-2" style={{ color: "var(--clr-danger)" }}>步骤执行失败</p>
-                  <div className="callout callout-danger text-xs max-w-md mx-auto">{activeTask.error_msg || "未知错误"}</div>
-                </div>
-              )}
-
-              {/* 待执行 */}
-              {getStepStatus(activeStep) === "pending" && (
-                <div className="text-center py-12" style={{ color: "var(--clr-text-faint)" }}>
-                  <div className="w-10 h-10 mx-auto mb-3 rounded-full border-2 flex items-center justify-center" style={{ borderColor: "var(--clr-border)" }}>
-                    <span className="text-lg">{activeStepDef.num}</span>
-                  </div>
-                  <p className="text-sm">等待执行</p>
-                  <p className="text-xs mt-1" style={{ color: "var(--clr-text-faint)" }}>前置步骤完成后自动开始</p>
-                </div>
-              )}
+                );
+              })}
             </div>
           </div>
         </div>

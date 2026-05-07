@@ -1083,6 +1083,20 @@ function(req) {
 
   report(100, "细胞注释完成")
 
+  # 提取 UMAP 坐标供前端渲染（CellType 着色）
+  embeddings <- tryCatch(
+    Embeddings(pro, reduction = "harmony.umap"),
+    error = function(e) tryCatch(
+      Embeddings(pro, reduction = "umap"),
+      error = function(e2) NULL
+    )
+  )
+  scatter_data <- if (!is.null(embeddings)) list(
+    x       = as.numeric(embeddings[, 1]),
+    y       = as.numeric(embeddings[, 2]),
+    cluster = as.character(pro$CellType)
+  ) else NULL
+
   list(
     status = "success",
     result_path = archive_path,
@@ -1092,7 +1106,8 @@ function(req) {
       cell_types = length(unique(pro$CellType)),
       anno_type = anno_type
     ),
-    freq_table = freq_table
+    freq_table = freq_table,
+    scatter_data = scatter_data
   )
 }
 

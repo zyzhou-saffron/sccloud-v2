@@ -58,7 +58,7 @@ async function doRefreshToken(): Promise<string | null> {
  * 尝试刷新 token（带并发锁）。
  * 多个请求同时 401 时，只有第一个真正执行 refresh，其余复用结果。
  */
-async function tryRefresh(): Promise<string | null> {
+export async function tryRefresh(): Promise<string | null> {
   if (!refreshPromise) {
     refreshPromise = doRefreshToken().finally(() => {
       refreshPromise = null;
@@ -77,7 +77,7 @@ function forceLogout(): never {
 }
 
 /** 通用 fetch 封装 — 自动注入 auth header + 401 自动续期 */
-async function apiFetch<T>(
+export async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
