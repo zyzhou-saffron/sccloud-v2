@@ -29,8 +29,8 @@ const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
 };
 
 const STEP_LABELS: Record<string, string> = {
-  qc: "数据预处理", normalize: "数据标准化", reduce: "数据降维",
-  cluster: "批次聚类", markers: "差异基因", annotate: "细胞注释",
+  qc: "数据预处理", normalize: "数据标准化", reduce: "降维与聚类",
+  cluster: "降维与聚类", markers: "差异基因", annotate: "细胞注释",
 };
 
 const STATUS_MAP: Record<string, { dot: string; text: string }> = {
@@ -341,98 +341,92 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
             {/* 分隔线 */}
             <div className="col-span-2" style={{ borderTop: "1px solid var(--clr-border)" }} />
 
-            {/* Step 3 Reduce */}
+            {/* Step 2: 降维与聚类 */}
             <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
-              Step 3: 数据降维
+              Step 2: 降维与聚类
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
-                  <span>降维方法</span>
-                  <Tooltip content="变量: method\n\nUMAP / t-SNE 注重局部近邻结构的非线性拓扑保留，适合可视化；PCA 则是寻找全局方差最大的线性组合。">
-                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
-                  </Tooltip>
-                </label>
-                <select value={params.reduce.method as string} onChange={(e) => updateStepParam("reduce", "method", e.target.value)} className={selectCls} style={selectStyle}>
-                  <option value="umap">UMAP</option><option value="tsne">t-SNE</option><option value="pca">PCA</option>
-                </select>
-              </div>
-              <div>
-                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
-                  <span>PCA 维度</span>
-                  <Tooltip content="变量: n_pcs\n\n参与下游降维和聚类的主成分数量。">
-                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
-                  </Tooltip>
-                </label>
-                <input type="number" value={params.reduce.n_pcs as number} onChange={(e) => updateStepParam("reduce", "n_pcs", Number(e.target.value))} min={2} className={numberCls} style={inputStyle} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
-                <div className="flex gap-3">
-                  {["Sample", "Group"].map((v) => (
-                    <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
-                      <input type="radio" name="pipeline_group_by" value={v} checked={params.reduce.group_by === v} onChange={() => updateStepParam("reduce", "group_by", v)} className="accent-[#C86019]" />
-                      {v === "Sample" ? "样本" : "处理组"}
-                    </label>
-                  ))}
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                    <span>降维方法</span>
+                    <Tooltip content="变量: method\n\nUMAP / t-SNE 注重局部近邻结构的非线性拓扑保留，适合可视化；PCA 则是寻找全局方差最大的线性组合。">
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    </Tooltip>
+                  </label>
+                  <select value={params.reduce.method as string} onChange={(e) => updateStepParam("reduce", "method", e.target.value)} className={selectCls} style={selectStyle}>
+                    <option value="umap">UMAP</option><option value="tsne">t-SNE</option><option value="pca">PCA</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                    <span>PCA 维度</span>
+                    <Tooltip content="变量: n_pcs\n\n参与下游降维和聚类的主成分数量。">
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    </Tooltip>
+                  </label>
+                  <input type="number" value={params.reduce.n_pcs as number} onChange={(e) => updateStepParam("reduce", "n_pcs", Number(e.target.value))} min={2} className={numberCls} style={inputStyle} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
+                  <div className="flex gap-3">
+                    {["Sample", "Group"].map((v) => (
+                      <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
+                        <input type="radio" name="pipeline_group_by" value={v} checked={params.reduce.group_by === v} onChange={() => updateStepParam("reduce", "group_by", v)} className="accent-[#C86019]" />
+                        {v === "Sample" ? "样本" : "处理组"}
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-
-            {/* 分隔线 */}
-            <div className="col-span-2" style={{ borderTop: "1px solid var(--clr-border)" }} />
-
-            {/* Step 4 Cluster */}
-            <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
-              Step 4: 批次聚类
-            </div>
-            <div className="grid grid-cols-4 gap-3">
-              <div>
-                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
-                  <span>校正方法</span>
-                  <Tooltip content="变量: method\n\nHarmony 是目前最流行的单细胞批次校正算法。">
-                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
-                  </Tooltip>
-                </label>
-                <select value={params.cluster.method as string} onChange={(e) => updateStepParam("cluster", "method", e.target.value)} className={selectCls} style={selectStyle}>
-                  <option value="harmony">Harmony</option>
-                </select>
-              </div>
-              <div>
-                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
-                  <span>降维维度</span>
-                  <Tooltip content="变量: n_dims\n\nPCA/Harmony 使用的维度数，通常 20~30 维。">
-                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
-                  </Tooltip>
-                </label>
-                <input type="number" value={params.cluster.n_dims as number} onChange={(e) => updateStepParam("cluster", "n_dims", Number(e.target.value))} min={2} max={50} className={numberCls} style={inputStyle} />
-              </div>
-              <div>
-                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
-                  <span>校正分组</span>
-                  <Tooltip content="变量: group_by\n\n指定按哪个元数据字段进行批次校正。">
-                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
-                  </Tooltip>
-                </label>
-                <div className="flex gap-3">
-                  {["Sample", "group"].map((v) => (
-                    <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
-                      <input type="radio" name="pipeline_cluster_group_by" value={v} checked={(params.cluster.group_by ?? "Sample") === v} onChange={() => updateStepParam("cluster", "group_by", v)} className="accent-[#C86019]" />
-                      {v === "Sample" ? "样本" : "处理组"}
-                    </label>
-                  ))}
+              <div className="grid grid-cols-4 gap-3">
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                    <span>校正方法</span>
+                    <Tooltip content="变量: method\n\nHarmony 是目前最流行的单细胞批次校正算法。">
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    </Tooltip>
+                  </label>
+                  <select value={params.cluster.method as string} onChange={(e) => updateStepParam("cluster", "method", e.target.value)} className={selectCls} style={selectStyle}>
+                    <option value="harmony">Harmony</option>
+                  </select>
                 </div>
-              </div>
-              <div>
-                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
-                  <span>聚类分辨率</span>
-                  <Tooltip content="变量: resolution\n\n决定聚类敏感度。数值越大亚群越细密（0.8+）；越小越粗放（0.2）。">
-                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
-                  </Tooltip>
-                </label>
-                <input type="range" min="0" max="2" step="0.01" value={params.cluster.resolution as number} onChange={(e) => updateStepParam("cluster", "resolution", Number(e.target.value))} className="w-full accent-[#C86019]" />
-                <div className="flex justify-between text-[10px]" style={{ color: "var(--clr-text-faint)", fontFamily: "var(--font-mono)" }}>
-                  <span>0</span><span style={{ color: "var(--clr-amber)", fontWeight: 600 }}>{params.cluster.resolution as number}</span><span>2</span>
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                    <span>降维维度</span>
+                    <Tooltip content="变量: n_dims\n\nPCA/Harmony 使用的维度数，通常 20~30 维。">
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    </Tooltip>
+                  </label>
+                  <input type="number" value={params.cluster.n_dims as number} onChange={(e) => updateStepParam("cluster", "n_dims", Number(e.target.value))} min={2} max={50} className={numberCls} style={inputStyle} />
+                </div>
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                    <span>校正分组</span>
+                    <Tooltip content="变量: group_by\n\n指定按哪个元数据字段进行批次校正。">
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    </Tooltip>
+                  </label>
+                  <div className="flex gap-3">
+                    {["Sample", "group"].map((v) => (
+                      <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
+                        <input type="radio" name="pipeline_cluster_group_by" value={v} checked={(params.cluster.group_by ?? "Sample") === v} onChange={() => updateStepParam("cluster", "group_by", v)} className="accent-[#C86019]" />
+                        {v === "Sample" ? "样本" : "处理组"}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                    <span>聚类分辨率</span>
+                    <Tooltip content="变量: resolution\n\n决定聚类敏感度。数值越大亚群越细密（0.8+）；越小越粗放（0.2）。">
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    </Tooltip>
+                  </label>
+                  <input type="range" min="0" max="2" step="0.01" value={params.cluster.resolution as number} onChange={(e) => updateStepParam("cluster", "resolution", Number(e.target.value))} className="w-full accent-[#C86019]" />
+                  <div className="flex justify-between text-[10px]" style={{ color: "var(--clr-text-faint)", fontFamily: "var(--font-mono)" }}>
+                    <span>0</span><span style={{ color: "var(--clr-amber)", fontWeight: 600 }}>{params.cluster.resolution as number}</span><span>2</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -445,9 +439,9 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
             高级分析参数
           </div>
           <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-4">
-            {/* Step 5 Markers */}
+            {/* Step 3 Markers */}
             <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
-              Step 5: 差异基因
+              Step 3: 差异基因
             </div>
             <div className="space-y-2">
               <div className="grid grid-cols-3 gap-3">
@@ -522,9 +516,9 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
             {/* 分隔线 */}
             <div className="col-span-2" style={{ borderTop: "1px solid var(--clr-border)" }} />
 
-            {/* Step 6 Annotate */}
+            {/* Step 4 Annotate */}
             <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
-              Step 6: 细胞注释
+              Step 4: 细胞注释
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

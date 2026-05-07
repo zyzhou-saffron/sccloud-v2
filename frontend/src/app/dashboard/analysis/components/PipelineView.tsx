@@ -17,10 +17,9 @@ import {
 
 const STEPS = [
   { id: "preprocess", num: 1, label: "数据预处理与标准化", desc: "质控过滤 · SCTransform", Icon: IconMicroscope, subSteps: ["qc", "normalize"] },
-  { id: "reduce", num: 2, label: "数据降维", desc: "PCA/UMAP/tSNE", Icon: IconAxis, subSteps: ["reduce"] },
-  { id: "cluster", num: 3, label: "批次聚类", desc: "Harmony 校正", Icon: IconCluster, subSteps: ["cluster"] },
+  { id: "reduce_cluster", num: 2, label: "降维与聚类", desc: "PCA · Harmony · UMAP", Icon: IconAxis, subSteps: ["reduce", "cluster"] },
+  { id: "annotate", num: 3, label: "细胞注释", desc: "SingleR/手动", Icon: IconTag, subSteps: ["annotate"] },
   { id: "markers", num: 4, label: "差异基因", desc: "FindMarkers", Icon: IconTestTube, subSteps: ["markers"] },
-  { id: "annotate", num: 5, label: "细胞注释", desc: "SingleR/手动", Icon: IconTag, subSteps: ["annotate"] },
 ];
 
 const STATUS_DOT: Record<string, string> = {
@@ -208,7 +207,7 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
             <div className="p-4 flex-1 min-h-0 overflow-y-auto space-y-6">
               {activeStepDef.subSteps.map((subId) => {
                 const subTask = taskMap.get(subId);
-                const subLabel = { qc: "数据预处理", normalize: "数据标准化" }[subId] || subId;
+                const subLabel = { qc: "数据预处理", normalize: "数据标准化", reduce: "数据降维", cluster: "批次聚类" }[subId] || subId;
                 const subStatus = (() => {
                   if (pipeline.current_step === subId) return "running";
                   return subTask?.status || "pending";
