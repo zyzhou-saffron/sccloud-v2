@@ -5,6 +5,7 @@
 "use client";
 
 import React, { useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { IconUpload } from "./Icons";
 
 interface FileInfo {
@@ -136,11 +137,11 @@ export default function FileUploadModal({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* 背景遮罩 */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/20"
         onClick={onClose}
       />
 
@@ -485,6 +486,7 @@ export default function FileUploadModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
