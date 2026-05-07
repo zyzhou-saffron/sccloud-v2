@@ -223,10 +223,8 @@ async def inspect_file(
 ):
     """
     解析已上传的文件，返回维度信息和基因名。
-    支持 .rds, .h5ad, .h5seurat 格式。
+    通过 R 引擎 /inspect 端点解析，支持 .rds, .h5ad, .h5seurat 格式。
     """
-    import subprocess
-    import tempfile
 
     chunk_dir = os.path.join(CHUNK_DIR, upload_id)
     if not os.path.exists(chunk_dir):
@@ -249,179 +247,55 @@ async def inspect_file(
     if not chunk_files:
         raise HTTPException(status_code=400, detail="没有分片数据")
 
-    # 创建临时文件
+    # 创建临时文件（放在共享卷中，R 引擎容器也能访问）
+    settings = get_settings()
+    tmp_dir = os.path.join(settings.projects_root, "_inspect_tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+
     ext = os.path.splitext(original_filename)[1].lower()
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_file:
-        tmp_path = tmp_file.name
+    tmp_path = os.path.join(tmp_dir, f"{upload_id}{ext}")
+    with open(tmp_path, "wb") as tmp_file:
         for cf in chunk_files:
             chunk_path = os.path.join(chunk_dir, cf)
             with open(chunk_path, "rb") as inp:
                 tmp_file.write(inp.read())
 
     try:
-        # 根据文件类型调用不同的解析器
-        if ext in [".rds", ".rdata", ".h5seurat"]:
-            result = _parse_rds_file(tmp_path, original_filename)
-        elif ext == ".h5ad":
-            result = _parse_h5ad_file(tmp_path, original_filename)
-        else:
-            raise HTTPException(status_code=400, detail=f"不支持的文件格式: {ext}")
+        # 通过 R 引擎解析文件
+        data = await _call_r_engine_inspect(tmp_path, original_filename)
 
-        return result
+        return InspectResponse(
+            filename=data["filename"],
+            n_rows=data["n_rows"],
+            n_cols=data["n_cols"],
+            genes=data["genes"][:100],
+            gene_ids=data["gene_ids"][:100],
+            file_size_mb=round(data["file_size_mb"], 2),
+            metadata_columns=data.get("metadata_columns", []),
+        )
 
     finally:
-        # 清理临时文件
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
 
 
-def _parse_rds_file(file_path: str, filename: str) -> InspectResponse:
-    """解析 RDS 文件，使用 R 脚本"""
-    import subprocess
-    import tempfile
+async def _call_r_engine_inspect(file_path: str, filename: str) -> dict:
+    """调用 R 引擎 /inspect 端点解析文件"""
+    import httpx
+    from app.config import get_settings
 
-    # R 脚本解析 RDS 文件
-    r_script = """
-    library(Seurat)
-    library(jsonlite)
+    settings = get_settings()
+    r_engine_url = settings.r_engine_url
 
-    args <- commandArgs(trailingOnly = TRUE)
-    file_path <- args[1]
-
-    # 读取 RDS 文件
-    obj <- readRDS(file_path)
-
-    # 获取维度信息
-    n_rows <- nrow(obj)
-    n_cols <- ncol(obj)
-
-    # 获取基因名
-    genes <- rownames(obj)
-
-    # 尝试获取 Ensemble ID
-    gene_ids <- tryCatch({
-        # 检查是否有 Ensemble ID 列
-        if ("ENSEMBL" %in% colnames(obj@meta.data)) {
-            obj@meta.data$ENSEMBL
-        } else if ("ensembl_gene_id" %in% colnames(obj@meta.data)) {
-            obj@meta.data$ensembl_gene_id
-        } else {
-            # 尝试从基因名提取 Ensemble ID
-            # Ensemble ID 格式: ENSG00000...
-            ensembl_pattern <- "^ENS[A-Z]*[0-9]{11}$"
-            if (any(grepl(ensembl_pattern, genes))) {
-                genes
-            } else {
-                rep("N/A", length(genes))
-            }
-        }
-    }, error = function(e) {
-        rep("N/A", length(genes))
-    })
-
-    # 获取元数据列名
-    meta_cols <- colnames(obj@meta.data)
-
-    # 输出 JSON
-    result <- list(
-        n_rows = n_rows,
-        n_cols = n_cols,
-        genes = genes,
-        gene_ids = gene_ids,
-        metadata_columns = meta_cols
-    )
-
-    cat(toJSON(result, auto_unbox = TRUE))
-    """
-
-    # 写入临时 R 脚本
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.R', delete=False) as f:
-        r_script_path = f.name
-        f.write(r_script)
-
-    try:
-        # 执行 R 脚本
-        result = subprocess.run(
-            ["Rscript", r_script_path, file_path],
-            capture_output=True,
-            text=True,
-            timeout=120  # 2 分钟超时
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(
+            f"{r_engine_url}/inspect",
+            json={"file_path": file_path, "filename": filename},
         )
-
-        if result.returncode != 0:
-            raise Exception(f"R 脚本执行失败: {result.stderr}")
-
-        # 解析 JSON 输出
-        import json
-        data = json.loads(result.stdout)
-
-        # 获取文件大小
-        file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-
-        return InspectResponse(
-            filename=filename,
-            n_rows=data["n_rows"],
-            n_cols=data["n_cols"],
-            genes=data["genes"][:100],  # 只返回前 100 个基因
-            gene_ids=data["gene_ids"][:100],
-            file_size_mb=round(file_size_mb, 2),
-            metadata_columns=data.get("metadata_columns", [])
-        )
-
-    finally:
-        # 清理临时 R 脚本
-        if os.path.exists(r_script_path):
-            os.unlink(r_script_path)
-
-
-def _parse_h5ad_file(file_path: str, filename: str) -> InspectResponse:
-    """解析 H5AD 文件，使用 Python anndata"""
-    try:
-        import anndata as ad
-        import pandas as pd
-
-        # 读取 H5AD 文件
-        adata = ad.read_h5ad(file_path)
-
-        # 获取维度信息
-        n_rows = adata.n_obs  # 细胞数
-        n_cols = adata.n_vars  # 基因数
-
-        # 获取基因名
-        genes = adata.var_names.tolist()
-
-        # 尝试获取 Ensemble ID
-        gene_ids = []
-        if 'gene_ids' in adata.var.columns:
-            gene_ids = adata.var['gene_ids'].tolist()
-        elif 'ensembl_id' in adata.var.columns:
-            gene_ids = adata.var['ensembl_id'].tolist()
-        else:
-            # 尝试从基因名提取 Ensemble ID
-            ensembl_pattern = r'^ENS[A-Z]*[0-9]{11}$'
-            import re
-            if any(re.match(ensembl_pattern, g) for g in genes):
-                gene_ids = genes
-            else:
-                gene_ids = ["N/A"] * len(genes)
-
-        # 获取文件大小
-        file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-
-        return InspectResponse(
-            filename=filename,
-            n_rows=n_rows,
-            n_cols=n_cols,
-            genes=genes[:100],  # 只返回前 100 个基因
-            gene_ids=gene_ids[:100],
-            file_size_mb=round(file_size_mb, 2),
-            metadata_columns=list(adata.obs.columns)
-        )
-
-    except ImportError:
-        raise Exception("需要安装 anndata 库来解析 H5AD 文件")
-    except Exception as e:
-        raise Exception(f"解析 H5AD 文件失败: {str(e)}")
+        if resp.status_code != 200:
+            detail = resp.json().get("error", resp.text)
+            raise Exception(f"R 引擎解析失败: {detail}")
+        return resp.json()
 
 
 @router.get("/status/{upload_id}")
