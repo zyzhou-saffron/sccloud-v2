@@ -39,6 +39,8 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState<string>("qc");
+  // 降维与聚类步骤内的子 tab：默认显示聚类结果
+  const [reduceClusterTab, setReduceClusterTab] = useState<"cluster" | "reduce">("cluster");
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -123,6 +125,20 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
     return "completed";
   };
 
+  // 降维与聚类步骤的子 tab 状态
+  const clusterTask = taskMap.get("cluster");
+  const reduceTask = taskMap.get("reduce");
+  const clusterStatus = (() => {
+    if (pipeline.current_step === "cluster") return "running";
+    return clusterTask?.status || "pending";
+  })();
+  const reduceStatus = (() => {
+    if (pipeline.current_step === "reduce") return "running";
+    return reduceTask?.status || "pending";
+  })();
+  const rcCurrentTask = reduceClusterTab === "cluster" ? clusterTask : reduceTask;
+  const rcCurrentStatus = reduceClusterTab === "cluster" ? clusterStatus : reduceStatus;
+
   return (
     <div className="animate-fade-in space-y-3">
       {/* 顶部栏：返回 + 状态 */}
@@ -205,9 +221,79 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
 
             {/* 内容区主体 */}
             <div className="p-4 flex-1 min-h-0 overflow-y-auto space-y-6">
-              {activeStepDef.subSteps.map((subId) => {
+              {/* 降维与聚类步骤：tab 切换 */}
+              {activeStep === "reduce_cluster" && (
+                <div className="space-y-4">
+                  {/* Tab 栏 */}
+                  <div className="flex gap-1 p-0.5 rounded" style={{ background: "var(--clr-bg-alt)" }}>
+                    {[
+                      { key: "cluster" as const, label: "批次聚类", status: clusterStatus },
+                      { key: "reduce" as const, label: "数据降维", status: reduceStatus },
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        onClick={() => setReduceClusterTab(tab.key)}
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded text-xs transition-all duration-200"
+                        style={reduceClusterTab === tab.key
+                          ? { background: "var(--clr-bg-card)", color: "var(--clr-amber-dark)", fontWeight: 600, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }
+                          : { color: "var(--clr-text-muted)", cursor: "pointer" }
+                        }
+                      >
+                        {tab.label}
+                        <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[tab.status] || STATUS_DOT.pending}`} />
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Tab 内容 */}
+                  {rcCurrentStatus === "running" && rcCurrentTask && (
+                    <ProgressTracker
+                      taskId={rcCurrentTask.id}
+                      onMessage={() => {}}
+                      onProgress={() => {}}
+                      onComplete={() => { getPipeline(token, pipelineId).then(setPipeline).catch(() => {}); }}
+                    />
+                  )}
+
+                  {rcCurrentStatus === "completed" && rcCurrentTask && (
+                    <ResultViewer
+                      stepId={reduceClusterTab}
+                      task={{
+                        id: rcCurrentTask.id,
+                        step: rcCurrentTask.step,
+                        status: rcCurrentTask.status,
+                        params: {},
+                        progress: 100,
+                        result_path: rcCurrentTask.result_path,
+                        result: null,
+                        project_id: pipeline.project_id,
+                      } as Task}
+                      token={token}
+                    />
+                  )}
+
+                  {rcCurrentStatus === "failed" && rcCurrentTask && (
+                    <div className="text-center py-8">
+                      <div className="w-10 h-10 mx-auto mb-3 rounded-full flex items-center justify-center" style={{ background: "#FFF3F3", color: "var(--clr-danger)" }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                      </div>
+                      <p className="text-xs font-medium mb-1" style={{ color: "var(--clr-danger)" }}>{reduceClusterTab === "cluster" ? "批次聚类" : "数据降维"}执行失败</p>
+                      <div className="text-xs" style={{ color: "var(--clr-text-muted)" }}>{rcCurrentTask.error_msg || "未知错误"}</div>
+                    </div>
+                  )}
+
+                  {rcCurrentStatus === "pending" && (
+                    <div className="text-center py-8" style={{ color: "var(--clr-text-faint)" }}>
+                      <p className="text-xs">等待执行</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 其他步骤：按 subSteps 顺序展示 */}
+              {activeStep !== "reduce_cluster" && activeStepDef.subSteps.map((subId) => {
                 const subTask = taskMap.get(subId);
-                const subLabel = { qc: "数据预处理", normalize: "数据标准化", reduce: "数据降维", cluster: "批次聚类" }[subId] || subId;
+                const subLabel = { qc: "数据预处理", normalize: "数据标准化" }[subId] || subId;
                 const subStatus = (() => {
                   if (pipeline.current_step === subId) return "running";
                   return subTask?.status || "pending";
