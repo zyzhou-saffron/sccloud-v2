@@ -251,47 +251,40 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
       )}
 
       {/* 文件上传按钮 */}
-      {!uploadedFile && !hasUploadedFile && (
-        <div className="mb-6">
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="w-full card p-6 border-2 border-dashed text-center transition-all hover:border-[#C86019] hover:bg-[rgba(200,96,25,0.02)]"
-            style={{
-              borderColor: "var(--clr-amber)",
-              background: "rgba(200,96,25,0.03)",
-              cursor: "pointer",
-            }}
-          >
-            <IconUpload size={32} className="mx-auto mb-3 text-[#C86019]" />
-            <div className="text-sm font-semibold mb-1" style={{ color: "var(--clr-amber-dark)" }}>
-              点击上传数据文件
-            </div>
-            <div className="text-xs" style={{ color: "var(--clr-text-muted)" }}>
-              支持: .rds, .h5seurat, .h5ad, .rdata
-            </div>
-          </button>
-        </div>
-      )}
-
-      {/* 已上传文件显示 */}
-      {(uploadedFile || hasUploadedFile) && (
-        <div
-          className="card p-4 mb-6 border"
+      <div className="mb-6">
+        <button
+          onClick={() => setShowUploadModal(true)}
+          className="w-full card py-3 border border-dashed text-center transition-all hover:border-[#C86019] hover:bg-[rgba(200,96,25,0.02)]"
           style={{
-            borderColor: "#2D8A56",
-            background: "rgba(45,138,86,0.05)",
+            cursor: "pointer",
+            borderColor: uploadedFile ? "#C86019" : "var(--clr-border)",
+            color: uploadedFile ? "#C86019" : "var(--clr-text-muted)",
+            background: uploadedFile ? "rgba(200,96,25,0.04)" : undefined,
           }}
         >
-          <div className="flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D8A56" strokeWidth="2.5" strokeLinecap="round">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-            <span className="text-sm" style={{ color: "#2D8A56" }}>
-              已选择: {uploadedFile?.name || "数据文件"}
-            </span>
+          <div className="flex items-center justify-center gap-2 text-xs">
+            <IconUpload size={14} className="text-[#C86019]" />
+            <span>{uploadedFile ? "重新上传" : "点击上传数据文件"}</span>
           </div>
-        </div>
-      )}
+        </button>
+
+        {/* 已上传文件名 + 删除按钮 */}
+        {uploadedFile && (
+          <div className="flex items-center gap-2 mt-1.5 px-1">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2D8A56" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <span className="flex-1 truncate text-[11px]" style={{ color: "var(--clr-text-muted)" }}>{uploadedFile.name}</span>
+            <button
+              type="button"
+              onClick={() => onFileUpload?.(null as any)}
+              title="移除文件"
+              className="p-1 rounded hover:bg-red-50 transition-colors shrink-0"
+              style={{ color: "var(--clr-danger)" }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+            </button>
+          </div>
+        )}
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">
         {/* Steps 1-4: 基础分析参数 */}
