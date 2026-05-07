@@ -264,13 +264,19 @@ async def inspect_file(
         # 通过 R 引擎解析文件
         data = await _call_r_engine_inspect(tmp_path, original_filename)
 
+        # R 引擎返回的标量值可能被包装为列表，需要解包
+        def unwrap(val):
+            if isinstance(val, list) and len(val) == 1:
+                return val[0]
+            return val
+
         return InspectResponse(
-            filename=data["filename"],
-            n_rows=data["n_rows"],
-            n_cols=data["n_cols"],
+            filename=unwrap(data["filename"]),
+            n_rows=int(unwrap(data["n_rows"])),
+            n_cols=int(unwrap(data["n_cols"])),
             genes=data["genes"][:100],
             gene_ids=data["gene_ids"][:100],
-            file_size_mb=round(data["file_size_mb"], 2),
+            file_size_mb=round(float(unwrap(data["file_size_mb"])), 2),
             metadata_columns=data.get("metadata_columns", []),
         )
 
