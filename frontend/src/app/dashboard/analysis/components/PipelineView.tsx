@@ -154,7 +154,7 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
           className="px-4 py-1.5 rounded text-sm font-semibold"
           style={{ background: statusStyle.bg, color: statusStyle.color }}
         >
-          Pipeline 状态: {statusLabel}
+          任务状态: {statusLabel}
         </div>
       </div>
 
@@ -171,9 +171,9 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
       )}
 
       {/* 双面板布局 */}
-      <div className="flex gap-6" style={{ height: "70vh" }}>
-        {/* ── 左侧导航（复用单步分析侧边栏样式） ── */}
-        <div className="w-56 shrink-0 space-y-1">
+      <div className="flex gap-6">
+        {/* ── 左侧导航（sticky 固定） ── */}
+        <div className="w-56 shrink-0 space-y-1 sticky top-4 self-start">
           {STEPS.map((step) => {
             const st = getStepStatus(step.id);
             const isActive = activeStep === step.id;
@@ -205,9 +205,9 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
         </div>
 
         {/* ── 右侧内容区 ── */}
-        <div className="flex-1 min-w-0 h-full">
+        <div className="flex-1 min-w-0">
           <div
-            className="rounded-lg border overflow-hidden h-full flex flex-col"
+            className="rounded-lg border overflow-hidden"
             style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-card)" }}
           >
             {/* 内容区头部 */}
@@ -232,7 +232,7 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
             </div>
 
             {/* 内容区主体 */}
-            <div className="p-4 flex-1 min-h-0 overflow-y-auto space-y-6">
+            <div className="p-4 space-y-6">
               {/* 降维与聚类步骤：tab 切换 */}
               {activeStep === "reduce_cluster" && (
                 <div className="space-y-4">

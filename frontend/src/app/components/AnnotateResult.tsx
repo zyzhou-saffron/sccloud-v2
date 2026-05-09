@@ -3,8 +3,8 @@
  */
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import type { Task } from "../lib/api";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { submitTask, getTask, apiFetch, type Task } from "../lib/api";
 import DeckScatterPlot from "./charts/DeckScatterPlot";
 import type { ScatterData } from "./charts/ScatterPlot";
 
@@ -38,7 +38,7 @@ function AuthImg({ src, alt, token, className, style }: {
     return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [src, token]);
 
-  if (failed) return <div className={className} style={style}>❌ Failed to load image</div>;
+  if (failed) return <div className={className} style={style}>Failed to load image</div>;
   if (!blobUrl) return <div className={className} style={style} />;
 
   return <img src={blobUrl} alt={alt} className={className} style={style} />;
@@ -52,7 +52,7 @@ interface AnnotateData {
   stats?: {
     cells: number;
     cell_types: number;
-    anno_type: string;  // "自动注释" or "手动注释"
+    anno_type: string;
   };
   freq_table?: Array<{ CellType: string; Sample?: string; Freq?: number; n?: number; pct?: number }>;
 }
@@ -64,7 +64,14 @@ function safeScatter(raw: unknown): ScatterData | undefined {
   const y = (r.y ?? r.Y) as number[] | undefined;
   const cluster = (r.cluster ?? r.Cluster ?? r.label) as string[] | undefined;
   if (!Array.isArray(x) || !Array.isArray(y)) return undefined;
-  return { x, y, cluster: Array.isArray(cluster) ? cluster : x.map(() => "0") };
+  return {
+    x,
+    y,
+    cluster: Array.isArray(cluster) ? cluster : x.map(() => "0"),
+    celltype: Array.isArray(r.celltype) ? r.celltype as string[] : undefined,
+    sample: Array.isArray(r.sample) ? r.sample as string[] : undefined,
+    group: Array.isArray(r.group) ? r.group as string[] : undefined,
+  };
 }
 
 export default function AnnotateResult({
@@ -77,13 +84,29 @@ export default function AnnotateResult({
   token?: string;
 }) {
   const taskId = task.id;
-
-  // 直接使用 ResultViewer 已 fetch 的数据
   const annotateData = data as AnnotateData | null;
 
   const stats = annotateData?.stats;
-  const freqTable = annotateData?.freq_table ?? [];
   const rawScatter = useMemo(() => safeScatter(annotateData?.scatter_data), [annotateData]);
+
+  // ── 本地状态（合并后可更新） ──
+  const [localScatter, setLocalScatter] = useState<ScatterData | undefined>(rawScatter);
+  const [localFreqTable, setLocalFreqTable] = useState<AnnotateData["freq_table"]>(annotateData?.freq_table ?? []);
+
+  // 当原始数据变化时重置本地状态
+  useEffect(() => {
+    setLocalScatter(rawScatter);
+    setLocalFreqTable(annotateData?.freq_table ?? []);
+  }, [rawScatter, annotateData?.freq_table]);
+
+  const freqTable = localFreqTable ?? [];
+
+  // ── 合并模式状态 ──
+  const [mergeMode, setMergeMode] = useState(false);
+  const [selectedForMerge, setSelectedForMerge] = useState<Set<string>>(new Set());
+  const [mergeTargetName, setMergeTargetName] = useState("");
+  const [merging, setMerging] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
 
   // ── 图片 URL 构建 ──
   const extractName = (val: unknown) => {
@@ -101,9 +124,72 @@ export default function AnnotateResult({
   const freqPageData = freqTable.slice(freqPage * pageSize, (freqPage + 1) * pageSize);
   const freqTotalPages = Math.ceil(freqTable.length / pageSize);
 
+  // ── 合并处理 ──
+  const handleMerge = useCallback(async () => {
+    if (selectedForMerge.size < 2 || !mergeTargetName.trim()) return;
+    setMerging(true);
+    setMergeError(null);
+
+    const merge_map: Record<string, string> = {};
+    for (const ct of selectedForMerge) {
+      merge_map[ct] = mergeTargetName.trim();
+    }
+
+    try {
+      const res = await submitTask({
+        project_id: task.project_id,
+        step: "merge_celltypes",
+        params: { merge_map },
+      });
+
+      // 轮询等待完成
+      const pollTask = async (id: string): Promise<Task> => {
+        const t = await getTask(id);
+        if (t.status === "failed") throw new Error(t.error_msg || "合并失败");
+        if (t.status === "completed") return t;
+        await new Promise(r => setTimeout(r, 1500));
+        return pollTask(id);
+      };
+
+      const completedTask = await pollTask(res.id);
+
+      // 获取更新后的结果
+      const resultData = await apiFetch<Record<string, unknown>>(`/api/tasks/${completedTask.id}/result`);
+
+      // 更新本地状态
+      if (resultData?.scatter_data) {
+        const newScatter = safeScatter(resultData.scatter_data);
+        if (newScatter) setLocalScatter(newScatter);
+      }
+      if (resultData?.freq_table) {
+        setLocalFreqTable(resultData.freq_table as AnnotateData["freq_table"]);
+      }
+
+      // 重置合并状态
+      setSelectedForMerge(new Set());
+      setMergeTargetName("");
+      setMergeMode(false);
+    } catch (e) {
+      setMergeError(e instanceof Error ? e.message : "合并失败");
+    } finally {
+      setMerging(false);
+    }
+  }, [selectedForMerge, mergeTargetName, task.project_id]);
+
+  const toggleMergeSelection = useCallback((celltype: string) => {
+    setSelectedForMerge(prev => {
+      const next = new Set(prev);
+      if (next.has(celltype)) next.delete(celltype);
+      else next.add(celltype);
+      return next;
+    });
+  }, []);
+
+  const displayScatter = localScatter ?? rawScatter;
+
   return (
     <div className="space-y-4">
-      {/* ── 顶部统计胶囊 ── */}
+      {/* ── 顶部统计胶囊 + 编辑按钮 ── */}
       {stats && (
         <div className="flex flex-wrap items-center gap-4 text-xs" style={{ color: "var(--clr-text-muted)" }}>
           <span>
@@ -115,7 +201,7 @@ export default function AnnotateResult({
           <span>
             细胞类型数：
             <strong style={{ color: "var(--clr-amber)", fontSize: "1rem" }}>
-              {stats.cell_types ?? "—"}
+              {freqTable.length || (stats.cell_types ?? "—")}
             </strong>
           </span>
           <span>
@@ -124,19 +210,57 @@ export default function AnnotateResult({
               {stats.anno_type ?? "—"}
             </strong>
           </span>
+          {/* 合并按钮 */}
+          <button
+            onClick={() => {
+              setMergeMode(!mergeMode);
+              if (mergeMode) {
+                setSelectedForMerge(new Set());
+                setMergeTargetName("");
+                setMergeError(null);
+              }
+            }}
+            className="ml-auto px-3 py-1 rounded text-xs font-medium transition-colors"
+            style={mergeMode
+              ? { background: "var(--clr-amber)", color: "#fff", cursor: "pointer" }
+              : { border: "1px solid var(--clr-border)", color: "var(--clr-text-muted)", cursor: "pointer" }
+            }
+          >
+            {mergeMode ? "退出合并" : "合并细胞类型"}
+          </button>
+        </div>
+      )}
+
+      {/* ── 合并模式提示 ── */}
+      {mergeMode && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded text-xs"
+          style={{ background: "rgba(200,96,25,0.06)", border: "1px solid rgba(200,96,25,0.2)", color: "var(--clr-amber-dark)" }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
+          </svg>
+          点击图例中的细胞类型进行多选，然后输入合并后的名称
         </div>
       )}
 
       {/* ── UMAP 注释图 ── */}
-      {rawScatter ? (
+      {displayScatter ? (
         <div className="space-y-2">
           <p className="text-xs font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
             细胞类型 UMAP 标注图
             <span className="font-normal ml-1" style={{ color: "var(--clr-text-muted)" }}>
-              — WebGL 交互式 · {rawScatter.x.length.toLocaleString()} 个细胞
+              — WebGL 交互式 · {displayScatter.x.length.toLocaleString()} 个细胞
             </span>
           </p>
-          <DeckScatterPlot data={rawScatter} method="UMAP" height={520} />
+          <DeckScatterPlot
+            data={displayScatter}
+            method="UMAP"
+            height={520}
+            mergeMode={mergeMode}
+            selectedForMerge={selectedForMerge}
+            onToggleMerge={toggleMergeSelection}
+          />
         </div>
       ) : plotSrc && (
         <div className="space-y-2">
@@ -149,6 +273,43 @@ export default function AnnotateResult({
           <div className="relative rounded-lg overflow-hidden border" style={{ borderColor: "var(--clr-border)" }}>
             <AuthImg src={plotSrc} alt="Annotation UMAP" token={token} />
           </div>
+        </div>
+      )}
+
+      {/* ── 合并操作栏 ── */}
+      {mergeMode && selectedForMerge.size >= 2 && (
+        <div
+          className="flex flex-wrap items-center gap-3 p-3 rounded"
+          style={{ background: "rgba(200,96,25,0.06)", border: "1px solid var(--clr-amber)" }}
+        >
+          <span className="text-xs" style={{ color: "var(--clr-text)" }}>
+            已选择 <strong>{selectedForMerge.size}</strong> 种：
+            {Array.from(selectedForMerge).join(" + ")}
+          </span>
+          <span className="text-xs" style={{ color: "var(--clr-text-muted)" }}>=</span>
+          <input
+            type="text"
+            value={mergeTargetName}
+            onChange={e => setMergeTargetName(e.target.value)}
+            placeholder="合并后的名称..."
+            className="px-2 py-1 rounded text-xs"
+            style={{ border: "1px solid var(--clr-border)", width: 180, background: "var(--clr-bg-alt)", color: "var(--clr-text)" }}
+          />
+          <button
+            disabled={!mergeTargetName.trim() || merging}
+            onClick={handleMerge}
+            className="px-4 py-1.5 rounded text-xs font-medium text-white disabled:opacity-50"
+            style={{ background: "var(--clr-amber)", cursor: !mergeTargetName.trim() || merging ? "default" : "pointer" }}
+          >
+            {merging ? "合并中..." : "合并"}
+          </button>
+          {mergeError && <span className="text-xs" style={{ color: "var(--clr-danger)" }}>{mergeError}</span>}
+        </div>
+      )}
+
+      {mergeMode && selectedForMerge.size === 1 && (
+        <div className="text-xs" style={{ color: "var(--clr-text-faint)" }}>
+          请继续选择至少 2 种细胞类型
         </div>
       )}
 
@@ -237,7 +398,7 @@ export default function AnnotateResult({
 
       {/* ── 无数据状态 ── */}
       {!annotateData && (
-        <div className="callout text-xs" style={{ background: "rgba(255,215,0,0.08)", borderLeft: "3px solid var(--clr-gold)" }}>
+        <div className="text-xs px-3 py-2 rounded" style={{ background: "rgba(255,215,0,0.08)", borderLeft: "3px solid var(--clr-gold)", color: "var(--clr-text-muted)" }}>
           注释结果加载中或暂未返回...
         </div>
       )}

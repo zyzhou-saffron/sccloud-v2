@@ -38,7 +38,7 @@ const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
   reduce: { method: "umap", n_pcs: 30, group_by: "Sample" },
   cluster: { method: "harmony", resolution: 0.5, n_dims: 30, group_by: "Sample" },
   markers: { cluster: "All", min_pct: 0.1, logfc_threshold: 0.25, p_val_adj: 0.05, test_use: "wilcox", only_pos: true, ntop: 5 },
-  annotate: { anno_type: "自动注释", group_by: "Sample" },
+  annotate: { anno_type: "自动注释", group_by: "Sample", species: "Human", tissue: "Blood" },
 };
 
 const STEP_LABELS: Record<string, string> = {
@@ -572,25 +572,73 @@ export default function PipelineForm({ projectId, token, onSubmit, uploadedFiles
             <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
               Step 4: 细胞注释
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>注释方式</label>
-                <div className="flex gap-3">
-                  {["自动注释", "手动注释"].map((v) => (
-                    <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
-                      <input type="radio" name="pipeline_anno_type" value={v} checked={params.annotate.anno_type === v} onChange={() => updateStepParam("annotate", "anno_type", v)} className="accent-[#C86019]" /> {v}
-                    </label>
-                  ))}
+            <div className="space-y-3">
+              {/* 物种 + 组织选择 */}
+              <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>物种</label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={params.annotate.species as string}
+                      onChange={(e) => updateStepParam("annotate", "species", e.target.value)}
+                      className={selectCls} style={selectStyle}
+                    >
+                      <option value="Human">Human (人)</option>
+                      <option value="Mouse">Mouse (小鼠)</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const versions = uploadedFiles.map(f => f.ensembl_version);
+                        const detected = versions.some(v => v?.includes("Mouse")) ? "Mouse" : "Human";
+                        updateStepParam("annotate", "species", detected);
+                      }}
+                      className="px-2.5 py-2 text-xs rounded border transition-colors hover:bg-[rgba(200,96,25,0.06)]"
+                      style={{ borderColor: "var(--clr-border)", color: "var(--clr-amber-dark)" }}
+                    >
+                      自动检测
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>组织 / 器官</label>
+                  <select
+                    value={params.annotate.tissue as string}
+                    onChange={(e) => updateStepParam("annotate", "tissue", e.target.value)}
+                    className={selectCls} style={selectStyle}
+                  >
+                    <option value="Blood">血液 (Blood)</option>
+                    <option value="Brain">脑 (Brain)</option>
+                    <option value="Lung">肺 (Lung)</option>
+                    <option value="Liver">肝 (Liver)</option>
+                    <option value="Kidney">肾 (Kidney)</option>
+                    <option value="Heart">心脏 (Heart)</option>
+                    <option value="Pancreas">胰腺 (Pancreas)</option>
+                    <option value="Skin">皮肤 (Skin)</option>
+                  </select>
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
-                <select value={params.annotate.group_by as string} onChange={(e) => updateStepParam("annotate", "group_by", e.target.value)} className={selectCls} style={selectStyle}>
-                  {effectiveGroupCols.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                  <option value="CellType">CellType</option>
-                </select>
+              {/* 注释方式 + 分组 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>注释方式</label>
+                  <div className="flex gap-3">
+                    {["自动注释", "手动注释"].map((v) => (
+                      <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
+                        <input type="radio" name="pipeline_anno_type" value={v} checked={params.annotate.anno_type === v} onChange={() => updateStepParam("annotate", "anno_type", v)} className="accent-[#C86019]" /> {v}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
+                  <select value={params.annotate.group_by as string} onChange={(e) => updateStepParam("annotate", "group_by", e.target.value)} className={selectCls} style={selectStyle}>
+                    {effectiveGroupCols.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                    <option value="CellType">CellType</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>

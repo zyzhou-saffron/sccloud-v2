@@ -591,11 +591,17 @@ function(req) {
       error = function(e2) NULL
     )
   )
-  scatter_data <- if (!is.null(embeddings)) list(
-    x       = as.numeric(embeddings[, 1]),
-    y       = as.numeric(embeddings[, 2]),
-    cluster = as.character(Idents(pro))
-  ) else NULL
+  scatter_data <- if (!is.null(embeddings)) {
+    md <- pro@meta.data
+    list(
+      x         = as.numeric(embeddings[, 1]),
+      y         = as.numeric(embeddings[, 2]),
+      cluster   = as.character(Idents(pro)),
+      celltype  = as.character(md$CellType %||% Idents(pro)),
+      sample    = as.character(md$Sample %||% "unknown"),
+      group     = as.character(md$Group %||% md$Sample %||% "unknown")
+    )
+  } else NULL
 
   list(
     status = "success",
@@ -1173,16 +1179,18 @@ function(req) {
 
   anno_type <- params$anno_type %||% "自动注释"
   group_by <- params$group_by %||% "CellType"
+  species <- params$species %||% "Human"
+  tissue <- params$tissue %||% "Blood"
   mkfs <- params$markers_table  # 手动注释用
 
-  report(30, paste0("运行细胞注释 (", anno_type, ")..."))
+  report(30, paste0("运行细胞注释 (", anno_type, " / ", species, " / ", tissue, ")..."))
 
   # 调用原始函数 — data_summary.R::RunAnno()
   if (anno_type == "手动注释" && !is.null(mkfs)) {
     mkfs_df <- as.data.frame(mkfs)
-    result <- RunAnno(pro, mkfs_df, anno_type, group_by)
+    result <- RunAnno(pro, mkfs_df, anno_type, group_by, species, tissue)
   } else {
-    result <- RunAnno(pro, NULL, "自动注释", group_by)
+    result <- RunAnno(pro, NULL, "自动注释", group_by, species, tissue)
   }
 
   pro <- result$data1
@@ -1208,7 +1216,7 @@ function(req) {
 
   report(100, "细胞注释完成")
 
-  # 提取 UMAP 坐标供前端渲染（CellType 着色）
+  # 提取 UMAP 坐标供前端渲染（多分组着色）
   embeddings <- tryCatch(
     Embeddings(pro, reduction = "harmony.umap"),
     error = function(e) tryCatch(
@@ -1216,11 +1224,17 @@ function(req) {
       error = function(e2) NULL
     )
   )
-  scatter_data <- if (!is.null(embeddings)) list(
-    x       = as.numeric(embeddings[, 1]),
-    y       = as.numeric(embeddings[, 2]),
-    cluster = as.character(pro$CellType)
-  ) else NULL
+  scatter_data <- if (!is.null(embeddings)) {
+    md <- pro@meta.data
+    list(
+      x         = as.numeric(embeddings[, 1]),
+      y         = as.numeric(embeddings[, 2]),
+      cluster   = as.character(md$Cluster %||% Idents(pro)),
+      celltype  = as.character(md$CellType %||% md$Cluster %||% Idents(pro)),
+      sample    = as.character(md$Sample %||% "unknown"),
+      group     = as.character(md$Group %||% md$Sample %||% "unknown")
+    )
+  } else NULL
 
   list(
     status = "success",
@@ -1229,7 +1243,9 @@ function(req) {
     stats = list(
       cells = ncol(pro),
       cell_types = length(unique(pro$CellType)),
-      anno_type = anno_type
+      anno_type = anno_type,
+      species = species,
+      tissue = tissue
     ),
     freq_table = freq_table,
     scatter_data = scatter_data

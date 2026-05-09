@@ -11,7 +11,7 @@
  */
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { OrthographicView } from "@deck.gl/core";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import DeckGL from "@deck.gl/react";
@@ -103,37 +103,314 @@ const PALETTES: Record<string, { name: string; colors: [number, number, number][
 
 const DEFAULT_PALETTE = "tol";
 
+/* ── CellXgene 风格侧边栏图例 ── */
+function LegendSidebar({
+  availableGroups, colorBy, setColorBy, paletteKey, setPaletteKey,
+  clusters, colorMap, hiddenClusters, toggleCluster, data,
+  mergeMode, selectedForMerge, onToggleMerge,
+}: {
+  availableGroups: { key: string; label: string }[];
+  colorBy: string; setColorBy: (v: string) => void;
+  paletteKey: string; setPaletteKey: (v: string) => void;
+  clusters: string[]; colorMap: Map<string, [number, number, number]>;
+  hiddenClusters: Set<string>; toggleCluster: (c: string) => void;
+  data: ScatterData;
+  mergeMode?: boolean;
+  selectedForMerge?: Set<string>;
+  onToggleMerge?: (celltype: string) => void;
+}) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set([colorBy]));
+  const [collapsed, setCollapsed] = useState(false);
+
+  // 切换色板时同步展开
+  useEffect(() => {
+    setExpanded(new Set([colorBy]));
+  }, [colorBy]);
+
+  // 为每个 group 计算值列表
+  const groupValues = useMemo(() => {
+    const result: Record<string, string[]> = {};
+    for (const g of availableGroups) {
+      const key = g.key as keyof typeof data;
+      const arr = data[key];
+      if (Array.isArray(arr)) {
+        const unique = Array.from(new Set(arr as string[]));
+        unique.sort((a, b) => {
+          const numA = parseInt(a.replace(/\D/g, ""), 10);
+          const numB = parseInt(b.replace(/\D/g, ""), 10);
+          if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+          return a.localeCompare(b);
+        });
+        result[g.key] = unique;
+      }
+    }
+    return result;
+  }, [availableGroups, data]);
+
+  // 计算每个值的计数
+  const groupCounts = useMemo(() => {
+    const result: Record<string, Record<string, number>> = {};
+    for (const g of availableGroups) {
+      const key = g.key as keyof typeof data;
+      const arr = data[key];
+      if (Array.isArray(arr)) {
+        const counts: Record<string, number> = {};
+        for (const v of arr as string[]) {
+          counts[v] = (counts[v] || 0) + 1;
+        }
+        result[g.key] = counts;
+      }
+    }
+    return result;
+  }, [availableGroups, data]);
+
+  // 为每个 group 分配颜色（只给当前 colorBy 分配，其他用灰色）
+  const getGroupColorMap = useCallback((groupKey: string) => {
+    if (groupKey === colorBy) return colorMap;
+    // 非激活的 group 用灰色
+    const vals = groupValues[groupKey] || [];
+    const grayMap = new Map<string, [number, number, number]>();
+    vals.forEach(v => grayMap.set(v, [180, 180, 180]));
+    return grayMap;
+  }, [colorBy, colorMap, groupValues]);
+
+  if (collapsed) {
+    return (
+      <button
+        onClick={() => setCollapsed(false)}
+        className="absolute top-2 right-2 z-10 w-8 h-8 rounded-md flex items-center justify-center transition-all"
+        style={{
+          background: "rgba(255,255,255,0.92)",
+          backdropFilter: "blur(8px)",
+          border: "1px solid rgba(45,41,38,0.08)",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+          color: "var(--clr-text-muted)",
+          cursor: "pointer",
+        }}
+        title="展开图例"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+          <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
+        </svg>
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className="absolute top-2 right-2 z-10 rounded-md overflow-hidden"
+      style={{
+        width: 220,
+        maxHeight: "calc(100% - 16px)",
+        background: "rgba(255,255,255,0.95)",
+        backdropFilter: "blur(8px)",
+        border: "1px solid rgba(45,41,38,0.08)",
+        boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {/* 头部：标题 + 收起按钮 */}
+      <div
+        className="flex items-center justify-between px-3 py-2 shrink-0"
+        style={{ borderBottom: "1px solid rgba(45,41,38,0.06)" }}
+      >
+        <span className="text-[11px] font-semibold" style={{ color: "var(--clr-text)" }}>
+          Metadata
+        </span>
+        <div className="flex items-center gap-1">
+          {/* 色板选择 */}
+          <select
+            value={paletteKey}
+            onChange={(e) => setPaletteKey(e.target.value)}
+            className="text-[9px] px-1 py-0.5 rounded border-none"
+            style={{ background: "transparent", color: "var(--clr-text-muted)", cursor: "pointer" }}
+          >
+            {Object.entries(PALETTES).map(([key, pal]) => (
+              <option key={key} value={key}>{pal.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setCollapsed(true)}
+            className="w-5 h-5 flex items-center justify-center rounded hover:bg-black/5"
+            style={{ color: "var(--clr-text-muted)", cursor: "pointer" }}
+            title="收起"
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* 可滚动内容区 */}
+      <div className="overflow-y-auto flex-1 min-h-0">
+        {availableGroups.map((g) => {
+          const isActive = colorBy === g.key;
+          const isExpanded = expanded.has(g.key);
+          const vals = groupValues[g.key] || [];
+          const counts = groupCounts[g.key] || {};
+          const cmap = getGroupColorMap(g.key);
+
+          return (
+            <div key={g.key}>
+              {/* Category 头部 — 可点击展开/折叠 */}
+              <button
+                onClick={() => {
+                  setColorBy(g.key);
+                  setExpanded(prev => {
+                    const next = new Set(prev);
+                    if (next.has(g.key)) next.delete(g.key);
+                    else next.add(g.key);
+                    return next;
+                  });
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
+                style={{
+                  background: isActive ? "rgba(200,96,25,0.06)" : "transparent",
+                  cursor: "pointer",
+                  borderLeft: isActive ? "2px solid var(--clr-amber)" : "2px solid transparent",
+                }}
+              >
+                {/* 展开/折叠箭头 */}
+                <svg
+                  width="8" height="8" viewBox="0 0 24 24" fill="none"
+                  stroke={isActive ? "var(--clr-amber)" : "var(--clr-text-muted)"}
+                  strokeWidth="3" strokeLinecap="round"
+                  style={{
+                    transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
+                    transition: "transform 0.15s",
+                  }}
+                >
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+                <span
+                  className="text-[11px] font-semibold flex-1"
+                  style={{ color: isActive ? "var(--clr-amber-dark)" : "var(--clr-text)" }}
+                >
+                  {g.label}
+                </span>
+                <span className="text-[9px]" style={{ color: "var(--clr-text-faint)" }}>
+                  {vals.length}
+                </span>
+              </button>
+
+              {/* Category 值列表 */}
+              {isExpanded && (
+                <div className="px-3 pb-2">
+                  {vals.map((v) => {
+                    const color = cmap.get(v) || [180, 180, 180];
+                    const isHidden = hiddenClusters.has(v) && isActive;
+                    const count = counts[v] || 0;
+                    const isMergeSelected = mergeMode && selectedForMerge?.has(v) && colorBy === "celltype";
+                    return (
+                      <button
+                        key={v}
+                        onClick={() => {
+                          if (mergeMode && colorBy === "celltype" && onToggleMerge) {
+                            onToggleMerge(v);
+                          } else if (isActive) {
+                            toggleCluster(v);
+                          }
+                        }}
+                        className="flex items-center gap-1.5 w-full text-left py-[3px] text-[11px] transition-opacity"
+                        style={{
+                          opacity: isHidden && !mergeMode ? 0.3 : 1,
+                          cursor: (mergeMode && colorBy === "celltype") || isActive ? "pointer" : "default",
+                          background: isMergeSelected ? "rgba(200,96,25,0.12)" : "transparent",
+                          borderRadius: 4,
+                        }}
+                      >
+                        {/* Merge checkbox */}
+                        {mergeMode && colorBy === "celltype" ? (
+                          <input
+                            type="checkbox"
+                            checked={isMergeSelected}
+                            readOnly
+                            className="w-3 h-3 accent-[#C86019] flex-shrink-0"
+                            style={{ pointerEvents: "none" }}
+                          />
+                        ) : (
+                          <span
+                            className="inline-block w-[10px] h-[10px] rounded-full flex-shrink-0"
+                            style={{ background: `rgb(${color[0]},${color[1]},${color[2]})` }}
+                          />
+                        )}
+                        <span
+                          className="flex-1 truncate"
+                          style={{
+                            color: "var(--clr-text)",
+                            textDecoration: isHidden && !mergeMode ? "line-through" : "none",
+                            fontWeight: isMergeSelected ? 600 : 400,
+                          }}
+                          title={v}
+                        >
+                          {v}
+                        </span>
+                        <span className="text-[9px] tabular-nums" style={{ color: "var(--clr-text-faint)" }}>
+                          {count.toLocaleString()}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface DeckScatterPlotProps {
   data: ScatterData | null;
   method?: "UMAP" | "tSNE" | "PCA";
   height?: number;
   children?: React.ReactNode;
+  mergeMode?: boolean;
+  selectedForMerge?: Set<string>;
+  onToggleMerge?: (celltype: string) => void;
 }
 
 /** 将平行数组转为点对象数组（deck.gl accessor 需要） */
 function toPoints(data: ScatterData) {
-  const result: { x: number; y: number; cluster: string; idx: number }[] = [];
+  const result: { x: number; y: number; cluster: string; celltype: string; sample: string; group: string; idx: number }[] = [];
   for (let i = 0; i < data.x.length; i++) {
     result.push({
       x: data.x[i],
       y: data.y[i],
       cluster: data.cluster[i],
+      celltype: data.celltype?.[i] ?? data.cluster[i],
+      sample: data.sample?.[i] ?? "",
+      group: data.group?.[i] ?? "",
       idx: i,
     });
   }
   return result;
 }
 
+const GROUP_OPTIONS = [
+  { key: "celltype", label: "CellType" },
+  { key: "cluster", label: "Cluster" },
+  { key: "sample", label: "Sample" },
+  { key: "group", label: "Group" },
+];
+
 export default function DeckScatterPlot({
   data,
   method = "UMAP",
   height = 500,
   children,
+  mergeMode,
+  selectedForMerge,
+  onToggleMerge,
 }: DeckScatterPlotProps) {
   const [hoverInfo, setHoverInfo] = useState<{
     x: number;
     y: number;
-    object?: { x: number; y: number; cluster: string; idx: number };
+    object?: { x: number; y: number; cluster: string; celltype: string; sample: string; group: string; idx: number };
   } | null>(null);
 
   // 图例：哪些聚类被隐藏
@@ -143,13 +420,38 @@ export default function DeckScatterPlot({
   const [paletteKey, setPaletteKey] = useState(DEFAULT_PALETTE);
   const currentPalette = PALETTES[paletteKey]?.colors || PALETTES[DEFAULT_PALETTE].colors;
 
+  // 分组选择（默认 celltype，不可用时回退 cluster）
+  const [colorBy, setColorBy] = useState<string>("celltype");
+
   // 将平行数组 → 对象数组（仅在数据变化时重算）
   const points = useMemo(() => (data ? toPoints(data) : []), [data]);
 
-  // 提取唯一聚类列表并按自然数值排序（C1, C2, ..., C10）
+  // 当前分组可用的字段列表
+  // 旧数据没有 celltype 字段时，cluster 里存的其实是 CellType 标签，动态改标签
+  const availableGroups = useMemo(() => {
+    if (!data) return GROUP_OPTIONS;
+    const hasCelltype = !!(data as Record<string, unknown>).celltype;
+    return GROUP_OPTIONS.filter(g => {
+      if (g.key === "cluster") return true;
+      return !!(data as Record<string, unknown>)[g.key];
+    }).map(g => {
+      if (g.key === "cluster" && !hasCelltype) return { ...g, label: "CellType" };
+      return g;
+    });
+  }, [data]);
+
+  // 如果当前 colorBy 不在可用列表中，自动回退
+  useEffect(() => {
+    if (availableGroups.length > 0 && !availableGroups.some(g => g.key === colorBy)) {
+      setColorBy(availableGroups[0].key);
+    }
+  }, [availableGroups, colorBy]);
+
+  // 提取唯一分组列表并按自然数值排序
   const clusters = useMemo(() => {
     if (!data) return [];
-    const unique = Array.from(new Set(data.cluster));
+    const key = colorBy as keyof typeof points[0];
+    const unique = Array.from(new Set(points.map(p => p[key] as string)));
     unique.sort((a, b) => {
       const numA = parseInt(a.replace(/\D/g, ""), 10);
       const numB = parseInt(b.replace(/\D/g, ""), 10);
@@ -157,7 +459,7 @@ export default function DeckScatterPlot({
       return a.localeCompare(b);
     });
     return unique;
-  }, [data]);
+  }, [data, points, colorBy]);
 
   // 聚类 → 颜色索引映射
   const colorMap = useMemo(() => {
@@ -191,17 +493,22 @@ export default function DeckScatterPlot({
     return { target: [cx, cy], zoom: Math.max(-2, Math.min(zoom, 10)) };
   }, [data, height]);
 
+  // 获取当前分组值的辅助函数
+  const getGroupValue = useCallback((p: { cluster: string; celltype: string; sample: string; group: string }) => {
+    return p[colorBy as keyof typeof p] as string || p.cluster;
+  }, [colorBy]);
+
   // 过滤后的点（排除隐藏聚类）
   const filteredPoints = useMemo(() => {
     if (hiddenClusters.size === 0) return points;
-    return points.filter((p) => !hiddenClusters.has(p.cluster));
-  }, [points, hiddenClusters]);
+    return points.filter((p) => !hiddenClusters.has(getGroupValue(p)));
+  }, [points, hiddenClusters, getGroupValue]);
 
   const onHover = useCallback(
     (info: { x: number; y: number; object?: unknown }) => {
       if (info.object) {
         setHoverInfo(
-          info as { x: number; y: number; object: { x: number; y: number; cluster: string; idx: number } }
+          info as { x: number; y: number; object: { x: number; y: number; cluster: string; celltype: string; sample: string; group: string; idx: number } }
         );
       } else {
         setHoverInfo(null);
@@ -245,8 +552,9 @@ export default function DeckScatterPlot({
     id: "scatter",
     data: filteredPoints,
     getPosition: (d: { x: number; y: number }) => [d.x, d.y],
-    getFillColor: (d: { cluster: string }) => {
-      const c = colorMap.get(d.cluster) || [128, 128, 128];
+    getFillColor: (d: { cluster: string; celltype: string; sample: string; group: string }) => {
+      const val = getGroupValue(d);
+      const c = colorMap.get(val) || [128, 128, 128];
       return [c[0], c[1], c[2], 102]; // alpha ~0.4
     },
     stroked: false,
@@ -257,7 +565,7 @@ export default function DeckScatterPlot({
     pickable: true,
     onHover,
     updateTriggers: {
-      getFillColor: [hiddenClusters.size, paletteKey],
+      getFillColor: [hiddenClusters.size, paletteKey, colorBy],
     },
   });
 
@@ -296,7 +604,7 @@ export default function DeckScatterPlot({
           }}
         >
           <div className="font-semibold" style={{ color: "var(--clr-gold)" }}>
-            {hoverInfo.object.cluster}
+            {getGroupValue(hoverInfo.object)}
           </div>
           <div className="mt-0.5 opacity-80">
             {method}_1: {hoverInfo.object.x.toFixed(3)}
@@ -308,68 +616,22 @@ export default function DeckScatterPlot({
         </div>
       )}
 
-      {/* 图例 */}
-      <div
-        className="absolute top-2 right-2 z-10 rounded-md px-3 py-2 max-h-64 overflow-y-auto"
-        style={{
-          background: "rgba(255,255,255,0.92)",
-          backdropFilter: "blur(8px)",
-          border: "1px solid rgba(45,41,38,0.08)",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-        }}
-      >
-        {/* 色板选择器 */}
-        <div className="mb-2">
-          <select
-            value={paletteKey}
-            onChange={(e) => setPaletteKey(e.target.value)}
-            className="w-full text-[10px] px-1.5 py-1 rounded"
-            style={{
-              border: "1px solid var(--clr-border)",
-              background: "var(--clr-bg-alt)",
-              color: "var(--clr-text)",
-              cursor: "pointer",
-            }}
-          >
-            {Object.entries(PALETTES).map(([key, pal]) => (
-              <option key={key} value={key}>{pal.name}</option>
-            ))}
-          </select>
-        </div>
-        <p
-          className="text-[10px] font-semibold mb-1.5 uppercase tracking-wider"
-          style={{ color: "var(--clr-text-faint)" }}
-        >
-          Clusters
-        </p>
-        {clusters.map((c) => {
-          const color = colorMap.get(c) || [128, 128, 128];
-          const isHidden = hiddenClusters.has(c);
-          return (
-            <button
-              key={c}
-              onClick={() => toggleCluster(c)}
-              className="flex items-center gap-1.5 w-full text-left py-0.5 text-xs transition-opacity"
-              style={{ opacity: isHidden ? 0.3 : 1 }}
-            >
-              <span
-                className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
-                style={{
-                  background: `rgb(${color[0]},${color[1]},${color[2]})`,
-                }}
-              />
-              <span
-                style={{
-                  color: "var(--clr-text)",
-                  textDecoration: isHidden ? "line-through" : "none",
-                }}
-              >
-                {c}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      {/* CellXgene 风格侧边栏图例 */}
+      <LegendSidebar
+        availableGroups={availableGroups}
+        colorBy={colorBy}
+        setColorBy={(v) => { setColorBy(v); setHiddenClusters(new Set()); }}
+        paletteKey={paletteKey}
+        setPaletteKey={setPaletteKey}
+        clusters={clusters}
+        colorMap={colorMap}
+        hiddenClusters={hiddenClusters}
+        toggleCluster={toggleCluster}
+        data={data}
+        mergeMode={mergeMode}
+        selectedForMerge={selectedForMerge}
+        onToggleMerge={onToggleMerge}
+      />
 
       {/* 左下角操作提示 */}
       <div

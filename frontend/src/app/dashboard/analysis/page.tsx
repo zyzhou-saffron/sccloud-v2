@@ -54,7 +54,7 @@ const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
   markers: { cluster: "All", min_pct: 0.1, logfc_threshold: 0.25, p_val_adj: 0.05, test_use: "wilcox", only_pos: true, ntop: 5 },
   enrich: { pathway: "GO", direction: "Up", p_adjust_method: "BH", pvalue_cutoff: 0.05, qvalue_cutoff: 0.2, n_term: 10 },
   marker_expr: { cell_type: "" },
-  annotate: { anno_type: "自动注释", group_by: "Sample" },
+  annotate: { anno_type: "自动注释", group_by: "Sample", species: "Human", tissue: "Blood" },
 };
 
 /* ===== 主组件 ===== */
@@ -1152,6 +1152,52 @@ function AnalysisPageContent() {
 
               {step.id === "annotate" && (
                 <>
+                  {/* 物种 + 组织选择 */}
+                  <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>物种</label>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={stepParams.species as string}
+                          onChange={(e) => updateParam("species", e.target.value)}
+                          className={selectCls} style={selectStyle}
+                        >
+                          <option value="Human">Human (人)</option>
+                          <option value="Mouse">Mouse (小鼠)</option>
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const versions = uploadedFiles.map(f => f.ensembl_version);
+                            const detected = versions.some(v => v?.includes("Mouse")) ? "Mouse" : "Human";
+                            updateParam("species", detected);
+                          }}
+                          className="px-2.5 py-2 text-xs rounded border transition-colors hover:bg-[rgba(200,96,25,0.06)]"
+                          style={{ borderColor: "var(--clr-border)", color: "var(--clr-amber-dark)" }}
+                        >
+                          自动检测
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>组织 / 器官</label>
+                      <select
+                        value={stepParams.tissue as string}
+                        onChange={(e) => updateParam("tissue", e.target.value)}
+                        className={selectCls} style={selectStyle}
+                      >
+                        <option value="Blood">血液 (Blood)</option>
+                        <option value="Brain">脑 (Brain)</option>
+                        <option value="Lung">肺 (Lung)</option>
+                        <option value="Liver">肝 (Liver)</option>
+                        <option value="Kidney">肾 (Kidney)</option>
+                        <option value="Heart">心脏 (Heart)</option>
+                        <option value="Pancreas">胰腺 (Pancreas)</option>
+                        <option value="Skin">皮肤 (Skin)</option>
+                      </select>
+                    </div>
+                  </div>
+                  {/* 注释方式 + 分组 */}
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>注释方式</label>
                     <div className="flex gap-4">

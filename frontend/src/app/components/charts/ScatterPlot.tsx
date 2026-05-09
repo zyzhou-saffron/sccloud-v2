@@ -32,7 +32,9 @@ export interface ScatterData {
   x: number[];
   y: number[];
   cluster: string[];
+  celltype?: string[];
   sample?: string[];
+  group?: string[];
 }
 
 interface ScatterPlotProps {
