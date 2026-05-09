@@ -2,6 +2,8 @@
  * Pipeline API 调用函数
  */
 
+import { apiFetch } from "./api";
+
 export interface PipelineParams {
   project_id: number;
   params: Record<string, Record<string, unknown>>;
@@ -36,37 +38,18 @@ export async function createPipeline(
   token: string,
   data: PipelineParams
 ): Promise<{ pipeline_id: string; status: string; message: string }> {
-  const response = await fetch("/api/pipeline", {
+  return apiFetch("/api/pipeline", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-
-  if (!response.ok) {
-    throw new Error(`Failed to create pipeline: ${response.statusText}`);
-  }
-
-  return response.json();
 }
 
 export async function getPipeline(
   token: string,
   pipelineId: string
 ): Promise<Pipeline> {
-  const response = await fetch(`/api/pipeline/${pipelineId}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to get pipeline: ${response.statusText}`);
-  }
-
-  return response.json();
+  return apiFetch(`/api/pipeline/${pipelineId}`);
 }
 
 export async function listPipelines(
@@ -74,15 +57,5 @@ export async function listPipelines(
   projectId: number,
   limit: number = 10
 ): Promise<Pipeline[]> {
-  const response = await fetch(`/api/pipeline?project_id=${projectId}&limit=${limit}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to list pipelines: ${response.statusText}`);
-  }
-
-  return response.json();
+  return apiFetch(`/api/pipeline?project_id=${projectId}&limit=${limit}`);
 }

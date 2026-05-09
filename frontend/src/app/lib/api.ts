@@ -443,3 +443,38 @@ export async function uploadFileChunked(
   };
 }
 
+
+/* ===== 项目文件列表 ===== */
+
+export interface ProjectFile {
+  filename: string;
+  path: string;
+  size_mb: number;
+}
+
+export async function listProjectFiles(projectId: number): Promise<ProjectFile[]> {
+  const res = await apiFetch<{ files: ProjectFile[] }>(`/api/projects/${projectId}/files`);
+  return res.files;
+}
+
+export interface InspectResult {
+  filename: string;
+  n_rows: number;
+  n_cols: number;
+  genes: string[];
+  gene_ids: string[];
+  file_size_mb: number;
+  metadata_columns: string[];
+  samples?: { name: string; cell_count: number }[];
+  ensembl_version?: string;
+}
+
+export async function inspectFileByPath(filePath: string): Promise<InspectResult> {
+  const form = new FormData();
+  form.append("file_path", filePath);
+  return apiFetch<InspectResult>("/api/upload/inspect-path", {
+    method: "POST",
+    body: form,
+  });
+}
+

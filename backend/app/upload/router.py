@@ -159,7 +159,7 @@ async def complete_upload(
             )
             if not project:
                 raise HTTPException(status_code=404, detail="项目不存在")
-            dest_dir = project.storage_path
+            dest_dir = os.path.join(project.storage_path, "_uploaded")
         finally:
             db.close()
     else:
@@ -205,6 +205,12 @@ async def complete_upload(
     )
 
 
+class SampleInfo(BaseModel):
+    """样本信息"""
+    name: str
+    cell_count: int
+
+
 class InspectResponse(BaseModel):
     """文件解析结果"""
     filename: str
@@ -214,6 +220,8 @@ class InspectResponse(BaseModel):
     gene_ids: list[str]  # Ensemble ID 列表
     file_size_mb: float
     metadata_columns: list[str] = []  # 元数据列名（Sample, Group, CellType 等）
+    samples: list[SampleInfo] = []  # 样本列表（从 Sample 列检测）
+    ensembl_version: str = "unknown"  # Ensembl 版本推断
 
 
 @router.post("/inspect", response_model=InspectResponse)
@@ -270,6 +278,16 @@ async def inspect_file(
                 return val[0]
             return val
 
+        # 解包 samples 列表中的嵌套值
+        raw_samples = data.get("samples", [])
+        samples = [
+            SampleInfo(
+                name=unwrap(s.get("name", "")),
+                cell_count=int(unwrap(s.get("cell_count", 0))),
+            )
+            for s in raw_samples
+        ]
+
         return InspectResponse(
             filename=unwrap(data["filename"]),
             n_rows=int(unwrap(data["n_rows"])),
@@ -278,6 +296,8 @@ async def inspect_file(
             gene_ids=data["gene_ids"][:100],
             file_size_mb=round(float(unwrap(data["file_size_mb"])), 2),
             metadata_columns=data.get("metadata_columns", []),
+            samples=samples,
+            ensembl_version=unwrap(data.get("ensembl_version", "unknown")),
         )
 
     finally:
@@ -320,3 +340,67 @@ async def upload_status(
         "upload_id": upload_id,
         "received_chunks": len(chunk_files),
     }
+
+
+@router.post("/inspect-path", response_model=InspectResponse)
+async def inspect_file_by_path(
+    file_path: str = Form(...),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    按文件路径解析文件（用于已存在于项目目录中的文件）。
+    安全检查：路径必须在当前用户的某个项目 storage_path 下。
+    """
+    from app.db.models import Project, SessionLocal
+
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    # 安全检查：验证路径属于当前用户的某个项目
+    db = SessionLocal()
+    try:
+        user_projects = (
+            db.query(Project)
+            .filter(Project.user_id == current_user.id)
+            .all()
+        )
+        allowed = any(
+            file_path.startswith(p.storage_path) for p in user_projects if p.storage_path
+        )
+        if not allowed:
+            raise HTTPException(status_code=403, detail="无权访问该文件路径")
+    finally:
+        db.close()
+
+    filename = os.path.basename(file_path)
+
+    try:
+        data = await _call_r_engine_inspect(file_path, filename)
+
+        def unwrap(val):
+            if isinstance(val, list) and len(val) == 1:
+                return val[0]
+            return val
+
+        raw_samples = data.get("samples", [])
+        samples = [
+            SampleInfo(
+                name=unwrap(s.get("name", "")),
+                cell_count=int(unwrap(s.get("cell_count", 0))),
+            )
+            for s in raw_samples
+        ]
+
+        return InspectResponse(
+            filename=unwrap(data["filename"]),
+            n_rows=int(unwrap(data["n_rows"])),
+            n_cols=int(unwrap(data["n_cols"])),
+            genes=data["genes"][:100],
+            gene_ids=data["gene_ids"][:100],
+            file_size_mb=round(float(unwrap(data["file_size_mb"])), 2),
+            metadata_columns=data.get("metadata_columns", []),
+            samples=samples,
+            ensembl_version=unwrap(data.get("ensembl_version", "unknown")),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"解析文件失败: {str(e)}")

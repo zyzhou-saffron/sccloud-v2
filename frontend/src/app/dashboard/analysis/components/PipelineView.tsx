@@ -158,6 +158,18 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
         </div>
       </div>
 
+      {/* 运行中提示 */}
+      {pipeline.status === "running" && (
+        <div className="w-full rounded-lg border px-4 py-3" style={{ borderColor: "#fcd34d", background: "rgba(251,191,36,0.08)" }}>
+          <div className="flex items-start gap-3 text-left">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" className="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+            <span className="text-xs" style={{ color: "#92400e" }}>
+              任务正在后台运行，刷新页面不会中断分析。完成后可在此查看结果并下载。
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 双面板布局 */}
       <div className="flex gap-6" style={{ height: "70vh" }}>
         {/* ── 左侧导航（复用单步分析侧边栏样式） ── */}

@@ -94,9 +94,23 @@ function AnalysisPageContent() {
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // uploadedFile: { name: 原文件名, path: 服务器路径 } 或 null
-  const [uploadedFile, setUploadedFile] = useState<{ name: string; path: string; metadata_columns?: string[] } | null>(
-    ss?.uploadedFile ?? null
+  // 多文件上传状态（每文件可含多样本）
+  interface UploadedFile {
+    name: string;
+    path: string;
+    metadata_columns?: string[];
+    n_rows?: number;
+    n_cols?: number;
+    file_size_mb?: number;
+    samples?: { name: string; cell_count: number }[];
+    ensembl_version?: string;
+  }
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>(
+    ss?.uploadedFiles ?? (ss?.uploadedFile ? [ss.uploadedFile] : [])
+  );
+  // 样本分组映射：sample_name → group_label
+  const [sampleGroups, setSampleGroups] = useState<Record<string, string>>(
+    ss?.sampleGroups ?? {}
   );
   // 上传进度（0-100）
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
@@ -189,9 +203,10 @@ function AnalysisPageContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** params / uploadedFile 变更时持久化 */
+  /** params / uploadedFiles / sampleGroups 变更时持久化 */
   useEffect(() => { saveSession({ params }); }, [params]);
-  useEffect(() => { saveSession({ uploadedFile }); }, [uploadedFile]);
+  useEffect(() => { saveSession({ uploadedFiles, uploadedFile: uploadedFiles[0] ?? null }); }, [uploadedFiles]);
+  useEffect(() => { saveSession({ sampleGroups }); }, [sampleGroups]);
 
   /**
    * 当聚类任务完成后，自动拉取其结果以提取 cluster_levels，
@@ -298,7 +313,7 @@ function AnalysisPageContent() {
       const { path: filePath } = await completeRes.json() as { path: string };
 
       setUploadProgress(100);
-      setUploadedFile({ name: file.name, path: filePath });
+      setUploadedFiles(prev => [...prev, { name: file.name, path: filePath }]);
       setTimeout(() => setUploadProgress(null), 1200);
     } catch (e) {
       setError(e instanceof Error ? e.message : "上传失败");
@@ -314,8 +329,8 @@ function AnalysisPageContent() {
     if (step.id === 'marker_expr') setMarkerParseOnly(false);
     try {
       // QC 步骤时把已上传文件路径注入参数
-      let finalParams = step.id === "qc" && uploadedFile
-        ? { ...stepParams, rds_file_path: uploadedFile.path }
+      let finalParams = step.id === "qc" && uploadedFiles.length > 0
+        ? { ...stepParams, rds_file_path: uploadedFiles[0].path }
         : stepParams;
 
       // marker_expr 步骤注入 marker 文件路径
@@ -384,13 +399,16 @@ function AnalysisPageContent() {
   const handleProjectSelect = (p: Project | null) => {
     // 切换项目时重置所有与项目绑定的状态，避免旧数据泄漏
     setProject(p);
-    setUploadedFile(null);
+    setUploadedFiles([]);
+    setSampleGroups({});
     setTaskCache({});
     setParams(JSON.parse(JSON.stringify(DEFAULT_PARAMS)));
     _setActiveStep(0);
     saveSession({
       project: p,
+      uploadedFiles: [],
       uploadedFile: null,
+      sampleGroups: {},
       taskCache: {},
       params: JSON.parse(JSON.stringify(DEFAULT_PARAMS)),
       activeStep: 0,
@@ -476,10 +494,10 @@ function AnalysisPageContent() {
               projectId={project.id}
               token={localStorage.getItem("access_token") || ""}
               onSubmit={(pipelineId) => setActivePipelineId(pipelineId)}
-              hasUploadedFile={!!uploadedFile}
-              uploadedFile={uploadedFile}
-              onFileUpload={setUploadedFile}
-              metadataColumns={uploadedFile?.metadata_columns}
+              uploadedFiles={uploadedFiles}
+              onUploadedFilesChange={setUploadedFiles}
+              sampleGroups={sampleGroups}
+              onSampleGroupsChange={setSampleGroups}
             />
           ) : (
             <PipelineView
@@ -603,15 +621,15 @@ function AnalysisPageContent() {
                       className="flex items-center justify-center gap-2 w-full py-2 bg-white hover:shadow-sm transition-all text-xs border border-dashed rounded mb-1.5"
                       style={{
                         cursor: "pointer",
-                        borderColor: uploadedFile ? "#C86019" : "var(--clr-border)",
-                        color: uploadedFile ? "#C86019" : "var(--clr-text-muted)",
-                        background: uploadedFile ? "rgba(200,96,25,0.04)" : undefined,
+                        borderColor: uploadedFiles.length > 0 ? "#C86019" : "var(--clr-border)",
+                        color: uploadedFiles.length > 0 ? "#C86019" : "var(--clr-text-muted)",
+                        background: uploadedFiles.length > 0 ? "rgba(200,96,25,0.04)" : undefined,
                         pointerEvents: uploadProgress !== null ? "none" : undefined,
                         opacity: uploadProgress !== null ? 0.6 : 1,
                       }}
                     >
                       <IconUpload size={14} className="text-[#C86019]" />
-                      <span>{uploadedFile ? "重新上传" : "点击上传 .rds 文件"}</span>
+                      <span>{uploadedFiles.length > 0 ? "重新上传" : "点击上传 .rds 文件"}</span>
                     </div>
                     <input
                       ref={fileInputRef}
@@ -634,13 +652,13 @@ function AnalysisPageContent() {
                     )}
 
                     {/* 已上传文件名 + 独立垃圾桶 */}
-                    {uploadedFile && uploadProgress === null && (
+                    {uploadedFiles.length > 0 && uploadProgress === null && (
                       <div className="flex items-center gap-2 mt-1">
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2D8A56" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        <span className="flex-1 truncate text-[11px]" style={{ color: "var(--clr-text-muted)" }}>{uploadedFile.name}</span>
+                        <span className="flex-1 truncate text-[11px]" style={{ color: "var(--clr-text-muted)" }}>{uploadedFiles[0].name}</span>
                         <button
                           type="button"
-                          onClick={() => { setUploadedFile(null); saveSession({ uploadedFile: null }); }}
+                          onClick={() => { setUploadedFiles([]); saveSession({ uploadedFiles: [], uploadedFile: null }); }}
                           title="移除文件"
                           className="p-1 rounded hover:bg-red-50 transition-colors shrink-0"
                           style={{ color: "var(--clr-danger)" }}
@@ -1168,7 +1186,7 @@ function AnalysisPageContent() {
                 };
                 const prereq = PREREQS[step.id];
                 const prereqMissing = prereq && taskCache[prereq.stepId]?.status !== "completed";
-                const isDisabled = submitting || !project || (step.id === "qc" && !uploadedFile) || (step.id === "marker_expr" && !markerFile) || prereqMissing;
+                const isDisabled = submitting || !project || (step.id === "qc" && uploadedFiles.length === 0) || (step.id === "marker_expr" && !markerFile) || prereqMissing;
 
                 return (
                   <>
@@ -1186,7 +1204,7 @@ function AnalysisPageContent() {
                     </button>
 
                     {!project && <p className="text-[10px] text-center" style={{ color: "var(--clr-text-faint)" }}>请先在顶部选择一个项目</p>}
-                    {project && step.id === "qc" && !uploadedFile && <p className="text-[10px] text-center" style={{ color: "var(--clr-warn)" }}>请先上传 .rds 数据文件</p>}
+                    {project && step.id === "qc" && uploadedFiles.length === 0 && <p className="text-[10px] text-center" style={{ color: "var(--clr-warn)" }}>请先上传 .rds 数据文件</p>}
                     {step.id === "marker_expr" && !markerFile && <p className="text-[10px] text-center" style={{ color: "var(--clr-warn)" }}>请先上传 Marker 基因文件</p>}
                     {prereqMissing && <p className="text-[10px] text-center" style={{ color: "var(--clr-warn)" }}>⚠ 请先完成「{prereq.label}」步骤</p>}
                   </>
@@ -1232,6 +1250,14 @@ function AnalysisPageContent() {
               {currentTaskId && currentTask?.status !== 'completed' && currentTask?.status !== 'failed' && (
                 <div className="mb-6">
                   <ProgressTracker taskId={currentTaskId} stepLabel={step.label} onComplete={handleTaskComplete} onError={handleTaskError} />
+                  <div className="mt-3 w-full rounded-lg border px-4 py-3" style={{ borderColor: "#fcd34d", background: "rgba(251,191,36,0.08)" }}>
+                    <div className="flex items-start gap-3">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" className="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+                      <span className="text-xs" style={{ color: "#92400e" }}>
+                        任务正在后台运行，刷新页面不会中断分析。完成后可在此查看结果并下载。
+                      </span>
+                    </div>
+                  </div>
                 </div>
               )}
 

@@ -220,3 +220,55 @@ async def get_project_genes(
             status_code=504,
             detail="R 引擎超时，请稍后重试",
         )
+
+
+# ===== 项目文件列表 =====
+
+DATA_EXTENSIONS = {".rds", ".h5ad", ".h5seurat", ".rdata", ".h5"}
+
+
+
+class ProjectFile(BaseModel):
+    filename: str
+    path: str
+    size_mb: float
+
+
+class ProjectFileList(BaseModel):
+    files: list[ProjectFile]
+
+
+@router.get("/{project_id}/files", response_model=ProjectFileList)
+async def list_project_files(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """列出项目存储目录中的数据文件（.rds, .h5ad 等）。"""
+    project = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.user_id == current_user.id)
+        .first()
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    if not project.storage_path:
+        return ProjectFileList(files=[])
+
+    # 只列出 _uploaded 子目录中的用户原始上传文件
+    uploaded_dir = os.path.join(project.storage_path, "_uploaded")
+    if not os.path.isdir(uploaded_dir):
+        return ProjectFileList(files=[])
+
+    files = []
+    for fname in sorted(os.listdir(uploaded_dir)):
+        ext = os.path.splitext(fname)[1].lower()
+        if ext not in DATA_EXTENSIONS:
+            continue
+        fpath = os.path.join(uploaded_dir, fname)
+        if os.path.isfile(fpath):
+            size_mb = round(os.path.getsize(fpath) / 1024 / 1024, 2)
+            files.append(ProjectFile(filename=fname, path=fpath, size_mb=size_mb))
+
+    return ProjectFileList(files=files)

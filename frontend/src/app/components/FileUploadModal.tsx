@@ -16,12 +16,14 @@ interface FileInfo {
   gene_ids: string[];
   file_size_mb: number;
   metadata_columns: string[];
+  samples?: { name: string; cell_count: number }[];
+  ensembl_version?: string;
 }
 
 interface FileUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onFileUploaded: (file: { name: string; path: string; metadata_columns?: string[] }) => void;
+  onFileUploaded: (file: { name: string; path: string; metadata_columns?: string[]; n_rows?: number; n_cols?: number; file_size_mb?: number; samples?: { name: string; cell_count: number }[]; ensembl_version?: string }) => void;
   projectId: number;
   token: string;
 }
@@ -123,6 +125,11 @@ export default function FileUploadModal({
       onFileUploaded({
         ...uploadedFile,
         metadata_columns: fileInfo?.metadata_columns,
+        n_rows: fileInfo?.n_rows,
+        n_cols: fileInfo?.n_cols,
+        file_size_mb: fileInfo?.file_size_mb,
+        samples: fileInfo?.samples,
+        ensembl_version: fileInfo?.ensembl_version,
       });
       onClose();
     }

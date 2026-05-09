@@ -90,6 +90,131 @@ function() {
 
 
 # ======================================================================
+# 文件解析（上传后 inspect）
+# ======================================================================
+
+#* 解析上传的 RDS/H5AD 文件，返回维度、基因名和元数据列
+#* @post /inspect
+function(req) {
+  body <- jsonlite::fromJSON(req$postBody)
+  file_path <- body$file_path
+  filename <- body$filename %||% basename(file_path)
+
+  if (!file.exists(file_path)) stop(paste("文件不存在:", file_path))
+
+  ext <- tolower(tools::file_ext(file_path))
+
+  if (ext %in% c("rds", "rdata", "h5seurat")) {
+    obj <- readRDS(file_path)
+
+    n_rows <- nrow(obj)
+    n_cols <- ncol(obj)
+    genes <- rownames(obj)
+
+    # 尝试获取 Ensemble ID
+    gene_ids <- tryCatch({
+      if ("ENSEMBL" %in% colnames(obj@meta.data)) {
+        as.character(obj@meta.data$ENSEMBL)
+      } else if ("ensembl_gene_id" %in% colnames(obj@meta.data)) {
+        as.character(obj@meta.data$ensembl_gene_id)
+      } else {
+        ensembl_pattern <- "^ENS[A-Z]*[0-9]{11}$"
+        if (any(grepl(ensembl_pattern, genes))) {
+          genes
+        } else {
+          rep("N/A", length(genes))
+        }
+      }
+    }, error = function(e) {
+      rep("N/A", length(genes))
+    })
+
+    meta_cols <- colnames(obj@meta.data)
+
+    # 检测样本列表（从 Sample 列读取 unique 值）
+    samples <- list()
+    if ("Sample" %in% meta_cols) {
+      sample_vals <- as.character(obj@meta.data$Sample)
+      for (s in sort(unique(sample_vals))) {
+        samples[[length(samples) + 1]] <- list(
+          name = jsonlite::unbox(s),
+          cell_count = jsonlite::unbox(as.integer(sum(sample_vals == s)))
+        )
+      }
+    }
+
+  } else if (ext == "h5ad") {
+    if (!requireNamespace("anndata", quietly = TRUE)) {
+      stop("需要安装 anndata 库来解析 H5AD 文件")
+    }
+    adata <- anndata::read_h5ad(file_path)
+
+    n_rows <- adata$n_obs
+    n_cols <- adata$n_vars
+    genes <- as.character(adata$var_names)
+
+    gene_ids <- tryCatch({
+      if ("gene_ids" %in% colnames(adata$var)) {
+        as.character(adata$var$gene_ids)
+      } else if ("ensembl_id" %in% colnames(adata$var)) {
+        as.character(adata$var$ensembl_id)
+      } else {
+        rep("N/A", length(genes))
+      }
+    }, error = function(e) {
+      rep("N/A", length(genes))
+    })
+
+    meta_cols <- as.character(colnames(adata$obs))
+
+    # 检测样本列表（从 Sample 列读取 unique 值）
+    samples <- list()
+    if ("Sample" %in% meta_cols) {
+      sample_vals <- as.character(adata$obs$Sample)
+      for (s in sort(unique(sample_vals))) {
+        samples[[length(samples) + 1]] <- list(
+          name = jsonlite::unbox(s),
+          cell_count = jsonlite::unbox(as.integer(sum(sample_vals == s)))
+        )
+      }
+    }
+
+  } else {
+    stop(paste("不支持的文件格式:", ext))
+  }
+
+  # Ensembl 版本推断
+  ensembl_version <- "unknown"
+  valid_ids <- gene_ids[gene_ids != "N/A"]
+  if (length(valid_ids) > 0) {
+    ensembl_pattern <- "^ENS[A-Z]*[0-9]{11,}$"
+    if (any(grepl(ensembl_pattern, valid_ids))) {
+      sample_ids <- head(valid_ids[grepl(ensembl_pattern, valid_ids)], 20)
+      if (all(grepl("^ENSG", sample_ids))) {
+        ensembl_version <- "Ensembl Gene ID (Human)"
+      } else if (all(grepl("^ENSMUSG", sample_ids))) {
+        ensembl_version <- "Ensembl Gene ID (Mouse)"
+      } else {
+        ensembl_version <- "Ensembl Gene ID"
+      }
+    }
+  }
+
+  list(
+    filename = jsonlite::unbox(filename),
+    n_rows = jsonlite::unbox(as.integer(n_rows)),
+    n_cols = jsonlite::unbox(as.integer(n_cols)),
+    genes = head(genes, 100),
+    gene_ids = head(gene_ids, 100),
+    file_size_mb = jsonlite::unbox(round(file.size(file_path) / 1024 / 1024, 2)),
+    metadata_columns = meta_cols,
+    samples = samples,
+    ensembl_version = jsonlite::unbox(ensembl_version)
+  )
+}
+
+
+# ======================================================================
 # 基因列表查询（轻量端点，供前端自动补全）
 # ======================================================================
 

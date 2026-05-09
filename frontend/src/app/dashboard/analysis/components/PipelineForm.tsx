@@ -6,18 +6,30 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { createPipeline, listPipelines, type Pipeline } from "../../../lib/pipeline-api";
-import { IconUpload, IconQuestion } from "../../../components/Icons";
+import { IconQuestion } from "../../../components/Icons";
 import Tooltip from "../../../components/Tooltip";
-import FileUploadModal from "../../../components/FileUploadModal";
+import AddSampleDropdown from "../../../components/AddSampleDropdown";
+import UploadedFilesTable, { type SampleRow } from "../../../components/UploadedFilesTable";
+
+interface UploadedFile {
+  name: string;
+  path: string;
+  metadata_columns?: string[];
+  n_rows?: number;
+  n_cols?: number;
+  file_size_mb?: number;
+  samples?: { name: string; cell_count: number }[];
+  ensembl_version?: string;
+}
 
 interface PipelineFormProps {
   projectId: number;
   token: string;
   onSubmit: (pipelineId: string) => void;
-  hasUploadedFile?: boolean;
-  uploadedFile?: { name: string; path: string } | null;
-  onFileUpload?: (file: { name: string; path: string }) => void;
-  metadataColumns?: string[];
+  uploadedFiles: UploadedFile[];
+  onUploadedFilesChange: (files: UploadedFile[]) => void;
+  sampleGroups: Record<string, string>;
+  onSampleGroupsChange: (groups: Record<string, string>) => void;
 }
 
 const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
@@ -42,20 +54,48 @@ const STATUS_MAP: Record<string, { dot: string; text: string }> = {
   cancelled: { dot: "bg-[#E0DCD6]", text: "text-[#999]" },
 };
 
-export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFile = false, uploadedFile = null, onFileUpload, metadataColumns = [] }: PipelineFormProps) {
+export default function PipelineForm({ projectId, token, onSubmit, uploadedFiles, onUploadedFilesChange, sampleGroups, onSampleGroupsChange }: PipelineFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [params, setParams] = useState<Record<string, Record<string, unknown>>>(
     JSON.parse(JSON.stringify(DEFAULT_PARAMS))
   );
   const historyRef = useRef<HTMLDivElement>(null);
-  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showAddSample, setShowAddSample] = useState(false);
 
-  // 从上传文件的元数据列中筛选适合做分组的列（排除数值型特征列）
+  // 从所有上传文件的元数据列中聚合分组列
+  const metadataColumns = [...new Set(uploadedFiles.flatMap(f => f.metadata_columns ?? []))];
   const GROUP_EXCLUDE = new Set(["nCount_RNA", "nFeature_RNA", "percent.mt", "n_genes", "n_counts", "barcode"]);
   const groupColumns = metadataColumns.filter(c => !GROUP_EXCLUDE.has(c) && !c.startsWith("n_") && !c.startsWith("percent."));
-  // 确保至少有 Sample 和 Group 作为 fallback
-  const effectiveGroupCols = groupColumns.length > 0 ? groupColumns : ["Sample", "Group"];
+  // 加入用户在表格中填写的自定义分组名
+  const customGroups = [...new Set(Object.values(sampleGroups).filter(Boolean))];
+  const allGroupOptions = [...new Set([...groupColumns, ...customGroups])];
+  const effectiveGroupCols = allGroupOptions.length > 0 ? allGroupOptions : ["Sample", "Group"];
+
+  // 将 uploadedFiles 展平为样本行
+  const sampleRows: SampleRow[] = uploadedFiles.flatMap(f => {
+    if (f.samples && f.samples.length > 0) {
+      return f.samples.map(s => ({
+        fileName: f.name,
+        filePath: f.path,
+        sampleName: s.name,
+        cellCount: s.cell_count,
+        geneCount: f.n_cols ?? 0,
+        fileSizeMb: f.file_size_mb ?? 0,
+        ensemblVersion: f.ensembl_version ?? "unknown",
+      }));
+    }
+    // 没有样本信息时，整个文件作为一行
+    return [{
+      fileName: f.name,
+      filePath: f.path,
+      sampleName: f.name.replace(/\.(rds|h5ad|h5seurat)$/i, ""),
+      cellCount: f.n_rows ?? 0,
+      geneCount: f.n_cols ?? 0,
+      fileSizeMb: f.file_size_mb ?? 0,
+      ensemblVersion: f.ensembl_version ?? "unknown",
+    }];
+  });
 
   // 当 metadataColumns 变化时，更新默认分组
   useEffect(() => {
@@ -68,7 +108,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
         annotate: { ...prev.annotate, group_by: defaultGroup },
       }));
     }
-  }, [metadataColumns]);
+  }, [metadataColumns, customGroups]);
 
   /* ===== Pipeline 历史记录 ===== */
   const [showHistory, setShowHistory] = useState(false);
@@ -121,7 +161,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!hasUploadedFile && !uploadedFile) {
+    if (uploadedFiles.length === 0) {
       setError("请先上传 .rds 数据文件");
       return;
     }
@@ -250,40 +290,39 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
         </div>
       )}
 
-      {/* 文件上传按钮 */}
-      <div className="mb-6">
-        <button
-          onClick={() => setShowUploadModal(true)}
-          className="w-full card py-3 border border-dashed text-center transition-all hover:border-[#C86019] hover:bg-[rgba(200,96,25,0.02)]"
-          style={{
-            cursor: "pointer",
-            borderColor: uploadedFile ? "#C86019" : "var(--clr-border)",
-            color: uploadedFile ? "#C86019" : "var(--clr-text-muted)",
-            background: uploadedFile ? "rgba(200,96,25,0.04)" : undefined,
+      {/* 样本表格（无文件时显示居中按钮，有文件时表格最后一行显示添加） */}
+      <div className="relative">
+        <UploadedFilesTable
+          samples={sampleRows}
+          sampleGroups={sampleGroups}
+          onGroupChange={(sampleName, group) => onSampleGroupsChange({ ...sampleGroups, [sampleName]: group })}
+          onDelete={(sampleName, filePath) => {
+            const newGroups = { ...sampleGroups };
+            delete newGroups[sampleName];
+            onSampleGroupsChange(newGroups);
+            onUploadedFilesChange(uploadedFiles.filter(f => f.path !== filePath));
           }}
-        >
-          <div className="flex items-center justify-center gap-2 text-xs">
-            <IconUpload size={14} className="text-[#C86019]" />
-            <span>{uploadedFile ? "重新上传" : "点击上传数据文件"}</span>
-          </div>
-        </button>
+          onAddSample={() => setShowAddSample(true)}
+        />
 
-        {/* 已上传文件名 + 删除按钮 */}
-        {uploadedFile && (
-          <div className="flex items-center gap-2 mt-1.5 px-1">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2D8A56" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-            <span className="flex-1 truncate text-[11px]" style={{ color: "var(--clr-text-muted)" }}>{uploadedFile.name}</span>
-            <button
-              type="button"
-              onClick={() => onFileUpload?.(null as any)}
-              title="移除文件"
-              className="p-1 rounded hover:bg-red-50 transition-colors shrink-0"
-              style={{ color: "var(--clr-danger)" }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-            </button>
-          </div>
-        )}
+        {/* 添加样本下拉菜单 */}
+        <AddSampleDropdown
+          isOpen={showAddSample}
+          onClose={() => setShowAddSample(false)}
+          onFileUploaded={(file) => {
+            const exists = uploadedFiles.some(f => f.path === file.path);
+            if (!exists) {
+              onUploadedFilesChange([...uploadedFiles, file]);
+            }
+          }}
+          onFilesSelected={(files) => {
+            const newFiles = files.filter(f => !uploadedFiles.some(ef => ef.path === f.path));
+            onUploadedFilesChange([...uploadedFiles, ...newFiles]);
+          }}
+          projectId={projectId}
+          token={token}
+          existingPaths={uploadedFiles.map(f => f.path)}
+        />
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">
@@ -308,7 +347,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                 <input type="range" min="0" max="100" value={params.qc.max_mt_ratio as number} onChange={(e) => updateStepParam("qc", "max_mt_ratio", Number(e.target.value))} className="w-full accent-[#C86019]" />
                 <div className="text-[10px] text-right" style={{ color: "var(--clr-text-faint)", fontFamily: "var(--font-mono)" }}>{params.qc.max_mt_ratio as number}%</div>
               </div>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
                 <div>
                   <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                     <span>最小基因数</span>
@@ -359,7 +398,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
               Step 2: 降维与聚类
             </div>
             <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
                 <div>
                   <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                     <span>降维方法</span>
@@ -392,7 +431,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
                 <div>
                   <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                     <span>校正方法</span>
@@ -457,7 +496,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
               Step 3: 差异基因
             </div>
             <div className="space-y-2">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
                 <div>
                   <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                     <span>最小细胞比例</span>
@@ -486,7 +525,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                   <input type="number" value={params.markers.p_val_adj as number ?? 0.05} onChange={(e) => updateStepParam("markers", "p_val_adj", Number(e.target.value))} step={0.01} min={0} max={1} className={numberCls} style={inputStyle} />
                 </div>
               </div>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>检验方法</label>
                   <select value={params.markers.test_use as string} onChange={(e) => updateStepParam("markers", "test_use", e.target.value)} className={selectCls} style={selectStyle}>
@@ -594,15 +633,6 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
           )}
         </button>
       </form>
-
-      {/* 文件上传模态框 */}
-      <FileUploadModal
-        isOpen={showUploadModal}
-        onClose={() => setShowUploadModal(false)}
-        onFileUploaded={(file) => onFileUpload?.(file)}
-        projectId={projectId}
-        token={token}
-      />
     </div>
   );
 }
