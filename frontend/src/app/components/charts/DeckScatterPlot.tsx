@@ -11,7 +11,7 @@
  */
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OrthographicView } from "@deck.gl/core";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import DeckGL from "@deck.gl/react";
@@ -217,7 +217,7 @@ function LegendSidebar({
         style={{ borderBottom: "1px solid rgba(45,41,38,0.06)" }}
       >
         <span className="text-[11px] font-semibold" style={{ color: "var(--clr-text)" }}>
-          Metadata
+          分类方式
         </span>
         <div className="flex items-center gap-1">
           {/* 色板选择 */}
@@ -303,12 +303,12 @@ function LegendSidebar({
                     const color = cmap.get(v) || [180, 180, 180];
                     const isHidden = hiddenClusters.has(v) && isActive;
                     const count = counts[v] || 0;
-                    const isMergeSelected = mergeMode && selectedForMerge?.has(v) && colorBy === "celltype";
+                    const isMergeSelected = mergeMode && isActive && selectedForMerge?.has(v);
                     return (
                       <button
                         key={v}
                         onClick={() => {
-                          if (mergeMode && colorBy === "celltype" && onToggleMerge) {
+                          if (mergeMode && isActive && onToggleMerge) {
                             onToggleMerge(v);
                           } else if (isActive) {
                             toggleCluster(v);
@@ -317,13 +317,13 @@ function LegendSidebar({
                         className="flex items-center gap-1.5 w-full text-left py-[3px] text-[11px] transition-opacity"
                         style={{
                           opacity: isHidden && !mergeMode ? 0.3 : 1,
-                          cursor: (mergeMode && colorBy === "celltype") || isActive ? "pointer" : "default",
+                          cursor: mergeMode ? (isActive ? "pointer" : "default") : (isActive ? "pointer" : "default"),
                           background: isMergeSelected ? "rgba(200,96,25,0.12)" : "transparent",
                           borderRadius: 4,
                         }}
                       >
-                        {/* Merge checkbox */}
-                        {mergeMode && colorBy === "celltype" ? (
+                        {/* Merge checkbox (only for active category) */}
+                        {mergeMode && isActive ? (
                           <input
                             type="checkbox"
                             checked={isMergeSelected}
@@ -372,6 +372,7 @@ interface DeckScatterPlotProps {
   mergeMode?: boolean;
   selectedForMerge?: Set<string>;
   onToggleMerge?: (celltype: string) => void;
+  onColorByChange?: (colorBy: string) => void;
 }
 
 /** 将平行数组转为点对象数组（deck.gl accessor 需要） */
@@ -406,6 +407,7 @@ export default function DeckScatterPlot({
   mergeMode,
   selectedForMerge,
   onToggleMerge,
+  onColorByChange,
 }: DeckScatterPlotProps) {
   const [hoverInfo, setHoverInfo] = useState<{
     x: number;
@@ -413,8 +415,12 @@ export default function DeckScatterPlot({
     object?: { x: number; y: number; cluster: string; celltype: string; sample: string; group: string; idx: number };
   } | null>(null);
 
+  // deck.gl ref（用于坐标转换）
+  const deckRef = useRef<any>(null);
+
   // 图例：哪些聚类被隐藏
   const [hiddenClusters, setHiddenClusters] = useState<Set<string>>(new Set());
+
 
   // 色板选择
   const [paletteKey, setPaletteKey] = useState(DEFAULT_PALETTE);
@@ -422,6 +428,11 @@ export default function DeckScatterPlot({
 
   // 分组选择（默认 celltype，不可用时回退 cluster）
   const [colorBy, setColorBy] = useState<string>("celltype");
+
+  // 通知父组件 colorBy 变化
+  useEffect(() => {
+    onColorByChange?.(colorBy);
+  }, [colorBy, onColorByChange]);
 
   // 将平行数组 → 对象数组（仅在数据变化时重算）
   const points = useMemo(() => (data ? toPoints(data) : []), [data]);
@@ -548,14 +559,20 @@ export default function DeckScatterPlot({
     );
   }
 
-  const layer = new ScatterplotLayer({
+  const isMergeActive = mergeMode && selectedForMerge && selectedForMerge.size > 0;
+
+  const mainLayer = new ScatterplotLayer({
     id: "scatter",
     data: filteredPoints,
     getPosition: (d: { x: number; y: number }) => [d.x, d.y],
     getFillColor: (d: { cluster: string; celltype: string; sample: string; group: string }) => {
       const val = getGroupValue(d);
       const c = colorMap.get(val) || [128, 128, 128];
-      return [c[0], c[1], c[2], 102]; // alpha ~0.4
+      if (isMergeActive) {
+        const alpha = selectedForMerge!.has(val) ? 235 : 12;
+        return [c[0], c[1], c[2], alpha];
+      }
+      return [c[0], c[1], c[2], 102];
     },
     stroked: false,
     getRadius: 4,
@@ -564,10 +581,17 @@ export default function DeckScatterPlot({
     radiusMaxPixels: 8,
     pickable: true,
     onHover,
+    onClick: (info: { object?: { cluster: string; celltype: string; sample: string; group: string } }) => {
+      if (!mergeMode || !info.object || !onToggleMerge) return false;
+      onToggleMerge(getGroupValue(info.object));
+      return true;
+    },
     updateTriggers: {
-      getFillColor: [hiddenClusters.size, paletteKey, colorBy],
+      getFillColor: [hiddenClusters.size, paletteKey, colorBy, isMergeActive, selectedForMerge?.size],
     },
   });
+
+  const layers = [mainLayer];
 
   return (
     <div className="relative" style={{ height }}>
@@ -581,10 +605,12 @@ export default function DeckScatterPlot({
         }}
       >
         <DeckGL
+          ref={deckRef}
           views={new OrthographicView({})}
           initialViewState={initialViewState}
-          controller={true}
-          layers={[layer]}
+          controller={{ minZoom: -2, maxZoom: 8 }}
+          layers={layers}
+          onViewStateChange={() => {}}
           style={{ position: "relative", width: "100%", height: "100%" }}
         />
       </div>

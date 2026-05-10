@@ -107,6 +107,13 @@ export default function AnnotateResult({
   const [mergeTargetName, setMergeTargetName] = useState("");
   const [merging, setMerging] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
+  const [currentColorBy, setCurrentColorBy] = useState("celltype");
+
+  // 切换分类维度时清空合并选区
+  useEffect(() => {
+    setSelectedForMerge(new Set());
+    setMergeTargetName("");
+  }, [currentColorBy]);
 
   // ── 图片 URL 构建 ──
   const extractName = (val: unknown) => {
@@ -124,15 +131,39 @@ export default function AnnotateResult({
   const freqPageData = freqTable.slice(freqPage * pageSize, (freqPage + 1) * pageSize);
   const freqTotalPages = Math.ceil(freqTable.length / pageSize);
 
+  const displayScatter = localScatter ?? rawScatter;
+
   // ── 合并处理 ──
   const handleMerge = useCallback(async () => {
     if (selectedForMerge.size < 2 || !mergeTargetName.trim()) return;
     setMerging(true);
     setMergeError(null);
 
+    // 根据当前分类维度构建 merge_map
     const merge_map: Record<string, string> = {};
-    for (const ct of selectedForMerge) {
-      merge_map[ct] = mergeTargetName.trim();
+    const target = mergeTargetName.trim();
+
+    if (currentColorBy === "celltype") {
+      // 直接按 celltype 合并
+      for (const ct of selectedForMerge) {
+        merge_map[ct] = target;
+      }
+    } else if (displayScatter) {
+      // 按其他维度（cluster/sample/group）选中的，找到对应的 celltype 值进行合并
+      const selectedCelltypes = new Set<string>();
+      const categoryKey = currentColorBy as keyof typeof displayScatter;
+      const categoryArr = displayScatter[categoryKey];
+      const celltypeArr = displayScatter.celltype;
+      if (Array.isArray(categoryArr) && Array.isArray(celltypeArr)) {
+        for (let i = 0; i < categoryArr.length; i++) {
+          if (selectedForMerge.has(categoryArr[i] as string)) {
+            selectedCelltypes.add(celltypeArr[i]);
+          }
+        }
+      }
+      for (const ct of selectedCelltypes) {
+        merge_map[ct] = target;
+      }
     }
 
     try {
@@ -174,7 +205,7 @@ export default function AnnotateResult({
     } finally {
       setMerging(false);
     }
-  }, [selectedForMerge, mergeTargetName, task.project_id]);
+  }, [selectedForMerge, mergeTargetName, task.project_id, currentColorBy, displayScatter]);
 
   const toggleMergeSelection = useCallback((celltype: string) => {
     setSelectedForMerge(prev => {
@@ -184,8 +215,6 @@ export default function AnnotateResult({
       return next;
     });
   }, []);
-
-  const displayScatter = localScatter ?? rawScatter;
 
   return (
     <div className="space-y-4">
@@ -220,13 +249,13 @@ export default function AnnotateResult({
                 setMergeError(null);
               }
             }}
-            className="ml-auto px-3 py-1 rounded text-xs font-medium transition-colors"
+            className="ml-auto px-5 py-2 rounded-lg text-sm font-bold transition-colors"
             style={mergeMode
-              ? { background: "var(--clr-amber)", color: "#fff", cursor: "pointer" }
-              : { border: "1px solid var(--clr-border)", color: "var(--clr-text-muted)", cursor: "pointer" }
+              ? { background: "var(--clr-amber)", color: "#fff", cursor: "pointer", boxShadow: "0 2px 8px rgba(200,96,25,0.3)" }
+              : { background: "var(--clr-amber)", color: "#fff", cursor: "pointer", boxShadow: "0 2px 8px rgba(200,96,25,0.2)" }
             }
           >
-            {mergeMode ? "退出合并" : "合并细胞类型"}
+            {mergeMode ? "退出调整" : "调整注释结果"}
           </button>
         </div>
       )}
@@ -240,7 +269,7 @@ export default function AnnotateResult({
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
           </svg>
-          点击图例中的细胞类型进行多选，然后输入合并后的名称
+          点击图例或 UMAP 图上的点进行多选，然后输入合并后的名称
         </div>
       )}
 
@@ -249,9 +278,6 @@ export default function AnnotateResult({
         <div className="space-y-2">
           <p className="text-xs font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
             细胞类型 UMAP 标注图
-            <span className="font-normal ml-1" style={{ color: "var(--clr-text-muted)" }}>
-              — WebGL 交互式 · {displayScatter.x.length.toLocaleString()} 个细胞
-            </span>
           </p>
           <DeckScatterPlot
             data={displayScatter}
@@ -260,6 +286,7 @@ export default function AnnotateResult({
             mergeMode={mergeMode}
             selectedForMerge={selectedForMerge}
             onToggleMerge={toggleMergeSelection}
+            onColorByChange={setCurrentColorBy}
           />
         </div>
       ) : plotSrc && (
@@ -283,7 +310,7 @@ export default function AnnotateResult({
           style={{ background: "rgba(200,96,25,0.06)", border: "1px solid var(--clr-amber)" }}
         >
           <span className="text-xs" style={{ color: "var(--clr-text)" }}>
-            已选择 <strong>{selectedForMerge.size}</strong> 种：
+            已选择 <strong>{selectedForMerge.size}</strong> 项：
             {Array.from(selectedForMerge).join(" + ")}
           </span>
           <span className="text-xs" style={{ color: "var(--clr-text-muted)" }}>=</span>
@@ -309,7 +336,7 @@ export default function AnnotateResult({
 
       {mergeMode && selectedForMerge.size === 1 && (
         <div className="text-xs" style={{ color: "var(--clr-text-faint)" }}>
-          请继续选择至少 2 种细胞类型
+          请继续选择至少 2 项
         </div>
       )}
 

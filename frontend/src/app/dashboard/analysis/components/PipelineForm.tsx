@@ -67,9 +67,11 @@ export default function PipelineForm({ projectId, token, onSubmit, uploadedFiles
   const metadataColumns = [...new Set(uploadedFiles.flatMap(f => f.metadata_columns ?? []))];
   const GROUP_EXCLUDE = new Set(["nCount_RNA", "nFeature_RNA", "percent.mt", "n_genes", "n_counts", "barcode"]);
   const groupColumns = metadataColumns.filter(c => !GROUP_EXCLUDE.has(c) && !c.startsWith("n_") && !c.startsWith("percent."));
-  // 加入用户在表格中填写的自定义分组名
-  const customGroups = [...new Set(Object.values(sampleGroups).filter(Boolean))];
-  const allGroupOptions = [...new Set([...groupColumns, ...customGroups])];
+  // 如果用户设定了分组，确保 "Group" 作为可选项
+  const hasSampleGroups = Object.values(sampleGroups).some(Boolean);
+  const allGroupOptions = hasSampleGroups && !groupColumns.includes("Group")
+    ? [...groupColumns, "Group"]
+    : groupColumns;
   const effectiveGroupCols = allGroupOptions.length > 0 ? allGroupOptions : ["Sample", "Group"];
 
   // 将 uploadedFiles 展平为样本行
@@ -108,7 +110,7 @@ export default function PipelineForm({ projectId, token, onSubmit, uploadedFiles
         annotate: { ...prev.annotate, group_by: defaultGroup },
       }));
     }
-  }, [metadataColumns, customGroups]);
+  }, [metadataColumns, hasSampleGroups]);
 
   /* ===== Pipeline 历史记录 ===== */
   const [showHistory, setShowHistory] = useState(false);
@@ -171,9 +173,15 @@ export default function PipelineForm({ projectId, token, onSubmit, uploadedFiles
     setShowHistory(false);
 
     try {
+      // 将上传文件路径注入 QC 参数
+      const pipelineParams = { ...params };
+      if (uploadedFiles.length > 0 && uploadedFiles[0].path) {
+        pipelineParams.qc = { ...pipelineParams.qc, rds_file_path: uploadedFiles[0].path };
+      }
+
       const data = {
         project_id: projectId,
-        params,
+        params: pipelineParams,
       };
 
       const response = await createPipeline(token, data);

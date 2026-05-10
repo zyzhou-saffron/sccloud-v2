@@ -477,9 +477,6 @@ function ReduceResult({ data, taskId }: { data: Record<string, unknown> | null; 
         <div className="space-y-1">
           <p className="text-xs font-medium" style={{ color: "var(--clr-amber-dark)" }}>
             {method} 可视化
-            <span className="font-normal ml-1" style={{ color: "var(--clr-text-faint)" }}>
-              — WebGL 交互式 · {rawScatter.x.length.toLocaleString()} 个细胞
-            </span>
           </p>
           <DeckScatterPlot data={rawScatter} method={method as "UMAP" | "tSNE" | "PCA"} height={520}>
             {plotSrc && (
@@ -636,9 +633,6 @@ function ClusterResult({ data, task }: { data: Record<string, unknown> | null; t
             <>
               <p className="text-xs font-medium" style={{ color: "var(--clr-amber-dark)" }}>
                 Cluster UMAP 图
-                <span className="font-normal ml-1" style={{ color: "var(--clr-text-faint)" }}>
-                  — WebGL 交互式 · {rawScatter.x.length.toLocaleString()} 个细胞
-                </span>
               </p>
               <DeckScatterPlot data={rawScatter} method="UMAP" height={560}>
                 {umapSrc && (
