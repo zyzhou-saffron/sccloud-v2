@@ -630,8 +630,8 @@ export default function DeckScatterPlot({
             backdropFilter: "blur(4px)",
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--clr-text-muted)" strokeWidth="2" strokeLinecap="round">
-            <path d="M3 12a9 9 0 1 1 3 6.7" /><path d="M3 17V12h5" />
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--clr-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
           </svg>
         </button>
       </div>
