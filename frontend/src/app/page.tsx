@@ -85,6 +85,12 @@ export default function LandingPage() {
     rotateY: -15, rotateX: 10, textScale: 1,
   });
 
+  // 已登录用户自动跳转到分析页
+  useEffect(() => {
+    const token = localStorage.getItem("access_token");
+    if (token) router.replace("/dashboard/analysis");
+  }, [router]);
+
   useEffect(() => {
     const calc = () => {
       const vw = window.innerWidth;
