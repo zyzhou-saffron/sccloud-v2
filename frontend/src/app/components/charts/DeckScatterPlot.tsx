@@ -504,6 +504,10 @@ export default function DeckScatterPlot({
     return { target: [cx, cy], zoom: Math.max(-2, Math.min(zoom, 10)) };
   }, [data, height]);
 
+  // 可控视口状态（用于重置）
+  const [viewState, setViewState] = useState(initialViewState);
+  const resetView = useCallback(() => setViewState(initialViewState), [initialViewState]);
+
   // 获取当前分组值的辅助函数
   const getGroupValue = useCallback((p: { cluster: string; celltype: string; sample: string; group: string }) => {
     return p[colorBy as keyof typeof p] as string || p.cluster;
@@ -607,12 +611,29 @@ export default function DeckScatterPlot({
         <DeckGL
           ref={deckRef}
           views={new OrthographicView({})}
-          initialViewState={initialViewState}
+          viewState={viewState}
           controller={{ minZoom: 0, maxZoom: 8 }}
           layers={layers}
-          onViewStateChange={() => {}}
+          onViewStateChange={({ viewState: vs }: { viewState: Record<string, unknown> }) => setViewState(vs)}
           style={{ position: "relative", width: "100%", height: "100%" }}
         />
+
+        {/* 重置视图按钮 */}
+        <button
+          onClick={resetView}
+          title="恢复默认视图"
+          className="absolute top-2 right-2 z-20 flex items-center justify-center w-7 h-7 rounded-md transition-colors"
+          style={{
+            background: "rgba(255,255,255,0.85)",
+            border: "1px solid rgba(45,41,38,0.12)",
+            cursor: "pointer",
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--clr-text-muted)" strokeWidth="2" strokeLinecap="round">
+            <path d="M3 12a9 9 0 1 1 3 6.7" /><path d="M3 17V12h5" />
+          </svg>
+        </button>
       </div>
 
       {/* Tooltip */}
