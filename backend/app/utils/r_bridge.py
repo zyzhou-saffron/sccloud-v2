@@ -79,6 +79,22 @@ async def call_r_engine(
             except Exception:
                 result_data_path = None
 
+        # annotate 步骤后注入 marker 基因数据
+        if endpoint == "annotate" and "scatter_data" in result:
+            try:
+                from app.utils.marker_match import annotate_with_markers
+                species = result.get("stats", {}).get("species", "Human")
+                tissue = result.get("stats", {}).get("tissue")
+                result["marker_table"] = annotate_with_markers(
+                    result["scatter_data"], species, tissue
+                )
+                # 重写 JSON
+                if result_data_path:
+                    with open(result_data_path, "w") as f:
+                        json.dump(result, f, ensure_ascii=False)
+            except Exception:
+                pass  # marker 注入失败不影响主流程
+
         # 更新任务: 完成
         task.status = "completed"
         task.progress = 100

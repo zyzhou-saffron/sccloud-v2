@@ -44,17 +44,27 @@ function AuthImg({ src, alt, token, className, style }: {
   return <img src={blobUrl} alt={alt} className={className} style={style} />;
 }
 
+interface MarkerTableRow {
+  cluster_id: string;
+  celltype: string;
+  markers: string[];
+  annotation_result: string;
+}
+
 interface AnnotateData {
   status: string;
   result_path?: string;
   plot_path?: string;
-  scatter_data?: { x: number[]; y: number[]; cluster: string[] };
+  scatter_data?: { x: number[]; y: number[]; cluster: string[]; celltype?: string[] };
   stats?: {
     cells: number;
     cell_types: number;
     anno_type: string;
+    species?: string;
+    tissue?: string;
   };
   freq_table?: Array<{ CellType: string; Sample?: string; Freq?: number; n?: number; pct?: number }>;
+  marker_table?: MarkerTableRow[];
 }
 
 function safeScatter(raw: unknown): ScatterData | undefined {
@@ -91,15 +101,17 @@ export default function AnnotateResult({
 
   // ── 本地状态（合并后可更新） ──
   const [localScatter, setLocalScatter] = useState<ScatterData | undefined>(rawScatter);
-  const [localFreqTable, setLocalFreqTable] = useState<AnnotateData["freq_table"]>(annotateData?.freq_table ?? []);
+  const [markerTable, setMarkerTable] = useState<MarkerTableRow[]>(annotateData?.marker_table ?? []);
 
   // 当原始数据变化时重置本地状态
   useEffect(() => {
     setLocalScatter(rawScatter);
-    setLocalFreqTable(annotateData?.freq_table ?? []);
-  }, [rawScatter, annotateData?.freq_table]);
+    setMarkerTable(annotateData?.marker_table ?? []);
+  }, [rawScatter, annotateData?.marker_table]);
 
-  const freqTable = localFreqTable ?? [];
+  // 编辑中的 annotation_result 值
+  const [editedResults, setEditedResults] = useState<Record<string, string>>({});
+  const [savingResults, setSavingResults] = useState(false);
 
   // ── 合并模式状态 ──
   const [mergeMode, setMergeMode] = useState(false);
@@ -108,6 +120,12 @@ export default function AnnotateResult({
   const [merging, setMerging] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [currentColorBy, setCurrentColorBy] = useState("celltype");
+  // 表格点击的高亮类型："cluster" | "celltype" | null
+  const [tableHighlightType, setTableHighlightType] = useState<"cluster" | "celltype" | null>(null);
+
+  // 图例维度：表格选中 cluster → 显示 cluster，表格选中 celltype → 显示 celltype
+  const deckColorBy = tableHighlightType ?? (mergeMode ? "cluster" : undefined);
+  const deckMergeIdKey = tableHighlightType ?? "celltype";
 
   // 切换分类维度时清空合并选区
   useEffect(() => {
@@ -125,11 +143,20 @@ export default function AnnotateResult({
   const plotName = extractName(annotateData?.plot_path) ?? "plot_annotate.png";
   const plotSrc = taskId ? `/api/tasks/${taskId}/plot?name=${encodeURIComponent(plotName)}` : null;
 
-  // ── 频率表分页 ──
-  const [freqPage, setFreqPage] = useState(0);
+  // ── Marker 表格分页 ──
+  const [markerPage, setMarkerPage] = useState(0);
   const pageSize = 10;
-  const freqPageData = freqTable.slice(freqPage * pageSize, (freqPage + 1) * pageSize);
-  const freqTotalPages = Math.ceil(freqTable.length / pageSize);
+  const markerPageData = markerTable.slice(markerPage * pageSize, (markerPage + 1) * pageSize);
+  const markerTotalPages = Math.ceil(markerTable.length / pageSize);
+
+  // 重置编辑状态（合并模式退出时）
+  useEffect(() => {
+    if (!mergeMode) {
+      setEditedResults({});
+      setTableHighlightType(null);
+      setSelectedForMerge(new Set());
+    }
+  }, [mergeMode]);
 
   const displayScatter = localScatter ?? rawScatter;
 
@@ -139,30 +166,22 @@ export default function AnnotateResult({
     setMerging(true);
     setMergeError(null);
 
-    // 根据当前分类维度构建 merge_map
+    // 构建 merge_map: celltype -> target
     const merge_map: Record<string, string> = {};
     const target = mergeTargetName.trim();
 
-    if (currentColorBy === "celltype") {
-      // 直接按 celltype 合并
+    if (tableHighlightType === "celltype") {
+      // selectedForMerge 存的是 celltype 名，直接用
       for (const ct of selectedForMerge) {
         merge_map[ct] = target;
       }
-    } else if (displayScatter) {
-      // 按其他维度（cluster/sample/group）选中的，找到对应的 celltype 值进行合并
-      const selectedCelltypes = new Set<string>();
-      const categoryKey = currentColorBy as keyof typeof displayScatter;
-      const categoryArr = displayScatter[categoryKey];
-      const celltypeArr = displayScatter.celltype;
-      if (Array.isArray(categoryArr) && Array.isArray(celltypeArr)) {
-        for (let i = 0; i < categoryArr.length; i++) {
-          if (selectedForMerge.has(categoryArr[i] as string)) {
-            selectedCelltypes.add(celltypeArr[i]);
-          }
+    } else {
+      // selectedForMerge 存的是 cluster_id，需要查 markerTable 得到 celltype
+      for (const cid of selectedForMerge) {
+        const row = markerTable.find(r => r.cluster_id === cid);
+        if (row) {
+          merge_map[row.celltype] = target;
         }
-      }
-      for (const ct of selectedCelltypes) {
-        merge_map[ct] = target;
       }
     }
 
@@ -192,10 +211,6 @@ export default function AnnotateResult({
         const newScatter = safeScatter(resultData.scatter_data);
         if (newScatter) setLocalScatter(newScatter);
       }
-      if (resultData?.freq_table) {
-        setLocalFreqTable(resultData.freq_table as AnnotateData["freq_table"]);
-      }
-
       // 重置合并状态
       setSelectedForMerge(new Set());
       setMergeTargetName("");
@@ -205,16 +220,88 @@ export default function AnnotateResult({
     } finally {
       setMerging(false);
     }
-  }, [selectedForMerge, mergeTargetName, task.project_id, currentColorBy, displayScatter]);
+  }, [selectedForMerge, mergeTargetName, task.project_id, markerTable]);
 
-  const toggleMergeSelection = useCallback((celltype: string) => {
-    setSelectedForMerge(prev => {
-      const next = new Set(prev);
-      if (next.has(celltype)) next.delete(celltype);
-      else next.add(celltype);
-      return next;
-    });
+  const toggleMergeSelection = useCallback((id: string, type?: "cluster" | "celltype") => {
+    if (type) {
+      // 从表格点击：切换高亮类型，清空旧选区，选中新项
+      setTableHighlightType(type);
+      setSelectedForMerge(prev => {
+        if (prev.has(id)) {
+          // 取消选中
+          const next = new Set(prev);
+          next.delete(id);
+          if (next.size === 0) setTableHighlightType(null);
+          return next;
+        }
+        return new Set([id]);
+      });
+    } else {
+      // 从 UMAP 图例点击：正常 toggle
+      setSelectedForMerge(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    }
   }, []);
+
+  // 保存编辑后的注释结果
+  const handleSaveResults = useCallback(async () => {
+    if (Object.keys(editedResults).length === 0) return;
+    setSavingResults(true);
+    setMergeError(null);
+
+    // 构建 merge_map: old_celltype -> new_celltype
+    const merge_map: Record<string, string> = {};
+    for (const [cid, newName] of Object.entries(editedResults)) {
+      const row = markerTable.find(r => r.cluster_id === cid);
+      if (row && row.celltype !== newName && newName.trim()) {
+        merge_map[row.celltype] = newName.trim();
+      }
+    }
+
+    if (Object.keys(merge_map).length === 0) {
+      setSavingResults(false);
+      return;
+    }
+
+    try {
+      const res = await submitTask({
+        project_id: task.project_id,
+        step: "merge_celltypes",
+        params: { merge_map },
+      });
+
+      const pollTask = async (id: string): Promise<Task> => {
+        const t = await getTask(id);
+        if (t.status === "failed") throw new Error(t.error_msg || "保存失败");
+        if (t.status === "completed") return t;
+        await new Promise(r => setTimeout(r, 1500));
+        return pollTask(id);
+      };
+
+      const completedTask = await pollTask(res.id);
+      const resultData = await apiFetch<Record<string, unknown>>(`/api/tasks/${completedTask.id}/result`);
+
+      // 更新本地状态
+      if (resultData?.scatter_data) {
+        const newScatter = safeScatter(resultData.scatter_data);
+        if (newScatter) setLocalScatter(newScatter);
+      }
+      if (resultData?.marker_table) {
+        setMarkerTable(resultData.marker_table as MarkerTableRow[]);
+      }
+
+      setEditedResults({});
+      setMergeMode(false);
+    } catch (e) {
+      setMergeError(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSavingResults(false);
+    }
+  }, [editedResults, markerTable, task.project_id]);
 
   return (
     <div className="space-y-4">
@@ -230,7 +317,7 @@ export default function AnnotateResult({
           <span>
             细胞类型数：
             <strong style={{ color: "var(--clr-amber)", fontSize: "1rem" }}>
-              {freqTable.length || (stats.cell_types ?? "—")}
+              {markerTable.length || (stats.cell_types ?? "—")}
             </strong>
           </span>
           <span>
@@ -287,6 +374,8 @@ export default function AnnotateResult({
             selectedForMerge={selectedForMerge}
             onToggleMerge={toggleMergeSelection}
             onColorByChange={setCurrentColorBy}
+            mergeIdKey={deckMergeIdKey}
+            colorBy={deckColorBy}
           />
         </div>
       ) : plotSrc && (
@@ -340,13 +429,34 @@ export default function AnnotateResult({
         </div>
       )}
 
-      {/* ── 细胞类型频率表 ── */}
-      {freqTable.length > 0 && (
+      {/* ── 保存编辑后的注释结果 ── */}
+      {mergeMode && Object.keys(editedResults).length > 0 && (
+        <div
+          className="flex flex-wrap items-center gap-3 p-3 rounded"
+          style={{ background: "rgba(200,96,25,0.06)", border: "1px solid var(--clr-amber)" }}
+        >
+          <span className="text-xs" style={{ color: "var(--clr-text)" }}>
+            已修改 <strong>{Object.keys(editedResults).length}</strong> 个聚类的注释结果
+          </span>
+          <button
+            disabled={savingResults}
+            onClick={handleSaveResults}
+            className="px-4 py-1.5 rounded text-xs font-medium text-white disabled:opacity-50"
+            style={{ background: "var(--clr-amber)", cursor: savingResults ? "default" : "pointer" }}
+          >
+            {savingResults ? "保存中..." : "保存注释结果"}
+          </button>
+          {mergeError && <span className="text-xs" style={{ color: "var(--clr-danger)" }}>{mergeError}</span>}
+        </div>
+      )}
+
+      {/* ── Marker 基因注释表 ── */}
+      {markerTable.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
-            细胞类型频率统计
+            细胞类型注释
             <span className="font-normal ml-1" style={{ color: "var(--clr-text-muted)" }}>
-              — {freqTable.length} 种细胞类型
+              — {markerTable.length} 个聚类
             </span>
           </p>
           <div className="overflow-x-auto rounded-lg border" style={{ borderColor: "var(--clr-border)" }}>
@@ -354,66 +464,121 @@ export default function AnnotateResult({
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--clr-border)", background: "var(--clr-bg)" }}>
                   <th className="px-3 py-2 text-left font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
-                    细胞类型
+                    ClusterID
                   </th>
-                  <th className="px-3 py-2 text-right font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
-                    样本
+                  <th className="px-3 py-2 text-left font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
+                    CellType
                   </th>
-                  <th className="px-3 py-2 text-right font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
-                    占比
+                  <th className="px-3 py-2 text-left font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
+                    Marker Genes
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
+                    Annotation Result
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {freqPageData.map((row, idx) => (
-                  <tr
-                    key={idx}
-                    style={{
-                      borderBottom: "1px solid var(--clr-border)",
-                      background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.4)",
-                    }}
-                  >
-                    <td className="px-3 py-2" style={{ color: "var(--clr-text)" }}>
-                      {row.CellType ?? "—"}
-                    </td>
-                    <td className="px-3 py-2 text-right" style={{ color: "var(--clr-text)" }}>
-                      {row.Sample ?? "—"}
-                    </td>
-                    <td className="px-3 py-2 text-right" style={{ color: "var(--clr-text)" }}>
-                      {((row.Freq ?? row.pct ?? 0) * 100).toFixed(1)}%
-                    </td>
-                  </tr>
-                ))}
+                {markerPageData.map((row, idx) => {
+                  const displayResult = editedResults[row.cluster_id] ?? row.annotation_result;
+                  const isSelected = selectedForMerge.has(row.cluster_id) || selectedForMerge.has(row.celltype);
+                  const rowBg = isSelected
+                    ? "rgba(200,96,25,0.1)"
+                    : idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.4)";
+                  return (
+                    <tr
+                      key={row.cluster_id}
+                      style={{
+                        borderBottom: "1px solid var(--clr-border)",
+                        background: rowBg,
+                        transition: "background 0.15s",
+                      }}
+                    >
+                      <td
+                        className="px-3 py-2 font-mono"
+                        style={{
+                          color: isSelected ? "var(--clr-amber)" : "var(--clr-text)",
+                          cursor: "pointer",
+                          fontWeight: isSelected ? 600 : 400,
+                        }}
+                        onClick={() => toggleMergeSelection(row.cluster_id, "cluster")}
+                      >
+                        {row.cluster_id}
+                      </td>
+                      <td
+                        className="px-3 py-2"
+                        style={{
+                          color: isSelected ? "var(--clr-amber)" : "var(--clr-text)",
+                          cursor: "pointer",
+                          fontWeight: isSelected ? 600 : 400,
+                        }}
+                        onClick={() => toggleMergeSelection(row.celltype, "celltype")}
+                      >
+                        {row.celltype}
+                      </td>
+                      <td className="px-3 py-2" style={{ color: "var(--clr-text)", maxWidth: 260 }}>
+                        {row.markers.length > 0 ? (
+                          <span title={row.markers.join(", ")}>
+                            {row.markers.slice(0, 5).join(", ")}
+                            {row.markers.length > 5 && (
+                              <span style={{ color: "var(--clr-text-muted)" }}> +{row.markers.length - 5}</span>
+                            )}
+                          </span>
+                        ) : (
+                          <span style={{ color: "var(--clr-text-faint)" }}>—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {mergeMode ? (
+                          <input
+                            type="text"
+                            value={displayResult}
+                            onChange={e => {
+                              setEditedResults(prev => ({ ...prev, [row.cluster_id]: e.target.value }));
+                            }}
+                            className="w-full px-1.5 py-0.5 rounded text-xs"
+                            style={{
+                              border: "1px solid var(--clr-border)",
+                              background: "var(--clr-bg)",
+                              color: "var(--clr-text)",
+                            }}
+                          />
+                        ) : (
+                          <span style={{ color: "var(--clr-text)" }}>{displayResult}</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
           {/* ── 分页控制 ── */}
-          {freqTotalPages > 1 && (
+          {markerTotalPages > 1 && (
             <div className="flex justify-center gap-2 text-xs">
               <button
-                disabled={freqPage === 0}
-                onClick={() => setFreqPage(Math.max(0, freqPage - 1))}
+                disabled={markerPage === 0}
+                onClick={() => setMarkerPage(Math.max(0, markerPage - 1))}
                 className="px-2 py-1 rounded disabled:opacity-50"
                 style={{
                   border: "1px solid var(--clr-border)",
-                  background: freqPage === 0 ? "transparent" : "var(--clr-bg-alt)",
-                  cursor: freqPage === 0 ? "default" : "pointer",
+                  background: markerPage === 0 ? "transparent" : "var(--clr-bg-alt)",
+                  cursor: markerPage === 0 ? "default" : "pointer",
                 }}
               >
                 上一页
               </button>
               <span style={{ color: "var(--clr-text-muted)" }}>
-                第 {freqPage + 1} / {freqTotalPages} 页
+                第 {markerPage + 1} / {markerTotalPages} 页
               </span>
               <button
-                disabled={freqPage >= freqTotalPages - 1}
-                onClick={() => setFreqPage(Math.min(freqTotalPages - 1, freqPage + 1))}
+                disabled={markerPage >= markerTotalPages - 1}
+                onClick={() => setMarkerPage(Math.min(markerTotalPages - 1, markerPage + 1))}
                 className="px-2 py-1 rounded disabled:opacity-50"
                 style={{
                   border: "1px solid var(--clr-border)",
-                  background: freqPage >= freqTotalPages - 1 ? "transparent" : "var(--clr-bg-alt)",
-                  cursor: freqPage >= freqTotalPages - 1 ? "default" : "pointer",
+                  background: markerPage >= markerTotalPages - 1 ? "transparent" : "var(--clr-bg-alt)",
+                  cursor: markerPage >= markerTotalPages - 1 ? "default" : "pointer",
                 }}
               >
                 下一页

@@ -107,7 +107,7 @@ const DEFAULT_PALETTE = "tol";
 function LegendSidebar({
   availableGroups, colorBy, setColorBy, paletteKey, setPaletteKey,
   clusters, colorMap, hiddenClusters, toggleCluster, data,
-  mergeMode, selectedForMerge, onToggleMerge,
+  mergeMode, selectedForMerge, onToggleMerge, mergeIdKey = "celltype",
 }: {
   availableGroups: { key: string; label: string }[];
   colorBy: string; setColorBy: (v: string) => void;
@@ -118,6 +118,7 @@ function LegendSidebar({
   mergeMode?: boolean;
   selectedForMerge?: Set<string>;
   onToggleMerge?: (celltype: string) => void;
+  mergeIdKey?: "celltype" | "cluster";
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set([colorBy]));
   const [collapsed, setCollapsed] = useState(false);
@@ -163,6 +164,11 @@ function LegendSidebar({
     }
     return result;
   }, [availableGroups, data]);
+
+  // 将平行数组转为点对象数组（merge 选择时需要）
+  const points = useMemo(() => toPoints(data), [data]);
+
+  const isMergeActive = selectedForMerge && selectedForMerge.size > 0;
 
   // 为每个 group 分配颜色（只给当前 colorBy 分配，其他用灰色）
   const getGroupColorMap = useCallback((groupKey: string) => {
@@ -303,13 +309,25 @@ function LegendSidebar({
                     const color = cmap.get(v) || [180, 180, 180];
                     const isHidden = hiddenClusters.has(v) && isActive;
                     const count = counts[v] || 0;
-                    const isMergeSelected = mergeMode && isActive && selectedForMerge?.has(v);
+                    // For merge selection: check by mergeIdKey
+                    // If mergeIdKey="cluster", need to check if any cluster with this celltype is selected
+                    const mergeIdsForVal = mergeMode && mergeIdKey !== colorBy
+                      ? points.filter(p => (p[colorBy as keyof typeof p] as string) === v).map(p => p[mergeIdKey])
+                      : [v];
+                    const isMergeSelected = mergeMode && isActive && mergeIdsForVal.some(id => selectedForMerge?.has(id));
                     return (
                       <button
                         key={v}
                         onClick={() => {
                           if (mergeMode && isActive && onToggleMerge) {
-                            onToggleMerge(v);
+                            // Toggle all merge IDs for this value
+                            const uniqueIds = [...new Set(mergeIdsForVal)];
+                            const allSelected = uniqueIds.every(id => selectedForMerge?.has(id));
+                            for (const id of uniqueIds) {
+                              if (allSelected ? selectedForMerge?.has(id) : !selectedForMerge?.has(id)) {
+                                onToggleMerge(id);
+                              }
+                            }
                           } else if (isActive) {
                             toggleCluster(v);
                           }
@@ -323,7 +341,7 @@ function LegendSidebar({
                         }}
                       >
                         {/* Merge checkbox (only for active category) */}
-                        {mergeMode && isActive ? (
+                        {isMergeActive && isActive ? (
                           <input
                             type="checkbox"
                             checked={isMergeSelected}
@@ -373,6 +391,10 @@ interface DeckScatterPlotProps {
   selectedForMerge?: Set<string>;
   onToggleMerge?: (celltype: string) => void;
   onColorByChange?: (colorBy: string) => void;
+  /** Which field to use for merge selection: "celltype" (default) or "cluster" */
+  mergeIdKey?: "celltype" | "cluster";
+  /** Controlled colorBy — if set, overrides internal state */
+  colorBy?: string;
 }
 
 /** 将平行数组转为点对象数组（deck.gl accessor 需要） */
@@ -408,6 +430,8 @@ export default function DeckScatterPlot({
   selectedForMerge,
   onToggleMerge,
   onColorByChange,
+  mergeIdKey = "celltype",
+  colorBy: colorByProp,
 }: DeckScatterPlotProps) {
   const [hoverInfo, setHoverInfo] = useState<{
     x: number;
@@ -427,7 +451,9 @@ export default function DeckScatterPlot({
   const currentPalette = PALETTES[paletteKey]?.colors || PALETTES[DEFAULT_PALETTE].colors;
 
   // 分组选择（默认 celltype，不可用时回退 cluster）
-  const [colorBy, setColorBy] = useState<string>("celltype");
+  const [colorByInternal, setColorBy] = useState<string>("celltype");
+  // 使用受控 prop 或内部状态
+  const colorBy = colorByProp ?? colorByInternal;
 
   // 通知父组件 colorBy 变化
   useEffect(() => {
@@ -563,7 +589,7 @@ export default function DeckScatterPlot({
     );
   }
 
-  const isMergeActive = mergeMode && selectedForMerge && selectedForMerge.size > 0;
+  const isMergeActive = selectedForMerge && selectedForMerge.size > 0;
 
   const mainLayer = new ScatterplotLayer({
     id: "scatter",
@@ -573,7 +599,8 @@ export default function DeckScatterPlot({
       const val = getGroupValue(d);
       const c = colorMap.get(val) || [128, 128, 128];
       if (isMergeActive) {
-        const alpha = selectedForMerge!.has(val) ? 235 : 12;
+        const mergeId = d[mergeIdKey] ?? d.celltype;
+        const alpha = selectedForMerge!.has(mergeId) ? 235 : 12;
         return [c[0], c[1], c[2], alpha];
       }
       return [c[0], c[1], c[2], 102];
@@ -587,11 +614,12 @@ export default function DeckScatterPlot({
     onHover,
     onClick: (info: { object?: { cluster: string; celltype: string; sample: string; group: string } }) => {
       if (!mergeMode || !info.object || !onToggleMerge) return false;
-      onToggleMerge(getGroupValue(info.object));
+      const mergeId = info.object[mergeIdKey] ?? info.object.celltype;
+      onToggleMerge(mergeId);
       return true;
     },
     updateTriggers: {
-      getFillColor: [hiddenClusters.size, paletteKey, colorBy, isMergeActive, selectedForMerge?.size],
+      getFillColor: [hiddenClusters.size, paletteKey, colorBy, isMergeActive, selectedForMerge?.size, mergeIdKey],
     },
   });
 
@@ -678,6 +706,7 @@ export default function DeckScatterPlot({
         mergeMode={mergeMode}
         selectedForMerge={selectedForMerge}
         onToggleMerge={onToggleMerge}
+        mergeIdKey={mergeIdKey}
       />
 
       {/* 左下角操作提示 */}
