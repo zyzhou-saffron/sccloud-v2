@@ -622,7 +622,7 @@ export default function DeckScatterPlot({
         <button
           onClick={resetView}
           title="恢复默认视图"
-          className="absolute top-2 right-2 z-20 flex items-center justify-center w-7 h-7 rounded-md transition-colors"
+          className="absolute top-2 left-2 z-20 flex items-center justify-center w-7 h-7 rounded-md transition-colors hover:bg-[rgba(200,96,25,0.1)] hover:border-[rgba(200,96,25,0.3)]"
           style={{
             background: "rgba(255,255,255,0.85)",
             border: "1px solid rgba(45,41,38,0.12)",
