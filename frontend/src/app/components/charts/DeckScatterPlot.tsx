@@ -608,7 +608,7 @@ export default function DeckScatterPlot({
           ref={deckRef}
           views={new OrthographicView({})}
           initialViewState={initialViewState}
-          controller={{ minZoom: -2, maxZoom: 8 }}
+          controller={{ minZoom: 0, maxZoom: 8 }}
           layers={layers}
           onViewStateChange={() => {}}
           style={{ position: "relative", width: "100%", height: "100%" }}
