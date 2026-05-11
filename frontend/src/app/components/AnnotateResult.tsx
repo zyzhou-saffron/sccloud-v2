@@ -224,84 +224,84 @@ export default function AnnotateResult({
 
   const toggleMergeSelection = useCallback((id: string, type?: "cluster" | "celltype") => {
     if (type) {
-      // 从表格点击：切换高亮类型，清空旧选区，选中新项
-      setTableHighlightType(type);
-      setSelectedForMerge(prev => {
-        if (prev.has(id)) {
-          // 取消选中
-          const next = new Set(prev);
-          next.delete(id);
-          if (next.size === 0) setTableHighlightType(null);
-          return next;
+      if (mergeMode) {
+        // 调整模式：多选，但只能选同一列
+        const switchColumn = tableHighlightType && tableHighlightType !== type;
+        if (switchColumn) {
+          // 切换列：清空旧选区，选中新项
+          setTableHighlightType(type);
+          setSelectedForMerge(new Set([id]));
+        } else {
+          // 同列：累加 toggle
+          setTableHighlightType(type);
+          setSelectedForMerge(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            if (next.size === 0) setTableHighlightType(null);
+            return next;
+          });
         }
-        return new Set([id]);
-      });
+      } else {
+        // 非调整模式：单选（替换）
+        const isDeselect = selectedForMerge.has(id) && selectedForMerge.size === 1;
+        if (isDeselect) {
+          setTableHighlightType(null);
+          setSelectedForMerge(new Set());
+        } else {
+          setTableHighlightType(type);
+          setSelectedForMerge(new Set([id]));
+        }
+      }
     } else {
       // 从 UMAP 图例点击：正常 toggle
       setSelectedForMerge(prev => {
         const next = new Set(prev);
         if (next.has(id)) next.delete(id);
         else next.add(id);
+        if (next.size === 0) setTableHighlightType(null);
         return next;
       });
     }
-  }, []);
+  }, [mergeMode, tableHighlightType, selectedForMerge]);
 
-  // 保存编辑后的注释结果
-  const handleSaveResults = useCallback(async () => {
+  // 保存编辑后的注释结果（前端本地处理，不调后端）
+  const handleSaveResults = useCallback(() => {
     if (Object.keys(editedResults).length === 0) return;
-    setSavingResults(true);
-    setMergeError(null);
 
-    // 构建 merge_map: old_celltype -> new_celltype
-    const merge_map: Record<string, string> = {};
+    // 构建 merge_map: cluster_id -> new_celltype
+    const clusterRename: Record<string, string> = {};
     for (const [cid, newName] of Object.entries(editedResults)) {
-      const row = markerTable.find(r => r.cluster_id === cid);
-      if (row && row.celltype !== newName && newName.trim()) {
-        merge_map[row.celltype] = newName.trim();
-      }
+      if (newName.trim()) clusterRename[cid] = newName.trim();
     }
 
-    if (Object.keys(merge_map).length === 0) {
-      setSavingResults(false);
-      return;
+    if (Object.keys(clusterRename).length === 0) return;
+
+    // 更新 scatter_data.celltype 数组
+    const scatter = displayScatter;
+    if (scatter) {
+      const newCelltype = [...scatter.celltype];
+      for (let i = 0; i < newCelltype.length; i++) {
+        const cid = scatter.cluster[i];
+        if (clusterRename[cid]) {
+          newCelltype[i] = clusterRename[cid];
+        }
+      }
+      setLocalScatter({ ...scatter, celltype: newCelltype });
     }
 
-    try {
-      const res = await submitTask({
-        project_id: task.project_id,
-        step: "merge_celltypes",
-        params: { merge_map },
-      });
+    // 更新 markerTable
+    setMarkerTable(prev =>
+      prev.map(row =>
+        clusterRename[row.cluster_id]
+          ? { ...row, celltype: clusterRename[row.cluster_id], annotation_result: clusterRename[row.cluster_id] }
+          : row
+      )
+    );
 
-      const pollTask = async (id: string): Promise<Task> => {
-        const t = await getTask(id);
-        if (t.status === "failed") throw new Error(t.error_msg || "保存失败");
-        if (t.status === "completed") return t;
-        await new Promise(r => setTimeout(r, 1500));
-        return pollTask(id);
-      };
-
-      const completedTask = await pollTask(res.id);
-      const resultData = await apiFetch<Record<string, unknown>>(`/api/tasks/${completedTask.id}/result`);
-
-      // 更新本地状态
-      if (resultData?.scatter_data) {
-        const newScatter = safeScatter(resultData.scatter_data);
-        if (newScatter) setLocalScatter(newScatter);
-      }
-      if (resultData?.marker_table) {
-        setMarkerTable(resultData.marker_table as MarkerTableRow[]);
-      }
-
-      setEditedResults({});
-      setMergeMode(false);
-    } catch (e) {
-      setMergeError(e instanceof Error ? e.message : "保存失败");
-    } finally {
-      setSavingResults(false);
-    }
-  }, [editedResults, markerTable, task.project_id]);
+    setEditedResults({});
+    setMergeMode(false);
+  }, [editedResults, displayScatter]);
 
   return (
     <div className="space-y-4">
@@ -493,27 +493,33 @@ export default function AnnotateResult({
                         transition: "background 0.15s",
                       }}
                     >
-                      <td
-                        className="px-3 py-2 font-mono"
-                        style={{
-                          color: isSelected ? "var(--clr-amber)" : "var(--clr-text)",
-                          cursor: "pointer",
-                          fontWeight: isSelected ? 600 : 400,
-                        }}
-                        onClick={() => toggleMergeSelection(row.cluster_id, "cluster")}
-                      >
-                        {row.cluster_id}
+                      <td className="px-2 py-1.5">
+                        <button
+                          onClick={() => toggleMergeSelection(row.cluster_id, "cluster")}
+                          className="px-2 py-0.5 rounded text-xs font-mono transition-all"
+                          style={{
+                            background: isSelected && tableHighlightType === "cluster" ? "var(--clr-amber)" : "var(--clr-bg-alt)",
+                            color: isSelected && tableHighlightType === "cluster" ? "#fff" : "var(--clr-text)",
+                            border: `1px solid ${isSelected && tableHighlightType === "cluster" ? "var(--clr-amber)" : "var(--clr-border)"}`,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {row.cluster_id}
+                        </button>
                       </td>
-                      <td
-                        className="px-3 py-2"
-                        style={{
-                          color: isSelected ? "var(--clr-amber)" : "var(--clr-text)",
-                          cursor: "pointer",
-                          fontWeight: isSelected ? 600 : 400,
-                        }}
-                        onClick={() => toggleMergeSelection(row.celltype, "celltype")}
-                      >
-                        {row.celltype}
+                      <td className="px-2 py-1.5">
+                        <button
+                          onClick={() => toggleMergeSelection(row.celltype, "celltype")}
+                          className="px-2 py-0.5 rounded text-xs transition-all"
+                          style={{
+                            background: isSelected && tableHighlightType === "celltype" ? "var(--clr-amber)" : "var(--clr-bg-alt)",
+                            color: isSelected && tableHighlightType === "celltype" ? "#fff" : "var(--clr-text)",
+                            border: `1px solid ${isSelected && tableHighlightType === "celltype" ? "var(--clr-amber)" : "var(--clr-border)"}`,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {row.celltype}
+                        </button>
                       </td>
                       <td className="px-3 py-2" style={{ color: "var(--clr-text)", maxWidth: 260 }}>
                         {row.markers.length > 0 ? (

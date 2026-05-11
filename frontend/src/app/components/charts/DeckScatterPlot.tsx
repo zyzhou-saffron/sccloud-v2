@@ -311,15 +311,15 @@ function LegendSidebar({
                     const count = counts[v] || 0;
                     // For merge selection: check by mergeIdKey
                     // If mergeIdKey="cluster", need to check if any cluster with this celltype is selected
-                    const mergeIdsForVal = mergeMode && mergeIdKey !== colorBy
+                    const mergeIdsForVal = mergeIdKey !== colorBy
                       ? points.filter(p => (p[colorBy as keyof typeof p] as string) === v).map(p => p[mergeIdKey])
                       : [v];
-                    const isMergeSelected = mergeMode && isActive && mergeIdsForVal.some(id => selectedForMerge?.has(id));
+                    const isMergeSelected = isActive && mergeIdsForVal.some(id => selectedForMerge?.has(id));
                     return (
                       <button
                         key={v}
                         onClick={() => {
-                          if (mergeMode && isActive && onToggleMerge) {
+                          if (isActive && onToggleMerge) {
                             // Toggle all merge IDs for this value
                             const uniqueIds = [...new Set(mergeIdsForVal)];
                             const allSelected = uniqueIds.every(id => selectedForMerge?.has(id));
@@ -334,7 +334,7 @@ function LegendSidebar({
                         }}
                         className="flex items-center gap-1.5 w-full text-left py-[3px] text-[11px] transition-opacity"
                         style={{
-                          opacity: isHidden && !mergeMode ? 0.3 : 1,
+                          opacity: isHidden && !isMergeActive ? 0.3 : 1,
                           cursor: mergeMode ? (isActive ? "pointer" : "default") : (isActive ? "pointer" : "default"),
                           background: isMergeSelected ? "rgba(200,96,25,0.12)" : "transparent",
                           borderRadius: 4,
@@ -590,6 +590,8 @@ export default function DeckScatterPlot({
   }
 
   const isMergeActive = selectedForMerge && selectedForMerge.size > 0;
+  // 选中内容的 key，用于触发 deck.gl 重绘（size 不变但内容变化时）
+  const selectionKey = selectedForMerge ? [...selectedForMerge].sort().join(",") : "";
 
   const mainLayer = new ScatterplotLayer({
     id: "scatter",
@@ -619,7 +621,7 @@ export default function DeckScatterPlot({
       return true;
     },
     updateTriggers: {
-      getFillColor: [hiddenClusters.size, paletteKey, colorBy, isMergeActive, selectedForMerge?.size, mergeIdKey],
+      getFillColor: [hiddenClusters.size, paletteKey, colorBy, isMergeActive, selectionKey, mergeIdKey],
     },
   });
 
