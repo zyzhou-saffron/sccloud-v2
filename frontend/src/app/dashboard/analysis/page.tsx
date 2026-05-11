@@ -118,13 +118,35 @@ function AnalysisPageContent() {
 
   const [clusterLevels, setClusterLevels] = useState<string[]>([]);
 
-  // Pipeline 模式切换
-  const [analysisMode, setAnalysisMode] = useState<"single" | "pipeline">("single");
-  const [activePipelineId, setActivePipelineId] = useState<string | null>(null);
+  // Pipeline 模式切换（从 sessionStorage 恢复）
+  const [analysisMode, _setAnalysisMode] = useState<"single" | "pipeline">(
+    ss?.analysisMode ?? "single"
+  );
+  const [activePipelineId, setActivePipelineId] = useState<string | null>(
+    ss?.activePipelineId ?? null
+  );
+
+  /** 持久化 analysisMode */
+  const setAnalysisMode = (v: "single" | "pipeline" | ((p: "single" | "pipeline") => "single" | "pipeline")) => {
+    _setAnalysisMode((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      saveSession({ analysisMode: next });
+      return next;
+    });
+  };
+
+  /** 持久化 activePipelineId */
+  const setActivePipelineIdPersist = (v: string | null | ((p: string | null) => string | null)) => {
+    setActivePipelineId((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      saveSession({ activePipelineId: next });
+      return next;
+    });
+  };
 
   // PipelineView 返回按钮事件监听
   useEffect(() => {
-    const handlePipelineBack = () => setActivePipelineId(null);
+    const handlePipelineBack = () => setActivePipelineIdPersist(null);
     window.addEventListener("pipeline-back", handlePipelineBack);
     return () => window.removeEventListener("pipeline-back", handlePipelineBack);
   }, []);
@@ -464,7 +486,7 @@ function AnalysisPageContent() {
           }
           onClick={() => {
             setAnalysisMode("single");
-            setActivePipelineId(null);
+            setActivePipelineIdPersist(null);
           }}
         >
           单步分析
@@ -493,7 +515,7 @@ function AnalysisPageContent() {
             <PipelineForm
               projectId={project.id}
               token={localStorage.getItem("access_token") || ""}
-              onSubmit={(pipelineId) => setActivePipelineId(pipelineId)}
+              onSubmit={(pipelineId) => setActivePipelineIdPersist(pipelineId)}
               uploadedFiles={uploadedFiles}
               onUploadedFilesChange={setUploadedFiles}
               sampleGroups={sampleGroups}

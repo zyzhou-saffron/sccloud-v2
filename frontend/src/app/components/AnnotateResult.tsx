@@ -3,10 +3,12 @@
  */
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { submitTask, getTask, apiFetch, type Task } from "../lib/api";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
+import { submitTask, getTask, apiFetch, updateTaskResult, type Task } from "../lib/api";
 import DeckScatterPlot from "./charts/DeckScatterPlot";
 import type { ScatterData } from "./charts/ScatterPlot";
+import GeneExpressionPopup from "./GeneExpressionPopup";
 
 function getToken() {
   if (typeof window !== "undefined") {
@@ -111,7 +113,6 @@ export default function AnnotateResult({
 
   // 编辑中的 annotation_result 值
   const [editedResults, setEditedResults] = useState<Record<string, string>>({});
-  const [savingResults, setSavingResults] = useState(false);
 
   // ── 合并模式状态 ──
   const [mergeMode, setMergeMode] = useState(false);
@@ -122,6 +123,11 @@ export default function AnnotateResult({
   const [currentColorBy, setCurrentColorBy] = useState("celltype");
   // 表格点击的高亮类型："cluster" | "celltype" | null
   const [tableHighlightType, setTableHighlightType] = useState<"cluster" | "celltype" | null>(null);
+
+  // ── 基因表达弹窗状态 ──
+  const [activeGene, setActiveGene] = useState<string | null>(null);
+  const [geneAnchor, setGeneAnchor] = useState<DOMRect | null>(null);
+  const geneRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   // 图例维度：表格选中 cluster → 显示 cluster，表格选中 celltype → 显示 celltype
   const deckColorBy = tableHighlightType ?? (mergeMode ? "cluster" : undefined);
@@ -265,8 +271,9 @@ export default function AnnotateResult({
     }
   }, [mergeMode, tableHighlightType, selectedForMerge]);
 
-  // 保存编辑后的注释结果（前端本地处理，不调后端）
-  const handleSaveResults = useCallback(() => {
+  // 保存编辑后的注释结果（更新本地状态 + 持久化到后端）
+  const [savingResults, setSavingResultsState] = useState(false);
+  const handleSaveResults = useCallback(async () => {
     if (Object.keys(editedResults).length === 0) return;
 
     // 构建 merge_map: cluster_id -> new_celltype
@@ -278,30 +285,50 @@ export default function AnnotateResult({
     if (Object.keys(clusterRename).length === 0) return;
 
     // 更新 scatter_data.celltype 数组
+    let newScatter: ScatterData | undefined;
     const scatter = displayScatter;
     if (scatter) {
-      const newCelltype = [...scatter.celltype];
+      const newCelltype = [...(scatter.celltype ?? [])];
       for (let i = 0; i < newCelltype.length; i++) {
         const cid = scatter.cluster[i];
         if (clusterRename[cid]) {
           newCelltype[i] = clusterRename[cid];
         }
       }
-      setLocalScatter({ ...scatter, celltype: newCelltype });
+      newScatter = { ...scatter, celltype: newCelltype };
+      setLocalScatter(newScatter);
     }
 
     // 更新 markerTable
-    setMarkerTable(prev =>
-      prev.map(row =>
-        clusterRename[row.cluster_id]
-          ? { ...row, celltype: clusterRename[row.cluster_id], annotation_result: clusterRename[row.cluster_id] }
-          : row
-      )
+    const newMarkerTable = markerTable.map(row =>
+      clusterRename[row.cluster_id]
+        ? { ...row, celltype: clusterRename[row.cluster_id], annotation_result: clusterRename[row.cluster_id] }
+        : row
     );
+    setMarkerTable(newMarkerTable);
 
     setEditedResults({});
     setMergeMode(false);
-  }, [editedResults, displayScatter]);
+
+    // 持久化到后端
+    setSavingResultsState(true);
+    try {
+      const updatePayload: Record<string, unknown> = {
+        marker_table: newMarkerTable,
+      };
+      if (newScatter) {
+        updatePayload.scatter_data = {
+          ...annotateData?.scatter_data,
+          celltype: newScatter.celltype,
+        };
+      }
+      await updateTaskResult(taskId, updatePayload);
+    } catch (e) {
+      console.error("保存注释结果失败:", e);
+    } finally {
+      setSavingResultsState(false);
+    }
+  }, [editedResults, displayScatter, markerTable, taskId, annotateData?.scatter_data]);
 
   return (
     <div className="space-y-4">
@@ -523,12 +550,44 @@ export default function AnnotateResult({
                       </td>
                       <td className="px-3 py-2" style={{ color: "var(--clr-text)", maxWidth: 260 }}>
                         {row.markers.length > 0 ? (
-                          <span title={row.markers.join(", ")}>
-                            {row.markers.slice(0, 5).join(", ")}
+                          <>
+                            {row.markers.slice(0, 5).map((g, gi) => (
+                              <React.Fragment key={g}>
+                                <button
+                                  ref={(el) => { if (el) geneRefs.current.set(g, el); }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const btn = geneRefs.current.get(g);
+                                    if (activeGene === g) {
+                                      setActiveGene(null);
+                                      setGeneAnchor(null);
+                                    } else {
+                                      setActiveGene(g);
+                                      setGeneAnchor(btn?.getBoundingClientRect() ?? null);
+                                    }
+                                  }}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    padding: 0,
+                                    color: activeGene === g ? "#60a5fa" : "var(--clr-text)",
+                                    cursor: "pointer",
+                                    textDecoration: activeGene === g ? "underline" : "none",
+                                    fontSize: "inherit",
+                                    fontFamily: "inherit",
+                                  }}
+                                >
+                                  {g}
+                                </button>
+                                {gi < Math.min(4, row.markers.length - 1) && (
+                                  <span style={{ color: "var(--clr-text-muted)" }}>, </span>
+                                )}
+                              </React.Fragment>
+                            ))}
                             {row.markers.length > 5 && (
                               <span style={{ color: "var(--clr-text-muted)" }}> +{row.markers.length - 5}</span>
                             )}
-                          </span>
+                          </>
                         ) : (
                           <span style={{ color: "var(--clr-text-faint)" }}>—</span>
                         )}
@@ -599,6 +658,18 @@ export default function AnnotateResult({
         <div className="text-xs px-3 py-2 rounded" style={{ background: "rgba(255,215,0,0.08)", borderLeft: "3px solid var(--clr-gold)", color: "var(--clr-text-muted)" }}>
           注释结果加载中或暂未返回...
         </div>
+      )}
+
+      {/* ── 基因表达弹窗 ── */}
+      {activeGene && geneAnchor && typeof window !== "undefined" && createPortal(
+        <GeneExpressionPopup
+          gene={activeGene}
+          projectId={task.project_id}
+          anchorRect={geneAnchor}
+          onClose={() => { setActiveGene(null); setGeneAnchor(null); }}
+          token={token}
+        />,
+        document.body
       )}
     </div>
   );

@@ -903,6 +903,56 @@ function(req) {
 
 
 # ======================================================================
+# 7b. 基因表达 UMAP 散点数据（供前端 WebGl 渲染）
+# ======================================================================
+
+#* 获取单个基因的 per-cell 表达值 + UMAP 坐标
+#* @param project_path 项目目录完整路径
+#* @param gene 基因符号
+#* @get /gene_expression
+function(project_path, gene) {
+  rds_path <- file.path(project_path, "seurat_annotated.rds")
+  if (!file.exists(rds_path)) {
+    rds_path <- file.path(project_path, "seurat_clustered.rds")
+  }
+  if (!file.exists(rds_path)) return(list(error = "RDS not found"))
+
+  pro <- readRDS(rds_path)
+
+  # 选择 assay
+  assay <- if ("SCT" %in% Seurat::Assays(pro)) "SCT" else "RNA"
+
+  # 检查基因是否存在
+  assay_data <- Seurat::GetAssayData(pro, assay = assay, layer = "data")
+  if (!gene %in% rownames(assay_data)) {
+    return(list(error = paste("Gene", gene, "not found")))
+  }
+
+  # 获取表达值
+  expr <- as.numeric(Seurat::FetchData(pro, vars = gene, assay = assay)[[1]])
+
+  # 获取 UMAP 坐标
+  umap <- tryCatch(
+    Seurat::Embeddings(pro, reduction = "harmony.umap"),
+    error = function(e) tryCatch(
+      Seurat::Embeddings(pro, reduction = "umap"),
+      error = function(e2) NULL
+    )
+  )
+  if (is.null(umap)) return(list(error = "No UMAP embedding found"))
+
+  list(
+    x = as.numeric(umap[, 1]),
+    y = as.numeric(umap[, 2]),
+    expression = expr,
+    gene = jsonlite::unbox(gene),
+    min_expr = jsonlite::unbox(min(expr)),
+    max_expr = jsonlite::unbox(max(expr))
+  )
+}
+
+
+# ======================================================================
 # 7c. Marker 基因表达可视化 (v1 Step 7 完整移植)
 #     用户上传 marker.txt → 解析 CellType 列表 → 选择后调用 my_distPlot11()
 #     调用: data_plot.R::my_distPlot11()

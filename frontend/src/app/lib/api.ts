@@ -296,6 +296,16 @@ export async function cancelTask(taskId: string): Promise<Task> {
   return apiFetch<Task>(`/api/tasks/${taskId}/cancel`, { method: "POST" });
 }
 
+export async function updateTaskResult(
+  taskId: string,
+  data: Record<string, unknown>
+): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>(`/api/tasks/${taskId}/result`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
 /* ===== WebSocket ===== */
 
 /**
