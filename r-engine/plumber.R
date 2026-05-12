@@ -970,7 +970,7 @@ function(project_path, gene, celltype = NULL) {
   assay_data <- Seurat::GetAssayData(pro, assay = assay, layer = "data")
   resolved_gene <- lookup_gene_symbol(gene, pro)
   if (is.null(resolved_gene)) {
-    return(list(error = paste("Gene", gene, "not found")))
+    return(list(error = paste0("未找到基因 ", gene, "，请检查基因名是否正确")))
   }
   gene <- resolved_gene
 
