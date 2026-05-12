@@ -50,7 +50,8 @@ interface MarkerTableRow {
   cluster_id: string;
   celltype: string;
   markers: string[];
-  annotation_result: string;
+  annotation_result?: string;
+  original_celltype?: string;
 }
 
 interface AnnotateData {
@@ -166,7 +167,7 @@ export default function AnnotateResult({
 
   const displayScatter = localScatter ?? rawScatter;
 
-  // ── 合并处理 ──
+  // ── 合并处理（直接更新本地状态 + 持久化到后端，不经过 R engine） ──
   const handleMerge = useCallback(async () => {
     if (selectedForMerge.size < 2 || !mergeTargetName.trim()) return;
     setMerging(true);
@@ -177,47 +178,52 @@ export default function AnnotateResult({
     const target = mergeTargetName.trim();
 
     if (tableHighlightType === "celltype") {
-      // selectedForMerge 存的是 celltype 名，直接用
       for (const ct of selectedForMerge) {
         merge_map[ct] = target;
       }
     } else {
-      // selectedForMerge 存的是 cluster_id，需要查 markerTable 得到 celltype
       for (const cid of selectedForMerge) {
         const row = markerTable.find(r => r.cluster_id === cid);
-        if (row) {
-          merge_map[row.celltype] = target;
-        }
+        if (row) merge_map[row.celltype] = target;
       }
     }
 
     try {
-      const res = await submitTask({
-        project_id: task.project_id,
-        step: "merge_celltypes",
-        params: { merge_map },
-      });
-
-      // 轮询等待完成
-      const pollTask = async (id: string): Promise<Task> => {
-        const t = await getTask(id);
-        if (t.status === "failed") throw new Error(t.error_msg || "合并失败");
-        if (t.status === "completed") return t;
-        await new Promise(r => setTimeout(r, 1500));
-        return pollTask(id);
-      };
-
-      const completedTask = await pollTask(res.id);
-
-      // 获取更新后的结果
-      const resultData = await apiFetch<Record<string, unknown>>(`/api/tasks/${completedTask.id}/result`);
-
-      // 更新本地状态
-      if (resultData?.scatter_data) {
-        const newScatter = safeScatter(resultData.scatter_data);
-        if (newScatter) setLocalScatter(newScatter);
+      // 1. 更新 scatter_data.celltype 数组
+      const scatter = displayScatter;
+      let newScatter: ScatterData | undefined;
+      if (scatter) {
+        const newCelltype = [...(scatter.celltype ?? [])];
+        for (let i = 0; i < newCelltype.length; i++) {
+          if (merge_map[newCelltype[i]]) {
+            newCelltype[i] = merge_map[newCelltype[i]];
+          }
+        }
+        newScatter = { ...scatter, celltype: newCelltype };
+        setLocalScatter(newScatter);
       }
-      // 重置合并状态
+
+      // 2. 更新 markerTable（只更新 celltype，保留 original_celltype 不变）
+      const newMarkerTable = markerTable.map(row =>
+        merge_map[row.celltype]
+          ? { ...row, celltype: merge_map[row.celltype] }
+          : row
+      );
+      setMarkerTable(newMarkerTable);
+
+      // 3. 持久化到后端
+      const updatePayload: Record<string, unknown> = {
+        marker_table: newMarkerTable,
+      };
+      if (newScatter) {
+        updatePayload.scatter_data = {
+          ...annotateData?.scatter_data,
+          celltype: newScatter.celltype,
+        };
+      }
+      await updateTaskResult(taskId, updatePayload);
+
+      // 4. 重置合并状态
       setSelectedForMerge(new Set());
       setMergeTargetName("");
       setMergeMode(false);
@@ -226,7 +232,7 @@ export default function AnnotateResult({
     } finally {
       setMerging(false);
     }
-  }, [selectedForMerge, mergeTargetName, task.project_id, markerTable]);
+  }, [selectedForMerge, mergeTargetName, tableHighlightType, markerTable, displayScatter, taskId, annotateData?.scatter_data]);
 
   const toggleMergeSelection = useCallback((id: string, type?: "cluster" | "celltype") => {
     if (type) {
@@ -299,10 +305,10 @@ export default function AnnotateResult({
       setLocalScatter(newScatter);
     }
 
-    // 更新 markerTable
+    // 更新 markerTable（只更新 celltype，保留 original_celltype 不变）
     const newMarkerTable = markerTable.map(row =>
       clusterRename[row.cluster_id]
-        ? { ...row, celltype: clusterRename[row.cluster_id], annotation_result: clusterRename[row.cluster_id] }
+        ? { ...row, celltype: clusterRename[row.cluster_id] }
         : row
     );
     setMarkerTable(newMarkerTable);
@@ -463,7 +469,7 @@ export default function AnnotateResult({
           style={{ background: "rgba(200,96,25,0.06)", border: "1px solid var(--clr-amber)" }}
         >
           <span className="text-xs" style={{ color: "var(--clr-text)" }}>
-            已修改 <strong>{Object.keys(editedResults).length}</strong> 个聚类的注释结果
+            已修改 <strong>{Object.keys(editedResults).length}</strong> 个聚类的 CellType
           </span>
           <button
             disabled={savingResults}
@@ -494,23 +500,23 @@ export default function AnnotateResult({
                     ClusterID
                   </th>
                   <th className="px-3 py-2 text-left font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
+                    原始注释
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
                     CellType
                   </th>
                   <th className="px-3 py-2 text-left font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
                     Marker Genes
                   </th>
-                  <th className="px-3 py-2 text-left font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
-                    Annotation Result
-                  </th>
                 </tr>
               </thead>
               <tbody>
                 {markerPageData.map((row, idx) => {
-                  const displayResult = editedResults[row.cluster_id] ?? row.annotation_result;
                   const isSelected = selectedForMerge.has(row.cluster_id) || selectedForMerge.has(row.celltype);
                   const rowBg = isSelected
                     ? "rgba(200,96,25,0.1)"
                     : idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.4)";
+                  const displayCelltype = editedResults[row.cluster_id] ?? row.celltype;
                   return (
                     <tr
                       key={row.cluster_id}
@@ -534,19 +540,38 @@ export default function AnnotateResult({
                           {row.cluster_id}
                         </button>
                       </td>
+                      <td className="px-3 py-2" style={{ color: "var(--clr-text-muted)", fontSize: "0.85em" }}>
+                        {row.original_celltype ?? row.celltype}
+                      </td>
                       <td className="px-2 py-1.5">
-                        <button
-                          onClick={() => toggleMergeSelection(row.celltype, "celltype")}
-                          className="px-2 py-0.5 rounded text-xs transition-all"
-                          style={{
-                            background: isSelected && tableHighlightType === "celltype" ? "var(--clr-amber)" : "var(--clr-bg-alt)",
-                            color: isSelected && tableHighlightType === "celltype" ? "#fff" : "var(--clr-text)",
-                            border: `1px solid ${isSelected && tableHighlightType === "celltype" ? "var(--clr-amber)" : "var(--clr-border)"}`,
-                            cursor: "pointer",
-                          }}
-                        >
-                          {row.celltype}
-                        </button>
+                        {mergeMode ? (
+                          <input
+                            type="text"
+                            value={displayCelltype}
+                            onChange={e => {
+                              setEditedResults(prev => ({ ...prev, [row.cluster_id]: e.target.value }));
+                            }}
+                            className="w-full px-1.5 py-0.5 rounded text-xs"
+                            style={{
+                              border: "1px solid var(--clr-border)",
+                              background: "var(--clr-bg)",
+                              color: "var(--clr-text)",
+                            }}
+                          />
+                        ) : (
+                          <button
+                            onClick={() => toggleMergeSelection(row.celltype, "celltype")}
+                            className="px-2 py-0.5 rounded text-xs transition-all"
+                            style={{
+                              background: isSelected && tableHighlightType === "celltype" ? "var(--clr-amber)" : "var(--clr-bg-alt)",
+                              color: isSelected && tableHighlightType === "celltype" ? "#fff" : "var(--clr-text)",
+                              border: `1px solid ${isSelected && tableHighlightType === "celltype" ? "var(--clr-amber)" : "var(--clr-border)"}`,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {row.celltype}
+                          </button>
+                        )}
                       </td>
                       <td className="px-3 py-2" style={{ color: "var(--clr-text)", maxWidth: 260 }}>
                         {row.markers.length > 0 ? (
@@ -590,25 +615,6 @@ export default function AnnotateResult({
                           </>
                         ) : (
                           <span style={{ color: "var(--clr-text-faint)" }}>—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {mergeMode ? (
-                          <input
-                            type="text"
-                            value={displayResult}
-                            onChange={e => {
-                              setEditedResults(prev => ({ ...prev, [row.cluster_id]: e.target.value }));
-                            }}
-                            className="w-full px-1.5 py-0.5 rounded text-xs"
-                            style={{
-                              border: "1px solid var(--clr-border)",
-                              background: "var(--clr-bg)",
-                              color: "var(--clr-text)",
-                            }}
-                          />
-                        ) : (
-                          <span style={{ color: "var(--clr-text)" }}>{displayResult}</span>
                         )}
                       </td>
                     </tr>

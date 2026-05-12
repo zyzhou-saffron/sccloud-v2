@@ -2,7 +2,7 @@
  * GeneExpressionPopup — 点击 marker 基因名后弹出的 UMAP 表达分布图
  *
  * 使用 deck.gl ScatterplotLayer 渲染 per-cell 表达值，
- * viridis 连续色阶映射。
+ * viridis 连续色阶映射。支持拖动。
  */
 "use client";
 
@@ -11,18 +11,17 @@ import { OrthographicView } from "@deck.gl/core";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import DeckGL from "@deck.gl/react";
 
-/* ── viridis 色阶（256 级采样） ── */
+/* ── viridis 色阶（低表达浅灰 → viridis） ── */
 function viridisColor(t: number): [number, number, number] {
-  // 分段线性近似 matplotlib viridis
   const stops: [number, [number, number, number]][] = [
-    [0.0, [68, 1, 84]],
-    [0.13, [72, 35, 116]],
-    [0.25, [64, 67, 135]],
-    [0.38, [52, 94, 141]],
+    [0.0, [220, 220, 220]],
+    [0.05, [200, 200, 200]],
+    [0.1, [68, 1, 84]],
+    [0.2, [72, 35, 116]],
+    [0.35, [52, 94, 141]],
     [0.5, [33, 145, 140]],
-    [0.63, [94, 201, 98]],
-    [0.75, [170, 220, 50]],
-    [0.88, [253, 231, 37]],
+    [0.65, [94, 201, 98]],
+    [0.8, [170, 220, 50]],
     [1.0, [253, 231, 37]],
   ];
   const clamped = Math.max(0, Math.min(1, t));
@@ -70,6 +69,53 @@ export default function GeneExpressionPopup({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const popupRef = useRef<HTMLDivElement>(null);
+
+  // ── 拖动状态 ──
+  const POPUP_W = 300;
+  const POPUP_H = 340;
+  const [pos, setPos] = useState(() => {
+    const MARGIN = 8;
+    let top = anchorRect.top - POPUP_H - MARGIN;
+    let left = anchorRect.left + anchorRect.width / 2 - POPUP_W / 2;
+    if (top < MARGIN) top = anchorRect.bottom + MARGIN;
+    left = Math.max(MARGIN, Math.min(left, window.innerWidth - POPUP_W - MARGIN));
+    top = Math.max(MARGIN, Math.min(top, window.innerHeight - POPUP_H - MARGIN));
+    return { top, left };
+  });
+  const dragRef = useRef<{ startX: number; startY: number; startPos: { top: number; left: number } } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setPos(prev => {
+      dragRef.current = { startX: e.clientX, startY: e.clientY, startPos: { ...prev } };
+      return prev;
+    });
+    setDragging(true);
+  }, []);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: MouseEvent) => {
+      if (!dragRef.current) return;
+      const dx = e.clientX - dragRef.current.startX;
+      const dy = e.clientY - dragRef.current.startY;
+      setPos({
+        top: Math.max(0, Math.min(dragRef.current.startPos.top + dy, window.innerHeight - POPUP_H)),
+        left: Math.max(0, Math.min(dragRef.current.startPos.left + dx, window.innerWidth - POPUP_W)),
+      });
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      setDragging(false);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+  }, [dragging]);
 
   // 获取数据
   useEffect(() => {
@@ -149,34 +195,6 @@ export default function GeneExpressionPopup({
     ];
   }, [data]);
 
-  // 计算弹窗位置：优先显示在 anchor 上方，空间不够则显示在下方
-  const popupStyle = useMemo((): React.CSSProperties => {
-    const POPUP_W = 280;
-    const POPUP_H = 320;
-    const MARGIN = 8;
-
-    let top = anchorRect.top - POPUP_H - MARGIN;
-    let left = anchorRect.left + anchorRect.width / 2 - POPUP_W / 2;
-
-    // 如果上方空间不够，显示在下方
-    if (top < MARGIN) {
-      top = anchorRect.bottom + MARGIN;
-    }
-
-    // 水平方向限制在视口内
-    left = Math.max(MARGIN, Math.min(left, window.innerWidth - POPUP_W - MARGIN));
-    top = Math.max(MARGIN, Math.min(top, window.innerHeight - POPUP_H - MARGIN));
-
-    return {
-      position: "fixed",
-      top,
-      left,
-      width: POPUP_W,
-      height: POPUP_H,
-      zIndex: 9999,
-    };
-  }, [anchorRect]);
-
   // deck.gl 视图状态：自适应数据范围
   const viewState = useMemo(() => {
     if (!data || data.x.length === 0) {
@@ -191,7 +209,6 @@ export default function GeneExpressionPopup({
     const rangeX = maxX - minX || 1;
     const rangeY = maxY - minY || 1;
     const maxRange = Math.max(rangeX, rangeY);
-    // 250px 可视区域，留 10% padding
     const zoom = Math.log2(250 / (maxRange * 1.1));
     return { target: [cx, cy] as [number, number], zoom };
   }, [data]);
@@ -200,38 +217,46 @@ export default function GeneExpressionPopup({
     <div
       ref={popupRef}
       style={{
-        ...popupStyle,
-        background: "rgba(20,18,16,0.95)",
-        backdropFilter: "blur(8px)",
+        position: "fixed",
+        top: pos.top,
+        left: pos.left,
+        width: POPUP_W,
+        height: POPUP_H,
+        zIndex: 9999,
+        background: "var(--clr-bg-card)",
         borderRadius: 8,
-        border: "1px solid rgba(255,255,255,0.1)",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+        border: "1px solid var(--clr-border)",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
       }}
     >
-      {/* 标题栏 */}
+      {/* 标题栏 — 可拖动 */}
       <div
+        onMouseDown={onDragStart}
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          padding: "6px 10px",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          padding: "6px 12px",
+          borderBottom: "1px solid var(--clr-border)",
+          background: "var(--clr-bg-alt)",
+          cursor: "grab",
+          userSelect: "none",
         }}
       >
-        <span style={{ color: "#e8e4e0", fontSize: 12, fontWeight: 600 }}>{gene}</span>
+        <span style={{ color: "var(--clr-text)", fontSize: 13, fontWeight: 600 }}>{gene}</span>
         <button
           onClick={onClose}
           style={{
             background: "none",
             border: "none",
-            color: "rgba(255,255,255,0.5)",
+            color: "var(--clr-text-muted)",
             cursor: "pointer",
-            fontSize: 14,
+            fontSize: 16,
             lineHeight: 1,
-            padding: "2px 4px",
+            padding: "0 4px",
           }}
         >
           x
@@ -239,7 +264,7 @@ export default function GeneExpressionPopup({
       </div>
 
       {/* 图表区域 */}
-      <div style={{ flex: 1, position: "relative" }}>
+      <div style={{ flex: 1, position: "relative", background: "var(--clr-bg-card)" }}>
         {loading && (
           <div
             style={{
@@ -248,7 +273,7 @@ export default function GeneExpressionPopup({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "rgba(255,255,255,0.5)",
+              color: "var(--clr-text-muted)",
               fontSize: 12,
             }}
           >
@@ -263,7 +288,7 @@ export default function GeneExpressionPopup({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#f87171",
+              color: "var(--clr-danger, #d32f2f)",
               fontSize: 12,
               padding: 12,
               textAlign: "center",
@@ -288,25 +313,26 @@ export default function GeneExpressionPopup({
       {data && (
         <div
           style={{
-            padding: "4px 10px 6px",
+            padding: "5px 12px 7px",
             display: "flex",
             alignItems: "center",
-            gap: 6,
-            borderTop: "1px solid rgba(255,255,255,0.08)",
+            gap: 8,
+            borderTop: "1px solid var(--clr-border)",
+            background: "var(--clr-bg)",
           }}
         >
-          <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, whiteSpace: "nowrap" }}>
+          <span style={{ color: "var(--clr-text-faint)", fontSize: 10, whiteSpace: "nowrap" }}>
             {data.min_expr.toFixed(1)}
           </span>
           <div
             style={{
               flex: 1,
-              height: 8,
-              borderRadius: 4,
-              background: `linear-gradient(to right, rgb(68,1,84), rgb(72,35,116), rgb(64,67,135), rgb(52,94,141), rgb(33,145,140), rgb(94,201,98), rgb(170,220,50), rgb(253,231,37))`,
+              height: 6,
+              borderRadius: 3,
+              background: `linear-gradient(to right, rgb(220,220,220), rgb(68,1,84), rgb(52,94,141), rgb(33,145,140), rgb(94,201,98), rgb(170,220,50), rgb(253,231,37))`,
             }}
           />
-          <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, whiteSpace: "nowrap" }}>
+          <span style={{ color: "var(--clr-text-faint)", fontSize: 10, whiteSpace: "nowrap" }}>
             {data.max_expr.toFixed(1)}
           </span>
         </div>

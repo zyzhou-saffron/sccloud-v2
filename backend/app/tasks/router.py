@@ -307,7 +307,23 @@ async def get_task_result(
         raise HTTPException(status_code=404, detail="结果文件不存在")
 
     with open(result_file, "r") as f:
-        return json.load(f)
+        result = json.load(f)
+
+    # 回填 original_celltype：旧数据可能没有此字段
+    if task.step == "annotate" and "marker_table" in result:
+        needs_backfill = any("original_celltype" not in row for row in result["marker_table"])
+        if needs_backfill:
+            singler_labels = result.get("singler_labels", {})
+            for row in result["marker_table"]:
+                if "original_celltype" not in row:
+                    cid = row.get("cluster_id", "")
+                    orig = singler_labels.get(cid, row.get("celltype", ""))
+                    # R 引擎返回的 singler_labels 值可能是列表
+                    if isinstance(orig, list):
+                        orig = orig[0] if orig else row.get("celltype", "")
+                    row["original_celltype"] = orig
+
+    return result
 
 
 @router.put("/{task_id}/result")

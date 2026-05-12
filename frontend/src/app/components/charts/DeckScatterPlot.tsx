@@ -629,13 +629,14 @@ export default function DeckScatterPlot({
 
   return (
     <div className="relative" style={{ height }}>
-      {/* deck.gl 画布 */}
+      {/* deck.gl 画布 — Nature 风格白底 */}
       <div
-        className="rounded-lg overflow-hidden"
+        className="overflow-hidden"
         style={{
           height,
           background: "#FFFFFF",
-          border: "1px solid rgba(45,41,38,0.06)",
+          borderRadius: 0,
+          border: "none",
         }}
       >
         <DeckGL
@@ -648,14 +649,14 @@ export default function DeckScatterPlot({
           style={{ position: "relative", width: "100%", height: "100%" }}
         />
 
-        {/* 重置视图按钮 */}
+        {/* 重置视图按钮 — Nature 风格极简 */}
         <button
           onClick={resetView}
           title="恢复默认视图"
-          className="absolute top-2 left-2 z-20 flex items-center justify-center w-7 h-7 rounded-md transition-colors hover:bg-[rgba(200,96,25,0.1)] hover:border-[rgba(200,96,25,0.3)]"
+          className="absolute top-2 left-2 z-20 flex items-center justify-center w-6 h-6 rounded transition-opacity opacity-40 hover:opacity-80"
           style={{
-            background: "rgba(255,255,255,0.85)",
-            border: "1px solid rgba(45,41,38,0.12)",
+            background: "rgba(255,255,255,0.9)",
+            border: "1px solid rgba(0,0,0,0.1)",
             cursor: "pointer",
             backdropFilter: "blur(4px)",
           }}
@@ -711,18 +712,15 @@ export default function DeckScatterPlot({
         mergeIdKey={mergeIdKey}
       />
 
-      {/* 左下角操作提示 */}
+      {/* 左下角信息 — Nature 风格极简 */}
       <div
-        className="absolute bottom-2 left-2 z-10 text-[10px] px-2 py-1 rounded"
+        className="absolute bottom-2 left-2 z-10 text-[10px] px-1.5 py-0.5"
         style={{
-          background: "rgba(255,255,255,0.8)",
-          color: "var(--clr-text-faint)",
+          color: "#999",
+          background: "transparent",
         }}
       >
-        🖱 滚轮缩放 · 拖拽平移 · 悬停查看
-        <span className="ml-2 font-mono" style={{ color: "var(--clr-amber)" }}>
-          {data.x.length.toLocaleString()} cells
-        </span>
+        {data.x.length.toLocaleString()} cells
       </div>
 
       {/* 外部注入的额外元素（如下载按钮） */}

@@ -6,6 +6,67 @@ from collections import defaultdict
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "cellmakers")
 
+# 常用抗体名称 → 标准基因符号映射
+_ANTIBODY_TO_GENE = {
+    "s100beta.": "S100B",
+    "s100beta": "S100B",
+    "s100-b": "S100B",
+    "s100b.": "S100B",
+    "smi32": "NEFM",
+    "smi31": "NEFH",
+    "tuj1": "TUBB3",
+    "tuj": "TUBB3",
+    "neun": "RBFOX3",
+    "huc/d": "ELAVL3",
+    "map2ab": "MAP2",
+    "map2ab": "MAP2",
+    "nfm": "NEFM",
+    "nfh": "NEFH",
+    "nf-m": "NEFM",
+    "nf-h": "NEFH",
+    "nestsin": "NES",
+    "nestin": "NES",
+    "gfap": "GFAP",
+    "iba1": "AIF1",
+    "cd45": "PTPRC",
+    "cd3": "CD3D",
+    "cd4": "CD4",
+    "cd8": "CD8A",
+    "cd19": "CD19",
+    "cd20": "MS4A1",
+    "cd56": "NCAM1",
+    "cd14": "CD14",
+    "cd16": "FCGR3A",
+    "cd11b": "ITGAM",
+    "cd11c": "ITGAX",
+    "hla-dr": "HLA-DRA",
+    "mhc class i": "B2M",
+    "mhc class ii": "HLA-DRA",
+    "β-iii-tubulin": "TUBB3",
+    "beta-iii-tubulin": "TUBB3",
+    "β-tubulin iii": "TUBB3",
+    "c-fos": "FOS",
+    "c-src": "SRC",
+    "synapsin": "SYN1",
+    "synapsin1": "SYN1",
+    "synaptophysin": "SYP",
+    "doublecortin": "DCX",
+    "neurofilament medium protein (nf-m)": "NEFM",
+    "neurofilament heavy protein (nf-h)": "NEFH",
+    "160 kda neurofilament medium": "NEFM",
+    "200kda neurofilament heavy": "NEFH",
+    "neurofilament m": "NEFM",
+    "neurofilament h": "NEFH",
+    "chat": "CHAT",
+    "th": "TH",
+    "tpH2": "TPH2",
+    "gad67": "GAD1",
+    "gad65": "GAD2",
+    "pv": "PVALB",
+    "calretinin": "CALB2",
+    "calbindin": "CALB1",
+}
+
 
 def _normalize(name: str) -> str:
     """Lowercase, keep only alphanumeric."""
@@ -73,6 +134,10 @@ def load_markers(tsv_path: str, species: str = None, tissue: str = None) -> dict
                 # Prefer Symbol over marker
                 gene = sym.strip() if sym.strip() else mk.strip()
                 if gene:
+                    # 尝试将抗体名称转换为标准基因符号
+                    gene_lower = gene.lower().strip()
+                    if gene_lower in _ANTIBODY_TO_GENE:
+                        gene = _ANTIBODY_TO_GENE[gene_lower]
                     db[cn].add(gene)
     # Convert sets to sorted lists
     return {k: sorted(v) for k, v in db.items()}
@@ -134,12 +199,19 @@ def match_celltype(celltype: str, marker_db: dict[str, list[str]]) -> list[str]:
 
 
 def annotate_with_markers(
-    scatter_data: dict, species: str = "Human", tissue: str = None
+    scatter_data: dict, species: str = "Human", tissue: str = None,
+    singler_labels: dict = None
 ) -> list[dict]:
     """Build marker table from scatter_data and cellmakers database.
 
-    Returns list of { cluster_id, celltype, markers, annotation_result }.
+    Returns list of { cluster_id, celltype, markers, annotation_result, original_celltype }.
     """
+    # R 引擎返回的 species/tissue 可能是列表
+    if isinstance(species, list):
+        species = species[0] if species else "Human"
+    if isinstance(tissue, list):
+        tissue = tissue[0] if tissue else None
+
     clusters = scatter_data.get("cluster", [])
     celltypes = scatter_data.get("celltype", [])
 
@@ -167,11 +239,16 @@ def annotate_with_markers(
     rows = []
     for cid, ct in sorted(cluster_celltype.items(), key=lambda x: _sort_key(x[0])):
         markers = match_celltype(ct, marker_db)
+        original_ct = (singler_labels or {}).get(cid, ct)
+        # R 引擎返回的 singler_labels 值可能是列表
+        if isinstance(original_ct, list):
+            original_ct = original_ct[0] if original_ct else ct
         rows.append({
             "cluster_id": cid,
             "celltype": ct,
             "markers": markers,
             "annotation_result": ct,
+            "original_celltype": original_ct,
         })
     return rows
 

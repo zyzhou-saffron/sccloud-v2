@@ -85,8 +85,9 @@ async def call_r_engine(
                 from app.utils.marker_match import annotate_with_markers
                 species = result.get("stats", {}).get("species", "Human")
                 tissue = result.get("stats", {}).get("tissue")
+                singler_labels = result.get("singler_labels", {})
                 result["marker_table"] = annotate_with_markers(
-                    result["scatter_data"], species, tissue
+                    result["scatter_data"], species, tissue, singler_labels
                 )
                 # 重写 JSON
                 if result_data_path:

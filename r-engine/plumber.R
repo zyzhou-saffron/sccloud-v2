@@ -29,6 +29,7 @@ source("R/utils.R")
 source("R/data_processing.R")
 source("R/data_summary.R")
 source("R/data_plot.R")
+source("R/gene_id_convert.R")
 
 # 自定义错误处理器: 将 stop() 的原始消息透传给调用方
 #* @plumber
@@ -200,6 +201,25 @@ function(req) {
     }
   }
 
+  # 转换预览：采样测试可映射比例
+  conversion_preview <- NULL
+  if (ensembl_version != "unknown") {
+    tryCatch({
+      sample_ids <- head(genes[grepl("^ENS[A-Z]*G[0-9]{11}", genes)], 50)
+      org_db <- if (grepl("Mouse", ensembl_version)) org.Mm.eg.db::org.Mm.eg.db else org.Hs.eg.db::org.Hs.eg.db
+      mapped <- AnnotationDbi::select(
+        org_db, keys = sub("\\.[0-9]+$", "", sample_ids),
+        columns = "SYMBOL", keytype = "ENSEMBL"
+      )
+      n_mapped <- sum(!is.na(mapped$SYMBOL))
+      conversion_preview <- list(
+        total_sampled = jsonlite::unbox(length(sample_ids)),
+        mapped = jsonlite::unbox(n_mapped),
+        ratio = jsonlite::unbox(round(n_mapped / length(sample_ids), 2))
+      )
+    }, error = function(e) {})
+  }
+
   list(
     filename = jsonlite::unbox(filename),
     n_rows = jsonlite::unbox(as.integer(n_rows)),
@@ -209,7 +229,8 @@ function(req) {
     file_size_mb = jsonlite::unbox(round(file.size(file_path) / 1024 / 1024, 2)),
     metadata_columns = meta_cols,
     samples = samples,
-    ensembl_version = jsonlite::unbox(ensembl_version)
+    ensembl_version = jsonlite::unbox(ensembl_version),
+    conversion_preview = conversion_preview
   )
 }
 
@@ -232,7 +253,19 @@ function(req) {
   pro <- readRDS(input_path)
   genes <- sort(rownames(GetAssayData(pro, assay = "SCT", layer = "data")))
 
-  list(status = "success", genes = genes)
+  # 包含 Ensembl 映射表（如可用），供前端双名搜索
+  ensembl_map <- pro@misc$ensembl_symbol_map
+  reverse_map <- NULL
+  if (!is.null(ensembl_map)) {
+    reverse_map <- names(ensembl_map)
+    names(reverse_map) <- ensembl_map
+  }
+
+  list(
+    status = "success",
+    genes = genes,
+    ensembl_map = if (!is.null(reverse_map)) as.list(reverse_map) else NULL
+  )
 }
 
 
@@ -262,6 +295,15 @@ function(req) {
     rds_files <- list.files(project_path, pattern = "\\.rds$", full.names = TRUE)
     if (length(rds_files) == 0) stop("项目目录中未找到 .rds 文件，请先上传数据文件")
     exp <- readRDS(rds_files[1])
+  }
+
+  # --- Ensembl ID → Gene Symbol 回退转换 ---
+  if (any(grepl("^ENS[A-Z]*G[0-9]{11}", head(rownames(exp), 100)))) {
+    report(15, "检测到 Ensembl ID，正在转换为基因符号...")
+    ensembl_info <- detect_ensembl_ids(rownames(exp))
+    if (ensembl_info$is_ensembl) {
+      exp <- convert_ensembl_to_symbol(exp, species = ensembl_info$species)
+    }
   }
 
   report(20, "计算线粒体比例...")
@@ -922,11 +964,13 @@ function(project_path, gene) {
   # 选择 assay
   assay <- if ("SCT" %in% Seurat::Assays(pro)) "SCT" else "RNA"
 
-  # 检查基因是否存在
+  # 检查基因是否存在（支持 Ensembl ID ↔ Symbol 双向查找）
   assay_data <- Seurat::GetAssayData(pro, assay = assay, layer = "data")
-  if (!gene %in% rownames(assay_data)) {
+  resolved_gene <- lookup_gene_symbol(gene, pro)
+  if (is.null(resolved_gene)) {
     return(list(error = paste("Gene", gene, "not found")))
   }
+  gene <- resolved_gene
 
   # 获取表达值
   expr <- as.numeric(Seurat::FetchData(pro, vars = gene, assay = assay)[[1]])
@@ -1286,6 +1330,22 @@ function(req) {
     )
   } else NULL
 
+  # 构建 per-cluster 原始注释标签（供前端"原始注释"列使用）
+  md <- pro@meta.data
+  singler_labels <- list()
+  if ("singleR" %in% colnames(md)) {
+    # 自动注释：每个 cluster 取众数 SingleR 标签
+    for (cid in unique(as.character(md$Cluster))) {
+      cluster_cells <- as.character(md[md$Cluster == cid, "singleR"])
+      singler_labels[[cid]] <- names(sort(table(cluster_cells), decreasing = TRUE))[1]
+    }
+  } else {
+    # 手动注释：使用 CellType 作为原始标签
+    for (cid in unique(as.character(md$Cluster))) {
+      singler_labels[[cid]] <- as.character(md[md$Cluster == cid, "CellType"][1])
+    }
+  }
+
   list(
     status = "success",
     result_path = archive_path,
@@ -1298,7 +1358,8 @@ function(req) {
       tissue = tissue
     ),
     freq_table = freq_table,
-    scatter_data = scatter_data
+    scatter_data = scatter_data,
+    singler_labels = singler_labels
   )
 }
 
@@ -1440,6 +1501,14 @@ convert_to_rds <- function(input_path, input_format, output_path) {
     stop(paste("不支持的输入格式:", input_format))
   )
 
+  # --- Ensembl ID → Gene Symbol 自动转换 ---
+  ensembl_info <- detect_ensembl_ids(rownames(obj))
+  if (ensembl_info$is_ensembl) {
+    message(sprintf("检测到 Ensembl ID (%s, %.1f%% 匹配)，正在转换为基因符号...",
+                    ensembl_info$species, ensembl_info$match_ratio * 100))
+    obj <- convert_ensembl_to_symbol(obj, species = ensembl_info$species)
+  }
+
   # 保存为 RDS
   saveRDS(obj, output_path)
 
@@ -1447,7 +1516,8 @@ convert_to_rds <- function(input_path, input_format, output_path) {
     status = "success",
     cells = ncol(obj),
     genes = nrow(obj),
-    file_size_mb = round(file.size(output_path) / 1024 / 1024, 2)
+    file_size_mb = round(file.size(output_path) / 1024 / 1024, 2),
+    ensembl_converted = !is.null(obj@misc$ensembl_symbol_map)
   )
 }
 
