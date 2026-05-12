@@ -6,16 +6,30 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { createPipeline, listPipelines, type Pipeline } from "../../../lib/pipeline-api";
-import { IconUpload, IconQuestion } from "../../../components/Icons";
+import { IconQuestion } from "../../../components/Icons";
 import Tooltip from "../../../components/Tooltip";
+import AddSampleDropdown from "../../../components/AddSampleDropdown";
+import UploadedFilesTable, { type SampleRow } from "../../../components/UploadedFilesTable";
+
+interface UploadedFile {
+  name: string;
+  path: string;
+  metadata_columns?: string[];
+  n_rows?: number;
+  n_cols?: number;
+  file_size_mb?: number;
+  samples?: { name: string; cell_count: number }[];
+  ensembl_version?: string;
+}
 
 interface PipelineFormProps {
   projectId: number;
   token: string;
   onSubmit: (pipelineId: string) => void;
-  hasUploadedFile?: boolean;
-  uploadedFile?: { name: string; path: string } | null;
-  onFileUpload?: (file: { name: string; path: string }) => void;
+  uploadedFiles: UploadedFile[];
+  onUploadedFilesChange: (files: UploadedFile[]) => void;
+  sampleGroups: Record<string, string>;
+  onSampleGroupsChange: (groups: Record<string, string>) => void;
 }
 
 const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
@@ -24,12 +38,12 @@ const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
   reduce: { method: "umap", n_pcs: 30, group_by: "Sample" },
   cluster: { method: "harmony", resolution: 0.5, n_dims: 30, group_by: "Sample" },
   markers: { cluster: "All", min_pct: 0.1, logfc_threshold: 0.25, p_val_adj: 0.05, test_use: "wilcox", only_pos: true, ntop: 5 },
-  annotate: { anno_type: "自动注释", group_by: "Sample" },
+  annotate: { anno_type: "自动注释", group_by: "Sample", species: "Human", tissue: "Blood" },
 };
 
 const STEP_LABELS: Record<string, string> = {
-  qc: "数据预处理", normalize: "数据标准化", reduce: "数据降维",
-  cluster: "批次聚类", markers: "差异基因", annotate: "细胞注释",
+  qc: "数据预处理", normalize: "数据标准化", reduce: "降维与聚类",
+  cluster: "降维与聚类", markers: "差异基因", annotate: "细胞注释",
 };
 
 const STATUS_MAP: Record<string, { dot: string; text: string }> = {
@@ -40,15 +54,63 @@ const STATUS_MAP: Record<string, { dot: string; text: string }> = {
   cancelled: { dot: "bg-[#E0DCD6]", text: "text-[#999]" },
 };
 
-export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFile = false, uploadedFile = null, onFileUpload }: PipelineFormProps) {
+export default function PipelineForm({ projectId, token, onSubmit, uploadedFiles, onUploadedFilesChange, sampleGroups, onSampleGroupsChange }: PipelineFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [params, setParams] = useState<Record<string, Record<string, unknown>>>(
     JSON.parse(JSON.stringify(DEFAULT_PARAMS))
   );
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
+  const [showAddSample, setShowAddSample] = useState(false);
+
+  // 从所有上传文件的元数据列中聚合分组列
+  const metadataColumns = [...new Set(uploadedFiles.flatMap(f => f.metadata_columns ?? []))];
+  const GROUP_EXCLUDE = new Set(["nCount_RNA", "nFeature_RNA", "percent.mt", "n_genes", "n_counts", "barcode"]);
+  const groupColumns = metadataColumns.filter(c => !GROUP_EXCLUDE.has(c) && !c.startsWith("n_") && !c.startsWith("percent."));
+  // 如果用户设定了分组，确保 "Group" 作为可选项
+  const hasSampleGroups = Object.values(sampleGroups).some(Boolean);
+  const allGroupOptions = hasSampleGroups && !groupColumns.includes("Group")
+    ? [...groupColumns, "Group"]
+    : groupColumns;
+  const effectiveGroupCols = allGroupOptions.length > 0 ? allGroupOptions : ["Sample", "Group"];
+
+  // 将 uploadedFiles 展平为样本行
+  const sampleRows: SampleRow[] = uploadedFiles.flatMap(f => {
+    if (f.samples && f.samples.length > 0) {
+      return f.samples.map(s => ({
+        fileName: f.name,
+        filePath: f.path,
+        sampleName: s.name,
+        cellCount: s.cell_count,
+        geneCount: f.n_cols ?? 0,
+        fileSizeMb: f.file_size_mb ?? 0,
+        ensemblVersion: f.ensembl_version ?? "unknown",
+      }));
+    }
+    // 没有样本信息时，整个文件作为一行
+    return [{
+      fileName: f.name,
+      filePath: f.path,
+      sampleName: f.name.replace(/\.(rds|h5ad|h5seurat)$/i, ""),
+      cellCount: f.n_rows ?? 0,
+      geneCount: f.n_cols ?? 0,
+      fileSizeMb: f.file_size_mb ?? 0,
+      ensemblVersion: f.ensembl_version ?? "unknown",
+    }];
+  });
+
+  // 当 metadataColumns 变化时，更新默认分组
+  useEffect(() => {
+    if (effectiveGroupCols.length > 0 && !effectiveGroupCols.includes(params.reduce.group_by as string)) {
+      const defaultGroup = effectiveGroupCols[0];
+      setParams(prev => ({
+        ...prev,
+        reduce: { ...prev.reduce, group_by: defaultGroup },
+        cluster: { ...prev.cluster, group_by: defaultGroup },
+        annotate: { ...prev.annotate, group_by: defaultGroup },
+      }));
+    }
+  }, [metadataColumns, hasSampleGroups]);
 
   /* ===== Pipeline 历史记录 ===== */
   const [showHistory, setShowHistory] = useState(false);
@@ -98,66 +160,10 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
     setParams(prev => ({ ...prev, [stepId]: { ...prev[stepId], [key]: value } }));
   };
 
-  const handleFileUpload = async (file: File) => {
-    const CHUNK = 5 * 1024 * 1024;
-    setUploadProgress(0);
-    setError(null);
-
-    try {
-      // 1. 初始化
-      const initForm = new FormData();
-      initForm.append("filename", file.name);
-      initForm.append("file_size", String(file.size));
-      const initRes = await fetch("/api/upload/init", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: initForm,
-      });
-      if (!initRes.ok) throw new Error("初始化上传失败");
-      const { upload_id } = await initRes.json() as { upload_id: string };
-
-      // 2. 分片上传
-      const totalChunks = Math.ceil(file.size / CHUNK);
-      for (let i = 0; i < totalChunks; i++) {
-        const blob = file.slice(i * CHUNK, (i + 1) * CHUNK);
-        const chunkForm = new FormData();
-        chunkForm.append("upload_id", upload_id);
-        chunkForm.append("chunk_index", String(i));
-        chunkForm.append("chunk", blob, file.name);
-        const chunkRes = await fetch("/api/upload/chunk", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: chunkForm,
-        });
-        if (!chunkRes.ok) throw new Error(`分片 ${i + 1} 上传失败`);
-        setUploadProgress(Math.round(((i + 1) / totalChunks) * 95));
-      }
-
-      // 3. 合并
-      const completeForm = new FormData();
-      completeForm.append("upload_id", upload_id);
-      completeForm.append("project_id", String(projectId));
-      const completeRes = await fetch("/api/upload/complete", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: completeForm,
-      });
-      if (!completeRes.ok) throw new Error("合并文件失败");
-      const { path: filePath } = await completeRes.json() as { path: string };
-
-      setUploadProgress(100);
-      onFileUpload?.({ name: file.name, path: filePath });
-      setTimeout(() => setUploadProgress(null), 1200);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "上传失败");
-      setUploadProgress(null);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!hasUploadedFile && !uploadedFile) {
+    if (uploadedFiles.length === 0) {
       setError("请先上传 .rds 数据文件");
       return;
     }
@@ -167,9 +173,15 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
     setShowHistory(false);
 
     try {
+      // 将上传文件路径注入 QC 参数
+      const pipelineParams = { ...params };
+      if (uploadedFiles.length > 0 && uploadedFiles[0].path) {
+        pipelineParams.qc = { ...pipelineParams.qc, rds_file_path: uploadedFiles[0].path };
+      }
+
       const data = {
         project_id: projectId,
-        params,
+        params: pipelineParams,
       };
 
       const response = await createPipeline(token, data);
@@ -286,74 +298,40 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
         </div>
       )}
 
-      {/* 文件上传区域（如果还没有上传文件） */}
-      {!uploadedFile && !hasUploadedFile && (
-        <div
-          className="card p-6 border-2 border-dashed text-center mb-6"
-          style={{
-            borderColor: "var(--clr-amber)",
-            background: "rgba(200,96,25,0.03)",
-            cursor: "pointer",
+      {/* 样本表格（无文件时显示居中按钮，有文件时表格最后一行显示添加） */}
+      <div className="relative">
+        <UploadedFilesTable
+          samples={sampleRows}
+          sampleGroups={sampleGroups}
+          onGroupChange={(sampleName, group) => onSampleGroupsChange({ ...sampleGroups, [sampleName]: group })}
+          onDelete={(sampleName, filePath) => {
+            const newGroups = { ...sampleGroups };
+            delete newGroups[sampleName];
+            onSampleGroupsChange(newGroups);
+            onUploadedFilesChange(uploadedFiles.filter(f => f.path !== filePath));
           }}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <IconUpload size={32} className="mx-auto mb-3 text-[#C86019]" />
-          <div className="text-sm font-semibold mb-1" style={{ color: "var(--clr-amber-dark)" }}>
-            点击上传或拖拽文件
-          </div>
-          <div className="text-xs" style={{ color: "var(--clr-text-muted)" }}>
-            支持: .rds, .h5seurat, .h5ad, .rdata
-          </div>
+          onAddSample={() => setShowAddSample(true)}
+        />
 
-          {/* 上传进度 */}
-          {uploadProgress !== null && (
-            <div className="mt-4 space-y-2">
-              <div className="flex justify-between text-xs" style={{ color: "var(--clr-amber-dark)" }}>
-                <span>上传中...</span>
-                <span>{uploadProgress}%</span>
-              </div>
-              <div className="w-full h-2 rounded-full" style={{ background: "var(--clr-border)" }}>
-                <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{ width: `${uploadProgress}%`, background: "var(--clr-amber)" }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 已上传文件显示 */}
-      {(uploadedFile || hasUploadedFile) && (
-        <div
-          className="card p-4 mb-6 border"
-          style={{
-            borderColor: "#2D8A56",
-            background: "rgba(45,138,86,0.05)",
+        {/* 添加样本下拉菜单 */}
+        <AddSampleDropdown
+          isOpen={showAddSample}
+          onClose={() => setShowAddSample(false)}
+          onFileUploaded={(file) => {
+            const exists = uploadedFiles.some(f => f.path === file.path);
+            if (!exists) {
+              onUploadedFilesChange([...uploadedFiles, file]);
+            }
           }}
-        >
-          <div className="flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D8A56" strokeWidth="2.5" strokeLinecap="round">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-            <span className="text-sm" style={{ color: "#2D8A56" }}>
-              已选择: {uploadedFile?.name || "数据文件"}
-            </span>
-          </div>
-        </div>
-      )}
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".rds,.h5seurat,.h5ad,.rdata"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) handleFileUpload(f);
-          e.target.value = '';
-        }}
-      />
+          onFilesSelected={(files) => {
+            const newFiles = files.filter(f => !uploadedFiles.some(ef => ef.path === f.path));
+            onUploadedFilesChange([...uploadedFiles, ...newFiles]);
+          }}
+          projectId={projectId}
+          token={token}
+          existingPaths={uploadedFiles.map(f => f.path)}
+        />
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">
         {/* Steps 1-4: 基础分析参数 */}
@@ -377,7 +355,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                 <input type="range" min="0" max="100" value={params.qc.max_mt_ratio as number} onChange={(e) => updateStepParam("qc", "max_mt_ratio", Number(e.target.value))} className="w-full accent-[#C86019]" />
                 <div className="text-[10px] text-right" style={{ color: "var(--clr-text-faint)", fontFamily: "var(--font-mono)" }}>{params.qc.max_mt_ratio as number}%</div>
               </div>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
                 <div>
                   <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                     <span>最小基因数</span>
@@ -423,98 +401,92 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
             {/* 分隔线 */}
             <div className="col-span-2" style={{ borderTop: "1px solid var(--clr-border)" }} />
 
-            {/* Step 3 Reduce */}
+            {/* Step 2: 降维与聚类 */}
             <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
-              Step 3: 数据降维
+              Step 2: 降维与聚类
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
-                  <span>降维方法</span>
-                  <Tooltip content="变量: method\n\nUMAP / t-SNE 注重局部近邻结构的非线性拓扑保留，适合可视化；PCA 则是寻找全局方差最大的线性组合。">
-                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
-                  </Tooltip>
-                </label>
-                <select value={params.reduce.method as string} onChange={(e) => updateStepParam("reduce", "method", e.target.value)} className={selectCls} style={selectStyle}>
-                  <option value="umap">UMAP</option><option value="tsne">t-SNE</option><option value="pca">PCA</option>
-                </select>
-              </div>
-              <div>
-                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
-                  <span>PCA 维度</span>
-                  <Tooltip content="变量: n_pcs\n\n参与下游降维和聚类的主成分数量。">
-                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
-                  </Tooltip>
-                </label>
-                <input type="number" value={params.reduce.n_pcs as number} onChange={(e) => updateStepParam("reduce", "n_pcs", Number(e.target.value))} min={2} className={numberCls} style={inputStyle} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
-                <div className="flex gap-3">
-                  {["Sample", "Group"].map((v) => (
-                    <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
-                      <input type="radio" name="pipeline_group_by" value={v} checked={params.reduce.group_by === v} onChange={() => updateStepParam("reduce", "group_by", v)} className="accent-[#C86019]" />
-                      {v === "Sample" ? "样本" : "处理组"}
-                    </label>
-                  ))}
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                    <span>降维方法</span>
+                    <Tooltip content="变量: method\n\nUMAP / t-SNE 注重局部近邻结构的非线性拓扑保留，适合可视化；PCA 则是寻找全局方差最大的线性组合。">
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    </Tooltip>
+                  </label>
+                  <select value={params.reduce.method as string} onChange={(e) => updateStepParam("reduce", "method", e.target.value)} className={selectCls} style={selectStyle}>
+                    <option value="umap">UMAP</option><option value="tsne">t-SNE</option><option value="pca">PCA</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                    <span>PCA 维度</span>
+                    <Tooltip content="变量: n_pcs\n\n参与下游降维和聚类的主成分数量。">
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    </Tooltip>
+                  </label>
+                  <input type="number" value={params.reduce.n_pcs as number} onChange={(e) => updateStepParam("reduce", "n_pcs", Number(e.target.value))} min={2} className={numberCls} style={inputStyle} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
+                  <div className="flex gap-3">
+                    {effectiveGroupCols.map((v) => (
+                      <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
+                        <input type="radio" name="pipeline_group_by" value={v} checked={params.reduce.group_by === v} onChange={() => updateStepParam("reduce", "group_by", v)} className="accent-[#C86019]" />
+                        {v}
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-
-            {/* 分隔线 */}
-            <div className="col-span-2" style={{ borderTop: "1px solid var(--clr-border)" }} />
-
-            {/* Step 4 Cluster */}
-            <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
-              Step 4: 批次聚类
-            </div>
-            <div className="grid grid-cols-4 gap-3">
-              <div>
-                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
-                  <span>校正方法</span>
-                  <Tooltip content="变量: method\n\nHarmony 是目前最流行的单细胞批次校正算法。">
-                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
-                  </Tooltip>
-                </label>
-                <select value={params.cluster.method as string} onChange={(e) => updateStepParam("cluster", "method", e.target.value)} className={selectCls} style={selectStyle}>
-                  <option value="harmony">Harmony</option>
-                </select>
-              </div>
-              <div>
-                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
-                  <span>降维维度</span>
-                  <Tooltip content="变量: n_dims\n\nPCA/Harmony 使用的维度数，通常 20~30 维。">
-                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
-                  </Tooltip>
-                </label>
-                <input type="number" value={params.cluster.n_dims as number} onChange={(e) => updateStepParam("cluster", "n_dims", Number(e.target.value))} min={2} max={50} className={numberCls} style={inputStyle} />
-              </div>
-              <div>
-                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
-                  <span>校正分组</span>
-                  <Tooltip content="变量: group_by\n\n指定按哪个元数据字段进行批次校正。">
-                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
-                  </Tooltip>
-                </label>
-                <div className="flex gap-3">
-                  {["Sample", "group"].map((v) => (
-                    <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
-                      <input type="radio" name="pipeline_cluster_group_by" value={v} checked={(params.cluster.group_by ?? "Sample") === v} onChange={() => updateStepParam("cluster", "group_by", v)} className="accent-[#C86019]" />
-                      {v === "Sample" ? "样本" : "处理组"}
-                    </label>
-                  ))}
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                    <span>校正方法</span>
+                    <Tooltip content="变量: method\n\nHarmony 是目前最流行的单细胞批次校正算法。">
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    </Tooltip>
+                  </label>
+                  <select value={params.cluster.method as string} onChange={(e) => updateStepParam("cluster", "method", e.target.value)} className={selectCls} style={selectStyle}>
+                    <option value="harmony">Harmony</option>
+                  </select>
                 </div>
-              </div>
-              <div>
-                <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
-                  <span>聚类分辨率</span>
-                  <Tooltip content="变量: resolution\n\n决定聚类敏感度。数值越大亚群越细密（0.8+）；越小越粗放（0.2）。">
-                    <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
-                  </Tooltip>
-                </label>
-                <input type="range" min="0" max="2" step="0.01" value={params.cluster.resolution as number} onChange={(e) => updateStepParam("cluster", "resolution", Number(e.target.value))} className="w-full accent-[#C86019]" />
-                <div className="flex justify-between text-[10px]" style={{ color: "var(--clr-text-faint)", fontFamily: "var(--font-mono)" }}>
-                  <span>0</span><span style={{ color: "var(--clr-amber)", fontWeight: 600 }}>{params.cluster.resolution as number}</span><span>2</span>
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                    <span>降维维度</span>
+                    <Tooltip content="变量: n_dims\n\nPCA/Harmony 使用的维度数，通常 20~30 维。">
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    </Tooltip>
+                  </label>
+                  <input type="number" value={params.cluster.n_dims as number} onChange={(e) => updateStepParam("cluster", "n_dims", Number(e.target.value))} min={2} max={50} className={numberCls} style={inputStyle} />
+                </div>
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                    <span>校正分组</span>
+                    <Tooltip content="变量: group_by\n\n指定按哪个元数据字段进行批次校正。">
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    </Tooltip>
+                  </label>
+                  <div className="flex gap-3">
+                    {effectiveGroupCols.map((v) => (
+                      <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
+                        <input type="radio" name="pipeline_cluster_group_by" value={v} checked={(params.cluster.group_by ?? "Sample") === v} onChange={() => updateStepParam("cluster", "group_by", v)} className="accent-[#C86019]" />
+                        {v}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
+                    <span>聚类分辨率</span>
+                    <Tooltip content="变量: resolution\n\n决定聚类敏感度。数值越大亚群越细密（0.8+）；越小越粗放（0.2）。">
+                      <IconQuestion size={14} className="text-stone-400 hover:text-[#C86019] transition-colors" />
+                    </Tooltip>
+                  </label>
+                  <input type="range" min="0" max="2" step="0.01" value={params.cluster.resolution as number} onChange={(e) => updateStepParam("cluster", "resolution", Number(e.target.value))} className="w-full accent-[#C86019]" />
+                  <div className="flex justify-between text-[10px]" style={{ color: "var(--clr-text-faint)", fontFamily: "var(--font-mono)" }}>
+                    <span>0</span><span style={{ color: "var(--clr-amber)", fontWeight: 600 }}>{params.cluster.resolution as number}</span><span>2</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -527,12 +499,12 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
             高级分析参数
           </div>
           <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-4">
-            {/* Step 5 Markers */}
+            {/* Step 3 Markers */}
             <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
-              Step 5: 差异基因
+              Step 3: 差异基因
             </div>
             <div className="space-y-2">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
                 <div>
                   <label className="flex items-center gap-1 text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>
                     <span>最小细胞比例</span>
@@ -561,7 +533,7 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
                   <input type="number" value={params.markers.p_val_adj as number ?? 0.05} onChange={(e) => updateStepParam("markers", "p_val_adj", Number(e.target.value))} step={0.01} min={0} max={1} className={numberCls} style={inputStyle} />
                 </div>
               </div>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>检验方法</label>
                   <select value={params.markers.test_use as string} onChange={(e) => updateStepParam("markers", "test_use", e.target.value)} className={selectCls} style={selectStyle}>
@@ -604,26 +576,77 @@ export default function PipelineForm({ projectId, token, onSubmit, hasUploadedFi
             {/* 分隔线 */}
             <div className="col-span-2" style={{ borderTop: "1px solid var(--clr-border)" }} />
 
-            {/* Step 6 Annotate */}
+            {/* Step 4 Annotate */}
             <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
-              Step 6: 细胞注释
+              Step 4: 细胞注释
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>注释方式</label>
-                <div className="flex gap-3">
-                  {["自动注释", "手动注释"].map((v) => (
-                    <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
-                      <input type="radio" name="pipeline_anno_type" value={v} checked={params.annotate.anno_type === v} onChange={() => updateStepParam("annotate", "anno_type", v)} className="accent-[#C86019]" /> {v}
-                    </label>
-                  ))}
+            <div className="space-y-3">
+              {/* 物种 + 组织选择 */}
+              <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>物种</label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={params.annotate.species as string}
+                      onChange={(e) => updateStepParam("annotate", "species", e.target.value)}
+                      className={selectCls} style={selectStyle}
+                    >
+                      <option value="Human">Human (人)</option>
+                      <option value="Mouse">Mouse (小鼠)</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const versions = uploadedFiles.map(f => f.ensembl_version);
+                        const detected = versions.some(v => v?.includes("Mouse")) ? "Mouse" : "Human";
+                        updateStepParam("annotate", "species", detected);
+                      }}
+                      className="px-2.5 py-2 text-xs rounded border transition-colors hover:bg-[rgba(200,96,25,0.06)]"
+                      style={{ borderColor: "var(--clr-border)", color: "var(--clr-amber-dark)" }}
+                    >
+                      自动检测
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>组织 / 器官</label>
+                  <select
+                    value={params.annotate.tissue as string}
+                    onChange={(e) => updateStepParam("annotate", "tissue", e.target.value)}
+                    className={selectCls} style={selectStyle}
+                  >
+                    <option value="Blood">血液 (Blood)</option>
+                    <option value="Brain">脑 (Brain)</option>
+                    <option value="Lung">肺 (Lung)</option>
+                    <option value="Liver">肝 (Liver)</option>
+                    <option value="Kidney">肾 (Kidney)</option>
+                    <option value="Heart">心脏 (Heart)</option>
+                    <option value="Pancreas">胰腺 (Pancreas)</option>
+                    <option value="Skin">皮肤 (Skin)</option>
+                  </select>
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
-                <select value={params.annotate.group_by as string} onChange={(e) => updateStepParam("annotate", "group_by", e.target.value)} className={selectCls} style={selectStyle}>
-                  <option value="Sample">Sample</option><option value="Group">Group</option><option value="CellType">CellType</option>
-                </select>
+              {/* 注释方式 + 分组 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>注释方式</label>
+                  <div className="flex gap-3">
+                    {["自动注释", "手动注释"].map((v) => (
+                      <label key={v} className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: "var(--clr-text)" }}>
+                        <input type="radio" name="pipeline_anno_type" value={v} checked={params.annotate.anno_type === v} onChange={() => updateStepParam("annotate", "anno_type", v)} className="accent-[#C86019]" /> {v}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
+                  <select value={params.annotate.group_by as string} onChange={(e) => updateStepParam("annotate", "group_by", e.target.value)} className={selectCls} style={selectStyle}>
+                    {effectiveGroupCols.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                    <option value="CellType">CellType</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>

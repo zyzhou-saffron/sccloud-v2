@@ -21,19 +21,20 @@ import { useMemo } from "react";
 /* Plotly.js 需要 CSR — 使用 dynamic import 避免 SSR */
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
-/* 颜色映射 — 暖色系 + 高饱和度 */
+/* 颜色映射 — Tol Bright + Vibrant（色盲安全，默认色板） */
 const PALETTE = [
-  "#f59e0b", "#ef4444", "#10b981", "#3b82f6", "#8b5cf6",
-  "#ec4899", "#06b6d4", "#f97316", "#14b8a6", "#a855f7",
-  "#e11d48", "#0ea5e9", "#84cc16", "#f43f5e", "#6366f1",
-  "#d946ef", "#22d3ee", "#eab308", "#64748b", "#fb923c",
+  "#4477AA", "#66CCEE", "#228833", "#CCBB44", "#EE6677",
+  "#AA3377", "#BBBBBB", "#009988", "#EE7733", "#EE3377",
+  "#332288", "#999933", "#DDCC77", "#CC6677", "#882255",
 ];
 
 export interface ScatterData {
   x: number[];
   y: number[];
   cluster: string[];
+  celltype?: string[];
   sample?: string[];
+  group?: string[];
 }
 
 interface ScatterPlotProps {
@@ -69,8 +70,8 @@ export default function ScatterPlot({
         name: group,
         marker: {
           color: PALETTE[i % PALETTE.length],
-          size: 3,
-          opacity: 0.7,
+          size: 4,
+          opacity: 0.4,
         },
         hovertemplate: `${group}<br>${method}_1: %{x:.2f}<br>${method}_2: %{y:.2f}<extra></extra>`,
       };

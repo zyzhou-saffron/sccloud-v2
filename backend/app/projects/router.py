@@ -220,3 +220,97 @@ async def get_project_genes(
             status_code=504,
             detail="R 引擎超时，请稍后重试",
         )
+
+
+# ===== 基因表达查询 =====
+
+@router.get("/{project_id}/gene_expression")
+async def get_gene_expression(
+    project_id: int,
+    gene: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """获取单个基因在所有细胞上的表达值 + UMAP 坐标，供前端渲染散点图。"""
+    import httpx
+
+    project = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.user_id == current_user.id)
+        .first()
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    settings = get_settings()
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0)
+        ) as client:
+            response = await client.get(
+                f"{settings.r_engine_url}/gene_expression",
+                params={"project_path": project.storage_path, "gene": gene},
+            )
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=502,
+                detail=f"R 引擎返回错误: {response.text}",
+            )
+        return response.json()
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail="R 引擎超时，请稍后重试",
+        )
+
+
+# ===== 项目文件列表 =====
+
+DATA_EXTENSIONS = {".rds", ".h5ad", ".h5seurat", ".rdata", ".h5"}
+
+
+
+class ProjectFile(BaseModel):
+    filename: str
+    path: str
+    size_mb: float
+
+
+class ProjectFileList(BaseModel):
+    files: list[ProjectFile]
+
+
+@router.get("/{project_id}/files", response_model=ProjectFileList)
+async def list_project_files(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """列出项目存储目录中的数据文件（.rds, .h5ad 等）。"""
+    project = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.user_id == current_user.id)
+        .first()
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    if not project.storage_path:
+        return ProjectFileList(files=[])
+
+    # 只列出 _uploaded 子目录中的用户原始上传文件
+    uploaded_dir = os.path.join(project.storage_path, "_uploaded")
+    if not os.path.isdir(uploaded_dir):
+        return ProjectFileList(files=[])
+
+    files = []
+    for fname in sorted(os.listdir(uploaded_dir)):
+        ext = os.path.splitext(fname)[1].lower()
+        if ext not in DATA_EXTENSIONS:
+            continue
+        fpath = os.path.join(uploaded_dir, fname)
+        if os.path.isfile(fpath):
+            size_mb = round(os.path.getsize(fpath) / 1024 / 1024, 2)
+            files.append(ProjectFile(filename=fname, path=fpath, size_mb=size_mb))
+
+    return ProjectFileList(files=files)

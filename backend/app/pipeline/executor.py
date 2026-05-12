@@ -13,7 +13,8 @@ from app.utils.r_bridge import call_r_engine
 
 logger = logging.getLogger(__name__)
 
-PIPELINE_STEPS = ["qc", "normalize", "reduce", "cluster", "markers", "annotate"]
+PIPELINE_STEPS = ["qc", "normalize", "reduce", "annotate", "markers"]
+# reduce 步骤内部依次执行 reduce + cluster 两个 R 引擎端点
 
 
 async def run_pipeline(pipeline_id: str) -> None:
@@ -33,30 +34,35 @@ async def run_pipeline(pipeline_id: str) -> None:
         db.commit()
 
         for step in PIPELINE_STEPS:
-            pipeline.current_step = step
-            db.commit()
+            # reduce 步骤合并了降维 + 聚类，内部依次执行两个 R 引擎端点
+            r_steps = [step]
+            if step == "reduce":
+                r_steps = ["reduce", "cluster"]
 
-            logger.info(f"Pipeline {pipeline_id}: executing step {step}")
-
-            try:
-                # 普通步骤
-                step_params = dict(pipeline.params.get(step, {}))
-
-                # Step 5 markers 强制覆盖 cluster = "All"（运行前不知道 cluster 列表）
-                if step == "markers":
-                    step_params["cluster"] = "All"
-
-                ok = await _execute_step(db, pipeline, step, step_params)
-                if not ok:
-                    return  # 失败，流程停止
-
-            except Exception as e:
-                logger.exception(f"Pipeline {pipeline_id}: error in step {step}: {e}")
-                pipeline.status = "failed"
-                pipeline.error_step = step
-                pipeline.error_msg = str(e)
+            for r_step in r_steps:
+                pipeline.current_step = r_step
                 db.commit()
-                return
+
+                logger.info(f"Pipeline {pipeline_id}: executing step {r_step}")
+
+                try:
+                    step_params = dict(pipeline.params.get(r_step, {}))
+
+                    # markers 强制覆盖 cluster = "All"（运行前不知道 cluster 列表）
+                    if r_step == "markers":
+                        step_params["cluster"] = "All"
+
+                    ok = await _execute_step(db, pipeline, r_step, step_params)
+                    if not ok:
+                        return  # 失败，流程停止
+
+                except Exception as e:
+                    logger.exception(f"Pipeline {pipeline_id}: error in step {r_step}: {e}")
+                    pipeline.status = "failed"
+                    pipeline.error_step = r_step
+                    pipeline.error_msg = str(e)
+                    db.commit()
+                    return
 
         # 全部完成
         pipeline.status = "completed"

@@ -58,7 +58,7 @@ async function doRefreshToken(): Promise<string | null> {
  * 尝试刷新 token（带并发锁）。
  * 多个请求同时 401 时，只有第一个真正执行 refresh，其余复用结果。
  */
-async function tryRefresh(): Promise<string | null> {
+export async function tryRefresh(): Promise<string | null> {
   if (!refreshPromise) {
     refreshPromise = doRefreshToken().finally(() => {
       refreshPromise = null;
@@ -77,7 +77,7 @@ function forceLogout(): never {
 }
 
 /** 通用 fetch 封装 — 自动注入 auth header + 401 自动续期 */
-async function apiFetch<T>(
+export async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
@@ -296,6 +296,16 @@ export async function cancelTask(taskId: string): Promise<Task> {
   return apiFetch<Task>(`/api/tasks/${taskId}/cancel`, { method: "POST" });
 }
 
+export async function updateTaskResult(
+  taskId: string,
+  data: Record<string, unknown>
+): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>(`/api/tasks/${taskId}/result`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
 /* ===== WebSocket ===== */
 
 /**
@@ -441,5 +451,40 @@ export async function uploadFileChunked(
     filename: result.filename,
     size_mb: result.size_mb,
   };
+}
+
+
+/* ===== 项目文件列表 ===== */
+
+export interface ProjectFile {
+  filename: string;
+  path: string;
+  size_mb: number;
+}
+
+export async function listProjectFiles(projectId: number): Promise<ProjectFile[]> {
+  const res = await apiFetch<{ files: ProjectFile[] }>(`/api/projects/${projectId}/files`);
+  return res.files;
+}
+
+export interface InspectResult {
+  filename: string;
+  n_rows: number;
+  n_cols: number;
+  genes: string[];
+  gene_ids: string[];
+  file_size_mb: number;
+  metadata_columns: string[];
+  samples?: { name: string; cell_count: number }[];
+  ensembl_version?: string;
+}
+
+export async function inspectFileByPath(filePath: string): Promise<InspectResult> {
+  const form = new FormData();
+  form.append("file_path", filePath);
+  return apiFetch<InspectResult>("/api/upload/inspect-path", {
+    method: "POST",
+    body: form,
+  });
 }
 

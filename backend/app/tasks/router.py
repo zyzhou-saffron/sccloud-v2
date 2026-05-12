@@ -25,7 +25,7 @@ class TaskSubmit(BaseModel):
     project_id: int
     step: str = Field(
         ...,
-        pattern=r"^(qc|normalize|reduce|cluster|markers|enrich|annotate|convert|markers_pairwise|plot_markers|subset_cluster|marker_expr)$",
+        pattern=r"^(qc|normalize|reduce|cluster|markers|enrich|annotate|convert|markers_pairwise|plot_markers|subset_cluster|marker_expr|merge_celltypes)$",
     )
     params: dict = Field(default_factory=dict)
 
@@ -307,7 +307,67 @@ async def get_task_result(
         raise HTTPException(status_code=404, detail="结果文件不存在")
 
     with open(result_file, "r") as f:
-        return json.load(f)
+        result = json.load(f)
+
+    # 回填 original_celltype：旧数据可能没有此字段
+    if task.step == "annotate" and "marker_table" in result:
+        needs_backfill = any("original_celltype" not in row for row in result["marker_table"])
+        if needs_backfill:
+            singler_labels = result.get("singler_labels", {})
+            for row in result["marker_table"]:
+                if "original_celltype" not in row:
+                    cid = row.get("cluster_id", "")
+                    orig = singler_labels.get(cid, row.get("celltype", ""))
+                    # R 引擎返回的 singler_labels 值可能是列表
+                    if isinstance(orig, list):
+                        orig = orig[0] if orig else row.get("celltype", "")
+                    row["original_celltype"] = orig
+
+    return result
+
+
+@router.put("/{task_id}/result")
+async def update_task_result(
+    task_id: str,
+    body: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    更新任务结果数据（用于保存注释编辑等前端修改）。
+    将前端传入的字段合并写入 {step}_result.json。
+    """
+    import json
+    import os
+
+    task = (
+        db.query(Task)
+        .filter(Task.id == task_id, Task.user_id == current_user.id)
+        .first()
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    if task.status != "completed":
+        raise HTTPException(status_code=400, detail="任务尚未完成")
+
+    project = db.query(Project).filter(Project.id == task.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    result_file = os.path.join(project.storage_path, f"{task.step}_result.json")
+    if not os.path.exists(result_file):
+        raise HTTPException(status_code=404, detail="结果文件不存在")
+
+    # 读取现有数据，合并更新
+    with open(result_file, "r") as f:
+        existing = json.load(f)
+
+    existing.update(body)
+
+    with open(result_file, "w") as f:
+        json.dump(existing, f, ensure_ascii=False)
+
+    return {"status": "success"}
 
 
 @router.get("/{task_id}/plot")

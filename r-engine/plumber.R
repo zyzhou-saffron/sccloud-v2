@@ -29,6 +29,7 @@ source("R/utils.R")
 source("R/data_processing.R")
 source("R/data_summary.R")
 source("R/data_plot.R")
+source("R/gene_id_convert.R")
 
 # 自定义错误处理器: 将 stop() 的原始消息透传给调用方
 #* @plumber
@@ -90,6 +91,155 @@ function() {
 
 
 # ======================================================================
+# 文件解析（上传后 inspect）
+# ======================================================================
+
+#* 解析上传的 RDS/H5AD 文件，返回维度、基因名和元数据列
+#* @post /inspect
+function(req) {
+  body <- jsonlite::fromJSON(req$postBody)
+  file_path <- body$file_path
+  filename <- body$filename %||% basename(file_path)
+
+  if (!file.exists(file_path)) stop(paste("文件不存在:", file_path))
+
+  ext <- tolower(tools::file_ext(file_path))
+
+  if (ext %in% c("rds", "rdata", "h5seurat")) {
+    obj <- readRDS(file_path)
+
+    n_rows <- nrow(obj)
+    n_cols <- ncol(obj)
+    genes <- rownames(obj)
+
+    # 尝试获取 Ensemble ID
+    gene_ids <- tryCatch({
+      if ("ENSEMBL" %in% colnames(obj@meta.data)) {
+        as.character(obj@meta.data$ENSEMBL)
+      } else if ("ensembl_gene_id" %in% colnames(obj@meta.data)) {
+        as.character(obj@meta.data$ensembl_gene_id)
+      } else {
+        ensembl_pattern <- "^ENS[A-Z]*[0-9]{11}$"
+        if (any(grepl(ensembl_pattern, genes))) {
+          genes
+        } else {
+          rep("N/A", length(genes))
+        }
+      }
+    }, error = function(e) {
+      rep("N/A", length(genes))
+    })
+
+    meta_cols <- colnames(obj@meta.data)
+
+    # 检测样本列表（从 Sample 列读取 unique 值）
+    samples <- list()
+    if ("Sample" %in% meta_cols) {
+      sample_vals <- as.character(obj@meta.data$Sample)
+      for (s in sort(unique(sample_vals))) {
+        samples[[length(samples) + 1]] <- list(
+          name = jsonlite::unbox(s),
+          cell_count = jsonlite::unbox(as.integer(sum(sample_vals == s)))
+        )
+      }
+    }
+
+  } else if (ext == "h5ad") {
+    if (!requireNamespace("anndata", quietly = TRUE)) {
+      stop("需要安装 anndata 库来解析 H5AD 文件")
+    }
+    adata <- anndata::read_h5ad(file_path)
+
+    n_rows <- adata$n_obs
+    n_cols <- adata$n_vars
+    genes <- as.character(adata$var_names)
+
+    gene_ids <- tryCatch({
+      if ("gene_ids" %in% colnames(adata$var)) {
+        as.character(adata$var$gene_ids)
+      } else if ("ensembl_id" %in% colnames(adata$var)) {
+        as.character(adata$var$ensembl_id)
+      } else {
+        rep("N/A", length(genes))
+      }
+    }, error = function(e) {
+      rep("N/A", length(genes))
+    })
+
+    meta_cols <- as.character(colnames(adata$obs))
+
+    # 检测样本列表（从 Sample 列读取 unique 值）
+    samples <- list()
+    if ("Sample" %in% meta_cols) {
+      sample_vals <- as.character(adata$obs$Sample)
+      for (s in sort(unique(sample_vals))) {
+        samples[[length(samples) + 1]] <- list(
+          name = jsonlite::unbox(s),
+          cell_count = jsonlite::unbox(as.integer(sum(sample_vals == s)))
+        )
+      }
+    }
+
+  } else {
+    stop(paste("不支持的文件格式:", ext))
+  }
+
+  # 基因 ID 类型推断
+  id_type_info <- detect_gene_id_type(genes)
+  gene_id_type <- id_type_info$id_type
+  ensembl_version <- switch(gene_id_type,
+    ensembl = {
+      if (id_type_info$species == "mouse") "Ensembl Gene ID (Mouse)"
+      else "Ensembl Gene ID (Human)"
+    },
+    entrez  = "Entrez Gene ID",
+    refseq  = "RefSeq ID",
+    uniprot = "UniProt ID",
+    "symbol"
+  )
+
+  # 转换预览：采样测试可映射比例
+  conversion_preview <- NULL
+  tryCatch({
+    id_type_info <- detect_gene_id_type(genes)
+    if (id_type_info$id_type != "symbol") {
+      sample_ids <- head(genes, 50)
+      keytype <- switch(id_type_info$id_type,
+        ensembl = "ENSEMBL", entrez = "ENTREZID",
+        refseq = "REFSEQ", uniprot = "UNIPROT"
+      )
+      org_db <- if (id_type_info$species == "mouse") org.Mm.eg.db::org.Mm.eg.db else org.Hs.eg.db::org.Hs.eg.db
+      mapped <- AnnotationDbi::select(
+        org_db, keys = sub("\\.[0-9]+$", "", sample_ids),
+        columns = "SYMBOL", keytype = keytype
+      )
+      n_mapped <- sum(!is.na(mapped$SYMBOL))
+      conversion_preview <- list(
+        id_type = jsonlite::unbox(id_type_info$id_type),
+        total_sampled = jsonlite::unbox(length(sample_ids)),
+        mapped = jsonlite::unbox(n_mapped),
+        ratio = jsonlite::unbox(round(n_mapped / length(sample_ids), 2))
+      )
+    }
+  }, error = function(e) {})
+
+  list(
+    filename = jsonlite::unbox(filename),
+    n_rows = jsonlite::unbox(as.integer(n_rows)),
+    n_cols = jsonlite::unbox(as.integer(n_cols)),
+    genes = head(genes, 100),
+    gene_ids = head(gene_ids, 100),
+    file_size_mb = jsonlite::unbox(round(file.size(file_path) / 1024 / 1024, 2)),
+    metadata_columns = meta_cols,
+    samples = samples,
+    ensembl_version = jsonlite::unbox(ensembl_version),
+    gene_id_type = jsonlite::unbox(gene_id_type),
+    conversion_preview = conversion_preview
+  )
+}
+
+
+# ======================================================================
 # 基因列表查询（轻量端点，供前端自动补全）
 # ======================================================================
 
@@ -107,7 +257,19 @@ function(req) {
   pro <- readRDS(input_path)
   genes <- sort(rownames(GetAssayData(pro, assay = "SCT", layer = "data")))
 
-  list(status = "success", genes = genes)
+  # 包含 Ensembl 映射表（如可用），供前端双名搜索
+  ensembl_map <- pro@misc$ensembl_symbol_map
+  reverse_map <- NULL
+  if (!is.null(ensembl_map)) {
+    reverse_map <- names(ensembl_map)
+    names(reverse_map) <- ensembl_map
+  }
+
+  list(
+    status = "success",
+    genes = genes,
+    ensembl_map = if (!is.null(reverse_map)) as.list(reverse_map) else NULL
+  )
 }
 
 
@@ -137,6 +299,13 @@ function(req) {
     rds_files <- list.files(project_path, pattern = "\\.rds$", full.names = TRUE)
     if (length(rds_files) == 0) stop("项目目录中未找到 .rds 文件，请先上传数据文件")
     exp <- readRDS(rds_files[1])
+  }
+
+  # --- 非 Symbol 基因 ID → Gene Symbol 回退转换 ---
+  id_info <- detect_gene_id_type(rownames(exp))
+  if (id_info$id_type != "symbol") {
+    report(15, sprintf("检测到 %s ID，正在转换为基因符号...", toupper(id_info$id_type)))
+    exp <- convert_ids_to_symbol(exp, id_type = id_info$id_type, species = id_info$species)
   }
 
   report(20, "计算线粒体比例...")
@@ -466,11 +635,17 @@ function(req) {
       error = function(e2) NULL
     )
   )
-  scatter_data <- if (!is.null(embeddings)) list(
-    x       = as.numeric(embeddings[, 1]),
-    y       = as.numeric(embeddings[, 2]),
-    cluster = as.character(Idents(pro))
-  ) else NULL
+  scatter_data <- if (!is.null(embeddings)) {
+    md <- pro@meta.data
+    list(
+      x         = as.numeric(embeddings[, 1]),
+      y         = as.numeric(embeddings[, 2]),
+      cluster   = as.character(Idents(pro)),
+      celltype  = as.character(md$CellType %||% Idents(pro)),
+      sample    = as.character(md$Sample %||% "unknown"),
+      group     = as.character(md$Group %||% md$Sample %||% "unknown")
+    )
+  } else NULL
 
   list(
     status = "success",
@@ -772,6 +947,81 @@ function(req) {
 
 
 # ======================================================================
+# 7b. 基因表达 UMAP 散点数据（供前端 WebGl 渲染）
+# ======================================================================
+
+#* 获取单个基因的 per-cell 表达值 + UMAP 坐标
+#* @param project_path 项目目录完整路径
+#* @param gene 基因符号
+#* @get /gene_expression
+function(project_path, gene, celltype = NULL) {
+  rds_path <- file.path(project_path, "seurat_annotated.rds")
+  if (!file.exists(rds_path)) {
+    rds_path <- file.path(project_path, "seurat_clustered.rds")
+  }
+  if (!file.exists(rds_path)) return(list(error = "RDS not found"))
+
+  pro <- readRDS(rds_path)
+
+  # 选择 assay
+  assay <- if ("SCT" %in% Seurat::Assays(pro)) "SCT" else "RNA"
+
+  # 检查基因是否存在（支持 Ensembl ID ↔ Symbol 双向查找）
+  assay_data <- Seurat::GetAssayData(pro, assay = assay, layer = "data")
+  resolved_gene <- lookup_gene_symbol(gene, pro)
+  if (is.null(resolved_gene)) {
+    return(list(error = paste("Gene", gene, "not found")))
+  }
+  gene <- resolved_gene
+
+  # 获取表达值
+  expr <- as.numeric(Seurat::FetchData(pro, vars = gene, assay = assay)[[1]])
+
+  # 获取 UMAP 坐标
+  umap <- tryCatch(
+    Seurat::Embeddings(pro, reduction = "harmony.umap"),
+    error = function(e) tryCatch(
+      Seurat::Embeddings(pro, reduction = "umap"),
+      error = function(e2) NULL
+    )
+  )
+  if (is.null(umap)) return(list(error = "No UMAP embedding found"))
+
+  # 按 CellType 计算表达比例
+  md <- pro@meta.data
+  ct_col <- if ("CellType" %in% colnames(md)) "CellType" else "seurat_clusters"
+  celltypes <- as.character(md[[ct_col]])
+  unique_cts <- sort(unique(celltypes))
+
+  # 各细胞类型中表达 > 0 的比例
+  ct_stats <- list()
+  for (ct in unique_cts) {
+    idx <- which(celltypes == ct)
+    ct_expr <- expr[idx]
+    n_total <- length(idx)
+    n_expressed <- sum(ct_expr > 0)
+    ct_stats[[ct]] <- list(
+      n_cells = jsonlite::unbox(n_total),
+      n_expressed = jsonlite::unbox(n_expressed),
+      pct_expressed = jsonlite::unbox(round(n_expressed / n_total * 100, 1)),
+      mean_expr = jsonlite::unbox(round(mean(ct_expr), 3))
+    )
+  }
+
+  list(
+    x = as.numeric(umap[, 1]),
+    y = as.numeric(umap[, 2]),
+    expression = expr,
+    gene = jsonlite::unbox(gene),
+    min_expr = jsonlite::unbox(min(expr)),
+    max_expr = jsonlite::unbox(max(expr)),
+    celltype_stats = ct_stats,
+    current_celltype = jsonlite::unbox(celltype)
+  )
+}
+
+
+# ======================================================================
 # 7c. Marker 基因表达可视化 (v1 Step 7 完整移植)
 #     用户上传 marker.txt → 解析 CellType 列表 → 选择后调用 my_distPlot11()
 #     调用: data_plot.R::my_distPlot11()
@@ -1048,16 +1298,18 @@ function(req) {
 
   anno_type <- params$anno_type %||% "自动注释"
   group_by <- params$group_by %||% "CellType"
+  species <- params$species %||% "Human"
+  tissue <- params$tissue %||% "Blood"
   mkfs <- params$markers_table  # 手动注释用
 
-  report(30, paste0("运行细胞注释 (", anno_type, ")..."))
+  report(30, paste0("运行细胞注释 (", anno_type, " / ", species, " / ", tissue, ")..."))
 
   # 调用原始函数 — data_summary.R::RunAnno()
   if (anno_type == "手动注释" && !is.null(mkfs)) {
     mkfs_df <- as.data.frame(mkfs)
-    result <- RunAnno(pro, mkfs_df, anno_type, group_by)
+    result <- RunAnno(pro, mkfs_df, anno_type, group_by, species, tissue)
   } else {
-    result <- RunAnno(pro, NULL, "自动注释", group_by)
+    result <- RunAnno(pro, NULL, "自动注释", group_by, species, tissue)
   }
 
   pro <- result$data1
@@ -1083,6 +1335,42 @@ function(req) {
 
   report(100, "细胞注释完成")
 
+  # 提取 UMAP 坐标供前端渲染（多分组着色）
+  embeddings <- tryCatch(
+    Embeddings(pro, reduction = "harmony.umap"),
+    error = function(e) tryCatch(
+      Embeddings(pro, reduction = "umap"),
+      error = function(e2) NULL
+    )
+  )
+  scatter_data <- if (!is.null(embeddings)) {
+    md <- pro@meta.data
+    list(
+      x         = as.numeric(embeddings[, 1]),
+      y         = as.numeric(embeddings[, 2]),
+      cluster   = as.character(md$Cluster %||% Idents(pro)),
+      celltype  = as.character(md$CellType %||% md$Cluster %||% Idents(pro)),
+      sample    = as.character(md$Sample %||% "unknown"),
+      group     = as.character(md$Group %||% md$Sample %||% "unknown")
+    )
+  } else NULL
+
+  # 构建 per-cluster 原始注释标签（供前端"原始注释"列使用）
+  md <- pro@meta.data
+  singler_labels <- list()
+  if ("singleR" %in% colnames(md)) {
+    # 自动注释：每个 cluster 取众数 SingleR 标签
+    for (cid in unique(as.character(md$Cluster))) {
+      cluster_cells <- as.character(md[md$Cluster == cid, "singleR"])
+      singler_labels[[cid]] <- names(sort(table(cluster_cells), decreasing = TRUE))[1]
+    }
+  } else {
+    # 手动注释：使用 CellType 作为原始标签
+    for (cid in unique(as.character(md$Cluster))) {
+      singler_labels[[cid]] <- as.character(md[md$Cluster == cid, "CellType"][1])
+    }
+  }
+
   list(
     status = "success",
     result_path = archive_path,
@@ -1090,9 +1378,13 @@ function(req) {
     stats = list(
       cells = ncol(pro),
       cell_types = length(unique(pro$CellType)),
-      anno_type = anno_type
+      anno_type = anno_type,
+      species = species,
+      tissue = tissue
     ),
-    freq_table = freq_table
+    freq_table = freq_table,
+    scatter_data = scatter_data,
+    singler_labels = singler_labels
   )
 }
 
@@ -1234,6 +1526,14 @@ convert_to_rds <- function(input_path, input_format, output_path) {
     stop(paste("不支持的输入格式:", input_format))
   )
 
+  # --- 非 Symbol 基因 ID → Gene Symbol 自动转换 ---
+  id_info <- detect_gene_id_type(rownames(obj))
+  if (id_info$id_type != "symbol") {
+    message(sprintf("检测到 %s ID (%.1f%% 匹配)，正在转换为基因符号...",
+                    toupper(id_info$id_type), id_info$match_ratio * 100))
+    obj <- convert_ids_to_symbol(obj, id_type = id_info$id_type, species = id_info$species)
+  }
+
   # 保存为 RDS
   saveRDS(obj, output_path)
 
@@ -1241,7 +1541,8 @@ convert_to_rds <- function(input_path, input_format, output_path) {
     status = "success",
     cells = ncol(obj),
     genes = nrow(obj),
-    file_size_mb = round(file.size(output_path) / 1024 / 1024, 2)
+    file_size_mb = round(file.size(output_path) / 1024 / 1024, 2),
+    id_converted = !is.null(obj@misc$gene_id_map)
   )
 }
 

@@ -54,7 +54,7 @@ const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
   markers: { cluster: "All", min_pct: 0.1, logfc_threshold: 0.25, p_val_adj: 0.05, test_use: "wilcox", only_pos: true, ntop: 5 },
   enrich: { pathway: "GO", direction: "Up", p_adjust_method: "BH", pvalue_cutoff: 0.05, qvalue_cutoff: 0.2, n_term: 10 },
   marker_expr: { cell_type: "" },
-  annotate: { anno_type: "自动注释", group_by: "Sample" },
+  annotate: { anno_type: "自动注释", group_by: "Sample", species: "Human", tissue: "Blood" },
 };
 
 /* ===== 主组件 ===== */
@@ -94,9 +94,23 @@ function AnalysisPageContent() {
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // uploadedFile: { name: 原文件名, path: 服务器路径 } 或 null
-  const [uploadedFile, setUploadedFile] = useState<{ name: string; path: string } | null>(
-    ss?.uploadedFile ?? null
+  // 多文件上传状态（每文件可含多样本）
+  interface UploadedFile {
+    name: string;
+    path: string;
+    metadata_columns?: string[];
+    n_rows?: number;
+    n_cols?: number;
+    file_size_mb?: number;
+    samples?: { name: string; cell_count: number }[];
+    ensembl_version?: string;
+  }
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>(
+    ss?.uploadedFiles ?? (ss?.uploadedFile ? [ss.uploadedFile] : [])
+  );
+  // 样本分组映射：sample_name → group_label
+  const [sampleGroups, setSampleGroups] = useState<Record<string, string>>(
+    ss?.sampleGroups ?? {}
   );
   // 上传进度（0-100）
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
@@ -104,9 +118,38 @@ function AnalysisPageContent() {
 
   const [clusterLevels, setClusterLevels] = useState<string[]>([]);
 
-  // Pipeline 模式切换
-  const [analysisMode, setAnalysisMode] = useState<"single" | "pipeline">("single");
-  const [activePipelineId, setActivePipelineId] = useState<string | null>(null);
+  // Pipeline 模式切换（从 sessionStorage 恢复）
+  const [analysisMode, _setAnalysisMode] = useState<"single" | "pipeline">(
+    ss?.analysisMode ?? "single"
+  );
+  const [activePipelineId, setActivePipelineId] = useState<string | null>(
+    ss?.activePipelineId ?? null
+  );
+
+  /** 持久化 analysisMode */
+  const setAnalysisMode = (v: "single" | "pipeline" | ((p: "single" | "pipeline") => "single" | "pipeline")) => {
+    _setAnalysisMode((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      saveSession({ analysisMode: next });
+      return next;
+    });
+  };
+
+  /** 持久化 activePipelineId */
+  const setActivePipelineIdPersist = (v: string | null | ((p: string | null) => string | null)) => {
+    setActivePipelineId((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      saveSession({ activePipelineId: next });
+      return next;
+    });
+  };
+
+  // PipelineView 返回按钮事件监听
+  useEffect(() => {
+    const handlePipelineBack = () => setActivePipelineIdPersist(null);
+    window.addEventListener("pipeline-back", handlePipelineBack);
+    return () => window.removeEventListener("pipeline-back", handlePipelineBack);
+  }, []);
 
   // Marker 基因文件上传状态
   const [markerFile, setMarkerFile] = useState<{ name: string; path: string; cellTypes: string[] } | null>(null);
@@ -182,9 +225,10 @@ function AnalysisPageContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** params / uploadedFile 变更时持久化 */
+  /** params / uploadedFiles / sampleGroups 变更时持久化 */
   useEffect(() => { saveSession({ params }); }, [params]);
-  useEffect(() => { saveSession({ uploadedFile }); }, [uploadedFile]);
+  useEffect(() => { saveSession({ uploadedFiles, uploadedFile: uploadedFiles[0] ?? null }); }, [uploadedFiles]);
+  useEffect(() => { saveSession({ sampleGroups }); }, [sampleGroups]);
 
   /**
    * 当聚类任务完成后，自动拉取其结果以提取 cluster_levels，
@@ -291,7 +335,7 @@ function AnalysisPageContent() {
       const { path: filePath } = await completeRes.json() as { path: string };
 
       setUploadProgress(100);
-      setUploadedFile({ name: file.name, path: filePath });
+      setUploadedFiles(prev => [...prev, { name: file.name, path: filePath }]);
       setTimeout(() => setUploadProgress(null), 1200);
     } catch (e) {
       setError(e instanceof Error ? e.message : "上传失败");
@@ -307,8 +351,8 @@ function AnalysisPageContent() {
     if (step.id === 'marker_expr') setMarkerParseOnly(false);
     try {
       // QC 步骤时把已上传文件路径注入参数
-      let finalParams = step.id === "qc" && uploadedFile
-        ? { ...stepParams, rds_file_path: uploadedFile.path }
+      let finalParams = step.id === "qc" && uploadedFiles.length > 0
+        ? { ...stepParams, rds_file_path: uploadedFiles[0].path }
         : stepParams;
 
       // marker_expr 步骤注入 marker 文件路径
@@ -377,13 +421,16 @@ function AnalysisPageContent() {
   const handleProjectSelect = (p: Project | null) => {
     // 切换项目时重置所有与项目绑定的状态，避免旧数据泄漏
     setProject(p);
-    setUploadedFile(null);
+    setUploadedFiles([]);
+    setSampleGroups({});
     setTaskCache({});
     setParams(JSON.parse(JSON.stringify(DEFAULT_PARAMS)));
     _setActiveStep(0);
     saveSession({
       project: p,
+      uploadedFiles: [],
       uploadedFile: null,
+      sampleGroups: {},
       taskCache: {},
       params: JSON.parse(JSON.stringify(DEFAULT_PARAMS)),
       activeStep: 0,
@@ -439,7 +486,7 @@ function AnalysisPageContent() {
           }
           onClick={() => {
             setAnalysisMode("single");
-            setActivePipelineId(null);
+            setActivePipelineIdPersist(null);
           }}
         >
           单步分析
@@ -468,29 +515,17 @@ function AnalysisPageContent() {
             <PipelineForm
               projectId={project.id}
               token={localStorage.getItem("access_token") || ""}
-              onSubmit={(pipelineId) => setActivePipelineId(pipelineId)}
-              hasUploadedFile={!!uploadedFile}
-              uploadedFile={uploadedFile}
-              onFileUpload={setUploadedFile}
+              onSubmit={(pipelineId) => setActivePipelineIdPersist(pipelineId)}
+              uploadedFiles={uploadedFiles}
+              onUploadedFilesChange={setUploadedFiles}
+              sampleGroups={sampleGroups}
+              onSampleGroupsChange={setSampleGroups}
             />
           ) : (
-            <div className="space-y-4">
-              <button
-                className="px-3 py-1 text-sm rounded"
-                style={{
-                  border: "1px solid var(--clr-border)",
-                  background: "var(--clr-bg-alt)",
-                  cursor: "pointer",
-                }}
-                onClick={() => setActivePipelineId(null)}
-              >
-                ← 返回参数设置
-              </button>
-              <PipelineView
-                pipelineId={activePipelineId}
-                token={localStorage.getItem("access_token") || ""}
-              />
-            </div>
+            <PipelineView
+              pipelineId={activePipelineId}
+              token={localStorage.getItem("access_token") || ""}
+            />
           )}
         </div>
       ) : analysisMode === "pipeline" ? (
@@ -608,15 +643,15 @@ function AnalysisPageContent() {
                       className="flex items-center justify-center gap-2 w-full py-2 bg-white hover:shadow-sm transition-all text-xs border border-dashed rounded mb-1.5"
                       style={{
                         cursor: "pointer",
-                        borderColor: uploadedFile ? "#C86019" : "var(--clr-border)",
-                        color: uploadedFile ? "#C86019" : "var(--clr-text-muted)",
-                        background: uploadedFile ? "rgba(200,96,25,0.04)" : undefined,
+                        borderColor: uploadedFiles.length > 0 ? "#C86019" : "var(--clr-border)",
+                        color: uploadedFiles.length > 0 ? "#C86019" : "var(--clr-text-muted)",
+                        background: uploadedFiles.length > 0 ? "rgba(200,96,25,0.04)" : undefined,
                         pointerEvents: uploadProgress !== null ? "none" : undefined,
                         opacity: uploadProgress !== null ? 0.6 : 1,
                       }}
                     >
                       <IconUpload size={14} className="text-[#C86019]" />
-                      <span>{uploadedFile ? "重新上传" : "点击上传 .rds 文件"}</span>
+                      <span>{uploadedFiles.length > 0 ? "重新上传" : "点击上传 .rds 文件"}</span>
                     </div>
                     <input
                       ref={fileInputRef}
@@ -639,13 +674,13 @@ function AnalysisPageContent() {
                     )}
 
                     {/* 已上传文件名 + 独立垃圾桶 */}
-                    {uploadedFile && uploadProgress === null && (
+                    {uploadedFiles.length > 0 && uploadProgress === null && (
                       <div className="flex items-center gap-2 mt-1">
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2D8A56" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        <span className="flex-1 truncate text-[11px]" style={{ color: "var(--clr-text-muted)" }}>{uploadedFile.name}</span>
+                        <span className="flex-1 truncate text-[11px]" style={{ color: "var(--clr-text-muted)" }}>{uploadedFiles[0].name}</span>
                         <button
                           type="button"
-                          onClick={() => { setUploadedFile(null); saveSession({ uploadedFile: null }); }}
+                          onClick={() => { setUploadedFiles([]); saveSession({ uploadedFiles: [], uploadedFile: null }); }}
                           title="移除文件"
                           className="p-1 rounded hover:bg-red-50 transition-colors shrink-0"
                           style={{ color: "var(--clr-danger)" }}
@@ -1139,6 +1174,52 @@ function AnalysisPageContent() {
 
               {step.id === "annotate" && (
                 <>
+                  {/* 物种 + 组织选择 */}
+                  <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>物种</label>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={stepParams.species as string}
+                          onChange={(e) => updateParam("species", e.target.value)}
+                          className={selectCls} style={selectStyle}
+                        >
+                          <option value="Human">Human (人)</option>
+                          <option value="Mouse">Mouse (小鼠)</option>
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const versions = uploadedFiles.map(f => f.ensembl_version);
+                            const detected = versions.some(v => v?.includes("Mouse")) ? "Mouse" : "Human";
+                            updateParam("species", detected);
+                          }}
+                          className="px-2.5 py-2 text-xs rounded border transition-colors hover:bg-[rgba(200,96,25,0.06)]"
+                          style={{ borderColor: "var(--clr-border)", color: "var(--clr-amber-dark)" }}
+                        >
+                          自动检测
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>组织 / 器官</label>
+                      <select
+                        value={stepParams.tissue as string}
+                        onChange={(e) => updateParam("tissue", e.target.value)}
+                        className={selectCls} style={selectStyle}
+                      >
+                        <option value="Blood">血液 (Blood)</option>
+                        <option value="Brain">脑 (Brain)</option>
+                        <option value="Lung">肺 (Lung)</option>
+                        <option value="Liver">肝 (Liver)</option>
+                        <option value="Kidney">肾 (Kidney)</option>
+                        <option value="Heart">心脏 (Heart)</option>
+                        <option value="Pancreas">胰腺 (Pancreas)</option>
+                        <option value="Skin">皮肤 (Skin)</option>
+                      </select>
+                    </div>
+                  </div>
+                  {/* 注释方式 + 分组 */}
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>注释方式</label>
                     <div className="flex gap-4">
@@ -1173,7 +1254,7 @@ function AnalysisPageContent() {
                 };
                 const prereq = PREREQS[step.id];
                 const prereqMissing = prereq && taskCache[prereq.stepId]?.status !== "completed";
-                const isDisabled = submitting || !project || (step.id === "qc" && !uploadedFile) || (step.id === "marker_expr" && !markerFile) || prereqMissing;
+                const isDisabled = submitting || !project || (step.id === "qc" && uploadedFiles.length === 0) || (step.id === "marker_expr" && !markerFile) || prereqMissing;
 
                 return (
                   <>
@@ -1191,7 +1272,7 @@ function AnalysisPageContent() {
                     </button>
 
                     {!project && <p className="text-[10px] text-center" style={{ color: "var(--clr-text-faint)" }}>请先在顶部选择一个项目</p>}
-                    {project && step.id === "qc" && !uploadedFile && <p className="text-[10px] text-center" style={{ color: "var(--clr-warn)" }}>请先上传 .rds 数据文件</p>}
+                    {project && step.id === "qc" && uploadedFiles.length === 0 && <p className="text-[10px] text-center" style={{ color: "var(--clr-warn)" }}>请先上传 .rds 数据文件</p>}
                     {step.id === "marker_expr" && !markerFile && <p className="text-[10px] text-center" style={{ color: "var(--clr-warn)" }}>请先上传 Marker 基因文件</p>}
                     {prereqMissing && <p className="text-[10px] text-center" style={{ color: "var(--clr-warn)" }}>⚠ 请先完成「{prereq.label}」步骤</p>}
                   </>
@@ -1210,7 +1291,7 @@ function AnalysisPageContent() {
                   {/* 完成胶囊标志 */}
                   {currentTask?.status === 'completed' && (
                     <span
-                      className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium"
+                      className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium"
                       style={{ background: '#E6F6ED', color: '#2D8A56', border: '1px solid #C3E6D1' }}
                     >
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
@@ -1224,7 +1305,7 @@ function AnalysisPageContent() {
                   )}
                   {currentTask?.status === 'failed' && (
                     <span
-                      className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium"
+                      className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium"
                       style={{ background: '#FFF3F3', color: '#B85450', border: '1px solid #F5C6C6' }}
                     >
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
@@ -1237,6 +1318,14 @@ function AnalysisPageContent() {
               {currentTaskId && currentTask?.status !== 'completed' && currentTask?.status !== 'failed' && (
                 <div className="mb-6">
                   <ProgressTracker taskId={currentTaskId} stepLabel={step.label} onComplete={handleTaskComplete} onError={handleTaskError} />
+                  <div className="mt-3 w-full rounded-lg border px-4 py-3" style={{ borderColor: "#fcd34d", background: "rgba(251,191,36,0.08)" }}>
+                    <div className="flex items-start gap-3">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" className="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+                      <span className="text-xs" style={{ color: "#92400e" }}>
+                        任务正在后台运行，刷新页面不会中断分析。完成后可在此查看结果并下载。
+                      </span>
+                    </div>
+                  </div>
                 </div>
               )}
 

@@ -161,17 +161,43 @@ is_upper_strict <- function(x) {
 }
 
 
-RunAnno <- function(pro,mkfs,cellAnno,group) {
+RunAnno <- function(pro,mkfs,cellAnno,group,species="Human",tissue="Blood") {
   if(cellAnno=="自动注释"){
-    hpca.se = readRDS(file.path(script_dir,"HumanPrimaryCellAtlasDatar.rds"))
-    bpe.se = readRDS(file.path(script_dir,"BlueprintEncodeDatar.rds"))
     clusters <- pro@meta.data$Cluster
     pro_for_SingleR <- GetAssayData(pro, layer="data")
-    pred.hesc <- SingleR(test = pro_for_SingleR, 
-                     ref = list(BPE=bpe.se, HPCA=hpca.se), 
-                     labels = list(bpe.se$label.main, hpca.se$label.main),
-                     clusters = clusters, 
-                     assay.type.test = "logcounts", 
+
+    ref_list <- list()
+    labels_list <- list()
+
+    if(species=="Human"){
+      hpca.se = readRDS(file.path(script_dir,"HumanPrimaryCellAtlasDatar.rds"))
+      bpe.se = readRDS(file.path(script_dir,"BlueprintEncodeDatar.rds"))
+      ref_list[["HPCA"]] <- hpca.se
+      ref_list[["BPE"]] <- bpe.se
+      labels_list <- c(labels_list, list(hpca.se$label.main, bpe.se$label.main))
+
+      if(tissue=="Blood"){
+        dice.se = readRDS(file.path(script_dir,"DatabaseImmuneCellExpressionData.rds"))
+        nhd.se = readRDS(file.path(script_dir,"NovershternHematopoieticData.rds"))
+        mid.se = readRDS(file.path(script_dir,"MonacoImmuneData.rds"))
+        ref_list[["DICE"]] <- dice.se
+        ref_list[["NHD"]] <- nhd.se
+        ref_list[["MID"]] <- mid.se
+        labels_list <- c(labels_list, list(dice.se$label.main, nhd.se$label.main, mid.se$label.main))
+      }
+    }else if(species=="Mouse"){
+      mrd.se = readRDS(file.path(script_dir,"MouseRNAseqData.rds"))
+      igd.se = readRDS(file.path(script_dir,"ImmGenData.rds"))
+      ref_list[["MRD"]] <- mrd.se
+      ref_list[["IGD"]] <- igd.se
+      labels_list <- c(labels_list, list(mrd.se$label.main, igd.se$label.main))
+    }
+
+    pred.hesc <- SingleR(test = pro_for_SingleR,
+                     ref = ref_list,
+                     labels = labels_list,
+                     clusters = clusters,
+                     assay.type.test = "logcounts",
                      assay.type.ref = "logcounts")
     celltype = data.frame(ClusterID=rownames(pred.hesc), 
                       celltype=pred.hesc$labels, 
