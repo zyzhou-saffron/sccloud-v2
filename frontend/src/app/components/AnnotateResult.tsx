@@ -558,7 +558,7 @@ export default function AnnotateResult({
                           {row.cluster_id}
                         </button>
                       </td>
-                      <td className="px-3 py-2" style={{ color: "var(--clr-text-muted)", fontSize: "0.85em" }}>
+                      <td className="px-3 py-2" style={{ color: "var(--clr-text-muted)" }}>
                         {row.original_celltype ?? row.celltype}
                       </td>
                       <td className="px-2 py-1.5">
