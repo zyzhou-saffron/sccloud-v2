@@ -954,7 +954,7 @@ function(req) {
 #* @param project_path 项目目录完整路径
 #* @param gene 基因符号
 #* @get /gene_expression
-function(project_path, gene) {
+function(project_path, gene, celltype = NULL) {
   rds_path <- file.path(project_path, "seurat_annotated.rds")
   if (!file.exists(rds_path)) {
     rds_path <- file.path(project_path, "seurat_clustered.rds")
@@ -987,13 +987,36 @@ function(project_path, gene) {
   )
   if (is.null(umap)) return(list(error = "No UMAP embedding found"))
 
+  # 按 CellType 计算表达比例
+  md <- pro@meta.data
+  ct_col <- if ("CellType" %in% colnames(md)) "CellType" else "seurat_clusters"
+  celltypes <- as.character(md[[ct_col]])
+  unique_cts <- sort(unique(celltypes))
+
+  # 各细胞类型中表达 > 0 的比例
+  ct_stats <- list()
+  for (ct in unique_cts) {
+    idx <- which(celltypes == ct)
+    ct_expr <- expr[idx]
+    n_total <- length(idx)
+    n_expressed <- sum(ct_expr > 0)
+    ct_stats[[ct]] <- list(
+      n_cells = jsonlite::unbox(n_total),
+      n_expressed = jsonlite::unbox(n_expressed),
+      pct_expressed = jsonlite::unbox(round(n_expressed / n_total * 100, 1)),
+      mean_expr = jsonlite::unbox(round(mean(ct_expr), 3))
+    )
+  }
+
   list(
     x = as.numeric(umap[, 1]),
     y = as.numeric(umap[, 2]),
     expression = expr,
     gene = jsonlite::unbox(gene),
     min_expr = jsonlite::unbox(min(expr)),
-    max_expr = jsonlite::unbox(max(expr))
+    max_expr = jsonlite::unbox(max(expr)),
+    celltype_stats = ct_stats,
+    current_celltype = jsonlite::unbox(celltype)
   )
 }
 

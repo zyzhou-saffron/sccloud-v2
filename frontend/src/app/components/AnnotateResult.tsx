@@ -125,10 +125,28 @@ export default function AnnotateResult({
   // 表格点击的高亮类型："cluster" | "celltype" | null
   const [tableHighlightType, setTableHighlightType] = useState<"cluster" | "celltype" | null>(null);
 
-  // ── 基因表达弹窗状态 ──
+  // ── 基因表达弹窗状态（hover 触发，跟随鼠标） ──
   const [activeGene, setActiveGene] = useState<string | null>(null);
-  const [geneAnchor, setGeneAnchor] = useState<DOMRect | null>(null);
-  const geneRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const [activeCellType, setActiveCellType] = useState<string | null>(null);
+  const [geneMousePos, setGeneMousePos] = useState<{ x: number; y: number } | null>(null);
+  const geneCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const genePopupHovered = useRef(false);
+
+  const openGenePopup = (gene: string, celltype: string, e: React.MouseEvent) => {
+    if (geneCloseTimer.current) { clearTimeout(geneCloseTimer.current); geneCloseTimer.current = null; }
+    setActiveGene(gene);
+    setActiveCellType(celltype);
+    setGeneMousePos({ x: e.clientX, y: e.clientY });
+  };
+  const scheduleCloseGenePopup = () => {
+    geneCloseTimer.current = setTimeout(() => {
+      if (!genePopupHovered.current) {
+        setActiveGene(null);
+        setActiveCellType(null);
+        setGeneMousePos(null);
+      }
+    }, 200);
+  };
 
   // 图例维度：表格选中 cluster → 显示 cluster，表格选中 celltype → 显示 celltype
   const deckColorBy = tableHighlightType ?? (mergeMode ? "cluster" : undefined);
@@ -579,18 +597,8 @@ export default function AnnotateResult({
                             {row.markers.slice(0, 5).map((g, gi) => (
                               <React.Fragment key={g}>
                                 <button
-                                  ref={(el) => { if (el) geneRefs.current.set(g, el); }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const btn = geneRefs.current.get(g);
-                                    if (activeGene === g) {
-                                      setActiveGene(null);
-                                      setGeneAnchor(null);
-                                    } else {
-                                      setActiveGene(g);
-                                      setGeneAnchor(btn?.getBoundingClientRect() ?? null);
-                                    }
-                                  }}
+                                  onMouseEnter={(e) => openGenePopup(g, row.celltype, e)}
+                                  onMouseLeave={scheduleCloseGenePopup}
                                   style={{
                                     background: "none",
                                     border: "none",
@@ -666,13 +674,21 @@ export default function AnnotateResult({
         </div>
       )}
 
-      {/* ── 基因表达弹窗 ── */}
-      {activeGene && geneAnchor && typeof window !== "undefined" && createPortal(
+      {/* ── 基因表达弹窗（hover 触发） ── */}
+      {activeGene && geneMousePos && typeof window !== "undefined" && createPortal(
         <GeneExpressionPopup
           gene={activeGene}
+          celltype={activeCellType}
           projectId={task.project_id}
-          anchorRect={geneAnchor}
-          onClose={() => { setActiveGene(null); setGeneAnchor(null); }}
+          mousePos={geneMousePos}
+          onMouseEnter={() => {
+            genePopupHovered.current = true;
+            if (geneCloseTimer.current) { clearTimeout(geneCloseTimer.current); geneCloseTimer.current = null; }
+          }}
+          onMouseLeave={() => {
+            genePopupHovered.current = false;
+            scheduleCloseGenePopup();
+          }}
           token={token}
         />,
         document.body

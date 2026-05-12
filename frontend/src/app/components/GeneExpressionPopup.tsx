@@ -1,8 +1,8 @@
 /**
- * GeneExpressionPopup — 点击 marker 基因名后弹出的 UMAP 表达分布图
+ * GeneExpressionPopup — hover marker 基因名后弹出的 UMAP 表达分布图
  *
  * 使用 deck.gl ScatterplotLayer 渲染 per-cell 表达值，
- * viridis 连续色阶映射。支持拖动。
+ * viridis 连续色阶映射。跟随鼠标定位。
  */
 "use client";
 
@@ -40,6 +40,13 @@ function viridisColor(t: number): [number, number, number] {
   return [253, 231, 37];
 }
 
+interface CellTypeStat {
+  n_cells: number;
+  n_expressed: number;
+  pct_expressed: number;
+  mean_expr: number;
+}
+
 interface GeneExprData {
   x: number[];
   y: number[];
@@ -47,22 +54,28 @@ interface GeneExprData {
   gene: string;
   min_expr: number;
   max_expr: number;
+  celltype_stats?: Record<string, CellTypeStat>;
+  current_celltype?: string;
 }
 
-// 全局缓存：同一基因只请求一次
+// 全局缓存：按 gene+celltype 缓存
 const exprCache = new Map<string, GeneExprData>();
 
 export default function GeneExpressionPopup({
   gene,
+  celltype,
   projectId,
-  anchorRect,
-  onClose,
+  mousePos,
+  onMouseEnter,
+  onMouseLeave,
   token,
 }: {
   gene: string;
+  celltype?: string | null;
   projectId: number;
-  anchorRect: DOMRect;
-  onClose: () => void;
+  mousePos: { x: number; y: number };
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
   token?: string;
 }) {
   const [data, setData] = useState<GeneExprData | null>(null);
@@ -70,29 +83,24 @@ export default function GeneExpressionPopup({
   const [error, setError] = useState<string | null>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
-  // ── 拖动状态 ──
-  const POPUP_W = 300;
-  const POPUP_H = 340;
-  const [pos, setPos] = useState(() => {
-    const MARGIN = 8;
-    let top = anchorRect.top - POPUP_H - MARGIN;
-    let left = anchorRect.left + anchorRect.width / 2 - POPUP_W / 2;
-    if (top < MARGIN) top = anchorRect.bottom + MARGIN;
-    left = Math.max(MARGIN, Math.min(left, window.innerWidth - POPUP_W - MARGIN));
-    top = Math.max(MARGIN, Math.min(top, window.innerHeight - POPUP_H - MARGIN));
-    return { top, left };
-  });
+  const POPUP_W = 320;
+  const POPUP_H = 420;
+  const OFFSET_X = 12;
+  const OFFSET_Y = 12;
+
+  // ── 拖动状态：拖动时弹窗固定在拖动位置，不再跟随鼠标 ──
+  const [dragPos, setDragPos] = useState<{ top: number; left: number } | null>(null);
   const dragRef = useRef<{ startX: number; startY: number; startPos: { top: number; left: number } } | null>(null);
   const [dragging, setDragging] = useState(false);
 
   const onDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    setPos(prev => {
-      dragRef.current = { startX: e.clientX, startY: e.clientY, startPos: { ...prev } };
-      return prev;
-    });
+    // 以当前显示位置为拖动起点
+    const current = dragPos ?? hoverPos;
+    dragRef.current = { startX: e.clientX, startY: e.clientY, startPos: { ...current } };
     setDragging(true);
-  }, []);
+    setDragPos(current);
+  }, [dragPos]);
 
   useEffect(() => {
     if (!dragging) return;
@@ -100,7 +108,7 @@ export default function GeneExpressionPopup({
       if (!dragRef.current) return;
       const dx = e.clientX - dragRef.current.startX;
       const dy = e.clientY - dragRef.current.startY;
-      setPos({
+      setDragPos({
         top: Math.max(0, Math.min(dragRef.current.startPos.top + dy, window.innerHeight - POPUP_H)),
         left: Math.max(0, Math.min(dragRef.current.startPos.left + dx, window.innerWidth - POPUP_W)),
       });
@@ -117,9 +125,23 @@ export default function GeneExpressionPopup({
     };
   }, [dragging]);
 
+  // hover 跟随位置（未拖动时使用）
+  const hoverPos = useMemo(() => {
+    let left = mousePos.x + OFFSET_X;
+    let top = mousePos.y + OFFSET_Y;
+    if (left + POPUP_W > window.innerWidth) left = mousePos.x - POPUP_W - OFFSET_X;
+    if (top + POPUP_H > window.innerHeight) top = mousePos.y - POPUP_H - OFFSET_Y;
+    left = Math.max(4, left);
+    top = Math.max(4, top);
+    return { top, left };
+  }, [mousePos.x, mousePos.y]);
+
+  // 最终位置：拖动时用 dragPos，否则用 hoverPos
+  const pos = dragPos ?? hoverPos;
+
   // 获取数据
   useEffect(() => {
-    const cacheKey = `${projectId}:${gene}`;
+    const cacheKey = `${projectId}:${gene}:${celltype ?? ""}`;
     if (exprCache.has(cacheKey)) {
       setData(exprCache.get(cacheKey)!);
       return;
@@ -131,7 +153,10 @@ export default function GeneExpressionPopup({
 
     const authToken = token || (typeof window !== "undefined" ? localStorage.getItem("token") || "" : "");
 
-    fetch(`/api/projects/${projectId}/gene_expression?gene=${encodeURIComponent(gene)}`, {
+    const params = new URLSearchParams({ gene });
+    if (celltype) params.set("celltype", celltype);
+
+    fetch(`/api/projects/${projectId}/gene_expression?${params}`, {
       headers: { Authorization: `Bearer ${authToken}` },
     })
       .then((r) => {
@@ -156,17 +181,6 @@ export default function GeneExpressionPopup({
 
     return () => { cancelled = true; };
   }, [gene, projectId, token]);
-
-  // 点击外部关闭
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [onClose]);
 
   // deck.gl 图层
   const layers = useMemo(() => {
@@ -216,6 +230,8 @@ export default function GeneExpressionPopup({
   return (
     <div
       ref={popupRef}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       style={{
         position: "fixed",
         top: pos.top,
@@ -230,6 +246,7 @@ export default function GeneExpressionPopup({
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
+        pointerEvents: "auto",
       }}
     >
       {/* 标题栏 — 可拖动 */}
@@ -240,28 +257,44 @@ export default function GeneExpressionPopup({
           justifyContent: "space-between",
           alignItems: "center",
           padding: "6px 12px",
+          cursor: dragging ? "grabbing" : "grab",
           borderBottom: "1px solid var(--clr-border)",
           background: "var(--clr-bg-alt)",
-          cursor: "grab",
           userSelect: "none",
         }}
       >
         <span style={{ color: "var(--clr-text)", fontSize: 13, fontWeight: 600 }}>{gene}</span>
-        <button
-          onClick={onClose}
-          style={{
-            background: "none",
-            border: "none",
-            color: "var(--clr-text-muted)",
-            cursor: "pointer",
-            fontSize: 16,
-            lineHeight: 1,
-            padding: "0 4px",
-          }}
-        >
-          x
-        </button>
       </div>
+
+      {/* 表达比例统计 */}
+      {data?.celltype_stats && (() => {
+        const stats = data.celltype_stats;
+        const ct = data.current_celltype;
+        const sorted = Object.entries(stats)
+          .sort((a, b) => b[1].pct_expressed - a[1].pct_expressed);
+
+        return (
+          <div style={{ padding: "5px 10px 6px", borderBottom: "1px solid var(--clr-border)", background: "var(--clr-bg)", fontSize: 11, maxHeight: 90, overflowY: "auto" }}>
+            {sorted.map(([name, s]) => {
+              const isCurrent = name === ct;
+              return (
+                <div key={name} style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "1px 0",
+                  color: isCurrent ? "var(--clr-text)" : "var(--clr-text-muted)",
+                  fontWeight: isCurrent ? 600 : 400,
+                }}>
+                  <span>{isCurrent ? `${name} *` : name}</span>
+                  <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {s.pct_expressed}%
+                    <span style={{ color: "var(--clr-text-faint)", marginLeft: 3 }}>({s.n_expressed}/{s.n_cells})</span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* 图表区域 */}
       <div style={{ flex: 1, position: "relative", background: "var(--clr-bg-card)" }}>
