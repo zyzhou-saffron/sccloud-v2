@@ -184,41 +184,44 @@ function(req) {
     stop(paste("不支持的文件格式:", ext))
   }
 
-  # Ensembl 版本推断
-  ensembl_version <- "unknown"
-  valid_ids <- gene_ids[gene_ids != "N/A"]
-  if (length(valid_ids) > 0) {
-    ensembl_pattern <- "^ENS[A-Z]*[0-9]{11,}$"
-    if (any(grepl(ensembl_pattern, valid_ids))) {
-      sample_ids <- head(valid_ids[grepl(ensembl_pattern, valid_ids)], 20)
-      if (all(grepl("^ENSG", sample_ids))) {
-        ensembl_version <- "Ensembl Gene ID (Human)"
-      } else if (all(grepl("^ENSMUSG", sample_ids))) {
-        ensembl_version <- "Ensembl Gene ID (Mouse)"
-      } else {
-        ensembl_version <- "Ensembl Gene ID"
-      }
-    }
-  }
+  # 基因 ID 类型推断
+  id_type_info <- detect_gene_id_type(genes)
+  gene_id_type <- id_type_info$id_type
+  ensembl_version <- switch(gene_id_type,
+    ensembl = {
+      if (id_type_info$species == "mouse") "Ensembl Gene ID (Mouse)"
+      else "Ensembl Gene ID (Human)"
+    },
+    entrez  = "Entrez Gene ID",
+    refseq  = "RefSeq ID",
+    uniprot = "UniProt ID",
+    "symbol"
+  )
 
   # 转换预览：采样测试可映射比例
   conversion_preview <- NULL
-  if (ensembl_version != "unknown") {
-    tryCatch({
-      sample_ids <- head(genes[grepl("^ENS[A-Z]*G[0-9]{11}", genes)], 50)
-      org_db <- if (grepl("Mouse", ensembl_version)) org.Mm.eg.db::org.Mm.eg.db else org.Hs.eg.db::org.Hs.eg.db
+  tryCatch({
+    id_type_info <- detect_gene_id_type(genes)
+    if (id_type_info$id_type != "symbol") {
+      sample_ids <- head(genes, 50)
+      keytype <- switch(id_type_info$id_type,
+        ensembl = "ENSEMBL", entrez = "ENTREZID",
+        refseq = "REFSEQ", uniprot = "UNIPROT"
+      )
+      org_db <- if (id_type_info$species == "mouse") org.Mm.eg.db::org.Mm.eg.db else org.Hs.eg.db::org.Hs.eg.db
       mapped <- AnnotationDbi::select(
         org_db, keys = sub("\\.[0-9]+$", "", sample_ids),
-        columns = "SYMBOL", keytype = "ENSEMBL"
+        columns = "SYMBOL", keytype = keytype
       )
       n_mapped <- sum(!is.na(mapped$SYMBOL))
       conversion_preview <- list(
+        id_type = jsonlite::unbox(id_type_info$id_type),
         total_sampled = jsonlite::unbox(length(sample_ids)),
         mapped = jsonlite::unbox(n_mapped),
         ratio = jsonlite::unbox(round(n_mapped / length(sample_ids), 2))
       )
-    }, error = function(e) {})
-  }
+    }
+  }, error = function(e) {})
 
   list(
     filename = jsonlite::unbox(filename),
@@ -230,6 +233,7 @@ function(req) {
     metadata_columns = meta_cols,
     samples = samples,
     ensembl_version = jsonlite::unbox(ensembl_version),
+    gene_id_type = jsonlite::unbox(gene_id_type),
     conversion_preview = conversion_preview
   )
 }
@@ -297,13 +301,11 @@ function(req) {
     exp <- readRDS(rds_files[1])
   }
 
-  # --- Ensembl ID → Gene Symbol 回退转换 ---
-  if (any(grepl("^ENS[A-Z]*G[0-9]{11}", head(rownames(exp), 100)))) {
-    report(15, "检测到 Ensembl ID，正在转换为基因符号...")
-    ensembl_info <- detect_ensembl_ids(rownames(exp))
-    if (ensembl_info$is_ensembl) {
-      exp <- convert_ensembl_to_symbol(exp, species = ensembl_info$species)
-    }
+  # --- 非 Symbol 基因 ID → Gene Symbol 回退转换 ---
+  id_info <- detect_gene_id_type(rownames(exp))
+  if (id_info$id_type != "symbol") {
+    report(15, sprintf("检测到 %s ID，正在转换为基因符号...", toupper(id_info$id_type)))
+    exp <- convert_ids_to_symbol(exp, id_type = id_info$id_type, species = id_info$species)
   }
 
   report(20, "计算线粒体比例...")
@@ -1501,12 +1503,12 @@ convert_to_rds <- function(input_path, input_format, output_path) {
     stop(paste("不支持的输入格式:", input_format))
   )
 
-  # --- Ensembl ID → Gene Symbol 自动转换 ---
-  ensembl_info <- detect_ensembl_ids(rownames(obj))
-  if (ensembl_info$is_ensembl) {
-    message(sprintf("检测到 Ensembl ID (%s, %.1f%% 匹配)，正在转换为基因符号...",
-                    ensembl_info$species, ensembl_info$match_ratio * 100))
-    obj <- convert_ensembl_to_symbol(obj, species = ensembl_info$species)
+  # --- 非 Symbol 基因 ID → Gene Symbol 自动转换 ---
+  id_info <- detect_gene_id_type(rownames(obj))
+  if (id_info$id_type != "symbol") {
+    message(sprintf("检测到 %s ID (%.1f%% 匹配)，正在转换为基因符号...",
+                    toupper(id_info$id_type), id_info$match_ratio * 100))
+    obj <- convert_ids_to_symbol(obj, id_type = id_info$id_type, species = id_info$species)
   }
 
   # 保存为 RDS
@@ -1517,7 +1519,7 @@ convert_to_rds <- function(input_path, input_format, output_path) {
     cells = ncol(obj),
     genes = nrow(obj),
     file_size_mb = round(file.size(output_path) / 1024 / 1024, 2),
-    ensembl_converted = !is.null(obj@misc$ensembl_symbol_map)
+    id_converted = !is.null(obj@misc$gene_id_map)
   )
 }
 
