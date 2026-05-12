@@ -228,6 +228,7 @@ async def get_project_genes(
 async def get_gene_expression(
     project_id: int,
     gene: str,
+    celltype: str = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -244,12 +245,15 @@ async def get_gene_expression(
 
     settings = get_settings()
     try:
+        r_params = {"project_path": project.storage_path, "gene": gene}
+        if celltype:
+            r_params["celltype"] = celltype
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0)
         ) as client:
             response = await client.get(
                 f"{settings.r_engine_url}/gene_expression",
-                params={"project_path": project.storage_path, "gene": gene},
+                params=r_params,
             )
         if response.status_code != 200:
             raise HTTPException(
