@@ -28,6 +28,8 @@ user_projects/
 *.tar.gz
 *.zip
 *.db
+r-engine/r-library/
+data/cellmakers-raw/
 
 # IDE
 .vscode/

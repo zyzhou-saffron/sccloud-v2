@@ -651,12 +651,12 @@ function AnalysisPageContent() {
                       }}
                     >
                       <IconUpload size={14} className="text-[#C86019]" />
-                      <span>{uploadedFiles.length > 0 ? "重新上传" : "点击上传 .rds 文件"}</span>
+                      <span>{uploadedFiles.length > 0 ? "重新上传" : "点击上传数据文件"}</span>
                     </div>
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".rds,.h5seurat,.h5ad,.rdata"
+                      accept=".rds,.h5seurat,.h5ad,.h5,.rdata,.loom"
                       className="hidden"
                       onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = ''; }}
                     />

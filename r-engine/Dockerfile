@@ -34,7 +34,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     make \
     curl \
+    python3 \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
+
+# ===== Python 依赖（reticulate 用于 H5AD/Loom 格式处理）=====
+RUN pip3 install --no-cache-dir anndata loompy
+
+ENV RETICULATE_PYTHON=/usr/bin/python3
 
 WORKDIR /app
 
