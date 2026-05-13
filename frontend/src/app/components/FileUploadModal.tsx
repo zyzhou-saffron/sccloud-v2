@@ -179,7 +179,7 @@ export default function FileUploadModal({
               上传数据文件
             </h2>
             <p className="text-xs mt-1" style={{ color: "var(--clr-text-muted)" }}>
-              支持 .rds, .h5seurat, .h5ad, .rdata 格式
+              支持 .rds, .h5seurat, .h5ad, .h5, .rdata, .loom 格式
             </p>
           </div>
           <button
@@ -243,7 +243,7 @@ export default function FileUploadModal({
                 {uploadProgress !== null ? "上传中..." : "点击选择文件或拖拽到此处"}
               </div>
               <div className="text-sm" style={{ color: "var(--clr-text-muted)" }}>
-                支持 .rds, .h5seurat, .h5ad, .rdata 格式，最大 30GB
+                支持 .rds, .h5seurat, .h5ad, .h5, .rdata, .loom 格式，最大 30GB
               </div>
 
               {/* 上传进度条 */}
@@ -276,7 +276,7 @@ export default function FileUploadModal({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".rds,.h5seurat,.h5ad,.rdata"
+            accept=".rds,.h5seurat,.h5ad,.h5,.rdata,.loom"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];

@@ -15,7 +15,7 @@ import AuthModal from "../components/AuthModal";
 
 const NAV_ITEMS = [
   { href: "/dashboard/analysis", label: "分析流程", Icon: IconBeaker },
-  { href: "/dashboard/convert", label: "格式转换", Icon: IconConvert },
+  { href: "/dashboard/convert", label: "多样本整合", Icon: IconConvert },
   { href: "/dashboard/settings", label: "设置", Icon: IconGear },
 ];
 

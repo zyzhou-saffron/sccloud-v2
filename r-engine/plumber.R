@@ -105,14 +105,31 @@ function(req) {
 
   ext <- tolower(tools::file_ext(file_path))
 
-  if (ext %in% c("rds", "rdata", "h5seurat")) {
-    obj <- readRDS(file_path)
+  if (ext %in% c("rds", "h5seurat", "rdata")) {
+    # 读取 Seurat 对象
+    if (ext == "rds" || ext == "h5seurat") {
+      obj <- readRDS(file_path)
+    } else {
+      # rdata: load 取第一个 Seurat 对象
+      env <- new.env(parent = emptyenv())
+      load(file_path, envir = env)
+      obj_names <- ls(env)
+      seurat_names <- Filter(function(n) inherits(env[[n]], "Seurat"), obj_names)
+      if (length(seurat_names) == 0) {
+        stop("RDATA 文件中未找到 Seurat 对象，请确保文件包含 Seurat 对象或转换为 RDS 格式后重新上传")
+      }
+      if (length(seurat_names) > 1) {
+        stop(sprintf("RDATA 文件包含多个 Seurat 对象（%s），请转换为 RDS 格式后重新上传",
+                      paste(seurat_names, collapse = ", ")))
+      }
+      obj <- env[[seurat_names[1]]]
+    }
 
+    # Seurat 对象通用处理
     n_rows <- nrow(obj)
     n_cols <- ncol(obj)
     genes <- rownames(obj)
 
-    # 尝试获取 Ensemble ID
     gene_ids <- tryCatch({
       if ("ENSEMBL" %in% colnames(obj@meta.data)) {
         as.character(obj@meta.data$ENSEMBL)
@@ -132,7 +149,6 @@ function(req) {
 
     meta_cols <- colnames(obj@meta.data)
 
-    # 检测样本列表（从 Sample 列读取 unique 值）
     samples <- list()
     if ("Sample" %in% meta_cols) {
       sample_vals <- as.character(obj@meta.data$Sample)
@@ -143,6 +159,96 @@ function(req) {
         )
       }
     }
+
+  } else if (ext == "loom") {
+    if (!requireNamespace("reticulate", quietly = TRUE)) {
+      stop("缺少 reticulate 包，无法读取 Loom 文件")
+    }
+    anndata <- reticulate::import("anndata")
+    adata <- anndata$read_loom(file_path)
+
+    n_rows <- as.integer(adata$n_vars)
+    n_cols <- as.integer(adata$n_obs)
+    genes <- as.character(reticulate::py_to_r(adata$var_names))
+
+    gene_ids <- tryCatch({
+      var_df <- reticulate::py_to_r(adata$var)
+      if ("gene_ids" %in% colnames(var_df)) {
+        as.character(var_df$gene_ids)
+      } else if ("ensembl_id" %in% colnames(var_df)) {
+        as.character(var_df$ensembl_id)
+      } else {
+        rep("N/A", length(genes))
+      }
+    }, error = function(e) {
+      rep("N/A", length(genes))
+    })
+
+    obs_df <- reticulate::py_to_r(adata$obs)
+    meta_cols <- as.character(colnames(obs_df))
+
+    samples <- list()
+    if ("Sample" %in% meta_cols) {
+      sample_vals <- as.character(obs_df$Sample)
+      for (s in sort(unique(sample_vals))) {
+        samples[[length(samples) + 1]] <- list(
+          name = jsonlite::unbox(s),
+          cell_count = jsonlite::unbox(as.integer(sum(sample_vals == s)))
+        )
+      }
+    }
+
+    # 基因 ID 类型推断
+    id_type_info <- detect_gene_id_type(genes)
+    gene_id_type <- id_type_info$id_type
+    ensembl_version <- switch(gene_id_type,
+      ensembl = {
+        if (id_type_info$species == "mouse") "Ensembl Gene ID (Mouse)"
+        else "Ensembl Gene ID (Human)"
+      },
+      entrez  = "Entrez Gene ID",
+      refseq  = "RefSeq ID",
+      uniprot = "UniProt ID",
+      "symbol"
+    )
+
+    conversion_preview <- NULL
+    tryCatch({
+      id_type_info <- detect_gene_id_type(genes)
+      if (id_type_info$id_type != "symbol") {
+        sample_ids <- head(genes, 50)
+        keytype <- switch(id_type_info$id_type,
+          ensembl = "ENSEMBL", entrez = "ENTREZID",
+          refseq = "REFSEQ", uniprot = "UNIPROT"
+        )
+        org_db <- if (id_type_info$species == "mouse") org.Mm.eg.db::org.Mm.eg.db else org.Hs.eg.db::org.Hs.eg.db
+        mapped <- AnnotationDbi::select(
+          org_db, keys = sub("\\.[0-9]+$", "", sample_ids),
+          columns = "SYMBOL", keytype = keytype
+        )
+        n_mapped <- sum(!is.na(mapped$SYMBOL))
+        conversion_preview <- list(
+          id_type = jsonlite::unbox(id_type_info$id_type),
+          total_sampled = jsonlite::unbox(length(sample_ids)),
+          mapped = jsonlite::unbox(n_mapped),
+          ratio = jsonlite::unbox(round(n_mapped / length(sample_ids), 2))
+        )
+      }
+    }, error = function(e) {})
+
+    return(list(
+      filename = jsonlite::unbox(filename),
+      n_rows = jsonlite::unbox(as.integer(n_rows)),
+      n_cols = jsonlite::unbox(as.integer(n_cols)),
+      genes = head(genes, 100),
+      gene_ids = head(gene_ids, 100),
+      file_size_mb = jsonlite::unbox(round(file.size(file_path) / 1024 / 1024, 2)),
+      metadata_columns = meta_cols,
+      samples = samples,
+      ensembl_version = jsonlite::unbox(ensembl_version),
+      gene_id_type = jsonlite::unbox(gene_id_type),
+      conversion_preview = conversion_preview
+    ))
 
   } else if (ext == "h5ad") {
     if (!requireNamespace("anndata", quietly = TRUE)) {
@@ -1457,7 +1563,7 @@ function(req) {
 
 #* 将外部格式转换为 Seurat RDS (导入方向)
 #* @param input_path 输入文件路径
-#* @param input_format 输入格式 (h5ad / h5 / csv / tsv / rds)
+#* @param input_format 输入格式 (h5ad / h5 / csv / tsv / rds / rdata / loom)
 #* @param output_path 输出 RDS 路径
 #* @return 转换结果统计
 convert_to_rds <- function(input_path, input_format, output_path) {
@@ -1521,6 +1627,59 @@ convert_to_rds <- function(input_path, input_format, output_path) {
     # ---- RDS (直接读取，无需转换) ----
     rds = {
       readRDS(input_path)
+    },
+
+    # ---- RDATA (R 工作空间) ----
+    rdata = {
+      env <- new.env(parent = emptyenv())
+      load(input_path, envir = env)
+      obj_names <- ls(env)
+      seurat_names <- Filter(function(n) inherits(env[[n]], "Seurat"), obj_names)
+      if (length(seurat_names) == 0) {
+        stop("RDATA 文件中未找到 Seurat 对象，请确保文件包含 Seurat 对象或转换为 RDS 格式后重新上传")
+      }
+      if (length(seurat_names) > 1) {
+        stop(sprintf("RDATA 文件包含多个 Seurat 对象（%s），请转换为 RDS 格式后重新上传",
+                      paste(seurat_names, collapse = ", ")))
+      }
+      env[[seurat_names[1]]]
+    },
+
+    # ---- Loom ----
+    loom = {
+      if (!requireNamespace("reticulate", quietly = TRUE)) {
+        stop("缺少 reticulate 包，无法读取 Loom 文件")
+      }
+      anndata <- reticulate::import("anndata")
+      adata <- anndata$read_loom(input_path)
+
+      counts <- reticulate::py_to_r(adata$X)
+      if (inherits(counts, "dgCMatrix")) counts <- as.matrix(counts)
+
+      tryCatch({
+        rownames(counts) <- as.character(reticulate::py_to_r(adata$var_names))
+      }, error = function(e) {})
+      tryCatch({
+        colnames(counts) <- as.character(reticulate::py_to_r(adata$obs_names))
+      }, error = function(e) {})
+
+      if (requireNamespace("Matrix", quietly = TRUE)) {
+        counts <- Matrix::Matrix(counts, sparse = TRUE)
+      }
+
+      obj <- Seurat::CreateSeuratObject(counts = counts)
+
+      # 从 obs 中提取 metadata
+      tryCatch({
+        obs_df <- reticulate::py_to_r(adata$obs)
+        for (col_name in colnames(obs_df)) {
+          if (!col_name %in% colnames(obj@meta.data)) {
+            obj@meta.data[[col_name]] <- obs_df[[col_name]]
+          }
+        }
+      }, error = function(e) {})
+
+      obj
     },
 
     stop(paste("不支持的输入格式:", input_format))

@@ -57,7 +57,7 @@ async def init_upload(
     默认分片大小 5MB，前端据此切分文件。
     """
     # 验证文件类型
-    allowed_ext = {".rds", ".h5seurat", ".h5ad", ".h5", ".rdata"}
+    allowed_ext = {".rds", ".h5seurat", ".h5ad", ".h5", ".rdata", ".loom"}
     ext = os.path.splitext(filename)[1].lower()
     if ext not in allowed_ext:
         raise HTTPException(
@@ -196,6 +196,24 @@ async def complete_upload(
     # 清理临时目录
     shutil.rmtree(chunk_dir, ignore_errors=True)
 
+    # 非 RDS 格式自动转换
+    NEEDS_CONVERT = {".h5ad", ".h5seurat", ".h5", ".rdata", ".loom", ".csv", ".tsv", ".txt"}
+    if ext in NEEDS_CONVERT:
+        try:
+            converted_path = await _auto_convert_to_rds(final_path, ext, original_filename)
+            # 转换成功，删除原始文件
+            if os.path.exists(final_path) and converted_path != final_path:
+                os.unlink(final_path)
+            final_path = converted_path
+        except Exception as e:
+            # 转换失败，清理文件并报错
+            if os.path.exists(final_path):
+                os.unlink(final_path)
+            raise HTTPException(
+                status_code=400,
+                detail=f"格式转换失败: {str(e)}",
+            )
+
     return CompleteUploadResponse(
         status="completed",
         path=final_path,
@@ -303,6 +321,56 @@ async def inspect_file(
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+
+async def _auto_convert_to_rds(input_path: str, ext: str, original_filename: str) -> str:
+    """
+    上传完成后自动将非 RDS 格式转换为 RDS。
+    返回转换后的 RDS 文件路径。失败时抛出异常。
+    """
+    import httpx
+    from app.config import get_settings
+
+    settings = get_settings()
+
+    # 确定输入格式
+    ext_to_format = {
+        ".h5ad": "h5ad",
+        ".h5seurat": "h5seurat",
+        ".h5": "h5",
+        ".rdata": "rdata",
+        ".loom": "loom",
+        ".csv": "csv",
+        ".tsv": "tsv",
+        ".txt": "tsv",
+    }
+    input_format = ext_to_format.get(ext)
+    if not input_format:
+        raise ValueError(f"不支持自动转换的格式: {ext}")
+
+    # 输出路径：同目录下替换扩展名为 .rds
+    output_path = os.path.splitext(input_path)[0] + ".rds"
+
+    payload = {
+        "direction": "import",
+        "input_path": input_path,
+        "input_format": input_format,
+        "output_path": output_path,
+    }
+
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(connect=10.0, read=600.0, write=30.0, pool=10.0)
+    ) as client:
+        resp = await client.post(
+            f"{settings.r_engine_url}/convert",
+            json=payload,
+        )
+
+    if resp.status_code != 200:
+        detail = resp.json().get("error", resp.text) if resp.headers.get("content-type", "").startswith("application/json") else resp.text
+        raise RuntimeError(f"R 引擎转换失败: {detail}")
+
+    return output_path
 
 
 async def _call_r_engine_inspect(file_path: str, filename: str) -> dict:

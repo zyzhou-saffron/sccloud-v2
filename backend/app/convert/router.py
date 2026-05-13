@@ -77,7 +77,7 @@ async def upload_for_convert(
     """
     settings = get_settings()
 
-    allowed_ext = {".rds", ".h5seurat", ".h5ad", ".h5", ".csv", ".tsv", ".txt", ".zip"}
+    allowed_ext = {".rds", ".h5seurat", ".h5ad", ".h5", ".csv", ".tsv", ".txt", ".zip", ".loom", ".rdata"}
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in allowed_ext:
         raise HTTPException(
