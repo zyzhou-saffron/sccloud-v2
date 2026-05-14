@@ -960,7 +960,8 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
   // 动态列表方式（与 meta.data 一致），兼容 R 返回的任意字段名
   type GeneRow = Record<string, unknown>;
   const topGenes = (data?.top_genes ?? []) as GeneRow[];
-  const stats    = data?.stats as { total_deg?: number; clusters_analyzed?: string } | undefined;
+  const stats    = data?.stats as { total_deg?: number; clusters_analyzed?: string; group_by?: string } | undefined;
+  // groupPrefix 在 analyzedClusters 定义后计算
 
   // 动态提取列名（优先排序常用列）
   const preferredOrder = ["gene", "Cluster", "avg_log2FC", "p_val", "p_val_adj", "pct.1", "pct.2"];
@@ -1007,6 +1008,12 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
     }
     return raw.split(",").map(s => s.trim()).filter(Boolean);
   }, [data, topGenes, parentClusterLevels]);
+
+  // 根据 group_by 决定前缀：CellType 时不加前缀（细胞类型名自带含义），否则显示"Cluster"
+  // 对于没有 group_by 字段的旧结果，从 analyzedClusters 内容推断
+  const groupPrefix = stats?.group_by === "CellType" ||
+    (analyzedClusters.length > 0 && analyzedClusters[0] && !/^C\d+$/.test(analyzedClusters[0]))
+    ? "" : "Cluster ";
 
   // getToken 便捷函数
   const getToken = () => {
@@ -1260,17 +1267,17 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                {/* 第一行：聚类选择 */}
                <div className="w-full max-w-2xl">
                  <label className="text-xs font-medium flex items-baseline gap-1.5 mb-1.5" style={{ color: 'var(--clr-text-muted)' }}>
-                   <span className="shrink-0">选择聚类群</span>
+                   <span className="shrink-0">选择{groupPrefix ? "聚类群" : "细胞类型"}</span>
                    {tab3Selected.length > 0 && (
-                     <span>{tab3Selected.map(c => `Cluster ${c}`).join(', ')}</span>
+                     <span>{tab3Selected.map(c => `${groupPrefix}${c}`).join(', ')}</span>
                    )}
                  </label>
                  <MultiSelectDropdown
                    options={analyzedClusters}
                    selected={tab3Selected}
                    onChange={setTab3Selected}
-                   renderLabel={c => `Cluster ${c}`}
-                   placeholder="点击选择聚类…"
+                   renderLabel={c => `${groupPrefix}${c}`}
+                   placeholder={`点击选择${groupPrefix ? "聚类" : "细胞类型"}…`}
                  />
                </div>
                
@@ -1293,7 +1300,7 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                  onClick={() => {
                    const clusterStr = tab3Selected.join(',');
                    const customStr = customGenes.join(',');
-                   runSubTask("plot_markers", { ...task.params, cluster: clusterStr, custom_genes: customStr }, setTab3Loading, setTab3Error, (tid: string, res: any, completedTask: Task) => {
+                   runSubTask("plot_markers", { ...task.params, cluster: clusterStr, custom_genes: customStr, group_by: !groupPrefix ? "CellType" : (task.params?.group_by ?? "Cluster") }, setTab3Loading, setTab3Error, (tid: string, res: any, completedTask: Task) => {
                      setTab3TaskId(tid);
                      setTab3Task(completedTask);
                    });
@@ -1383,15 +1390,15 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                    <label className="text-xs font-medium flex items-baseline gap-1.5 mb-1.5" style={{ color: 'var(--clr-text-muted)' }}>
                      <span className="shrink-0">组一 (Group 1)</span>
                      {tab4G1.length > 0 && (
-                       <span>{tab4G1.map(c => `Cluster ${c}`).join(', ')}</span>
+                       <span>{tab4G1.map(c => `${groupPrefix}${c}`).join(', ')}</span>
                      )}
                    </label>
                    <MultiSelectDropdown
                      options={analyzedClusters}
                      selected={tab4G1}
                      onChange={setTab4G1}
-                     renderLabel={c => `Cluster ${c}`}
-                     placeholder="选择组一聚类…"
+                     renderLabel={c => `${groupPrefix}${c}`}
+                     placeholder={`选择组一${groupPrefix ? "聚类" : "细胞类型"}…`}
                    />
                  </div>
                  <span className="text-stone-400 font-bold text-lg mb-1.5">vs</span>
@@ -1400,15 +1407,15 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                    <label className="text-xs font-medium flex items-baseline gap-1.5 mb-1.5" style={{ color: 'var(--clr-text-muted)' }}>
                      <span className="shrink-0">组二 (Group 2)</span>
                      {tab4G2.length > 0 && (
-                       <span>{tab4G2.map(c => `Cluster ${c}`).join(', ')}</span>
+                       <span>{tab4G2.map(c => `${groupPrefix}${c}`).join(', ')}</span>
                      )}
                    </label>
                    <MultiSelectDropdown
                      options={analyzedClusters}
                      selected={tab4G2}
                      onChange={setTab4G2}
-                     renderLabel={c => `Cluster ${c}`}
-                     placeholder="选择组二聚类…"
+                     renderLabel={c => `${groupPrefix}${c}`}
+                     placeholder={`选择组二${groupPrefix ? "聚类" : "细胞类型"}…`}
                    />
                  </div>
                </div>
@@ -1417,7 +1424,7 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
                  onClick={() => {
                    const g1Str = tab4G1.join(',');
                    const g2Str = tab4G2.join(',');
-                   runSubTask("markers_pairwise", { ...task.params, cluster_1: g1Str, cluster_2: g2Str }, setTab4Loading, setTab4Error, (tid: string, res: any, completedTask: Task) => {
+                   runSubTask("markers_pairwise", { ...task.params, cluster_1: g1Str, cluster_2: g2Str, group_by: !groupPrefix ? "CellType" : (task.params?.group_by ?? "Cluster") }, setTab4Loading, setTab4Error, (tid: string, res: any, completedTask: Task) => {
                        setTab4TaskId(tid);
                        setTab4Task(completedTask);
                        setTab4Data((res.top_genes ?? []) as GeneRow[]);

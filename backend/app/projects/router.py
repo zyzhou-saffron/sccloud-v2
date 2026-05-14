@@ -315,6 +315,8 @@ async def list_project_files(
         fpath = os.path.join(uploaded_dir, fname)
         if os.path.isfile(fpath):
             size_mb = round(os.path.getsize(fpath) / 1024 / 1024, 2)
-            files.append(ProjectFile(filename=fname, path=fpath, size_mb=size_mb))
+            # 去掉 UUID 前缀，显示原始文件名
+            display_name = fname[9:] if len(fname) > 9 and fname[8] == "_" else fname
+            files.append(ProjectFile(filename=display_name, path=fpath, size_mb=size_mb))
 
     return ProjectFileList(files=files)

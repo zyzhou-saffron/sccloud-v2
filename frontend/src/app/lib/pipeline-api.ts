@@ -13,7 +13,7 @@ export interface PipelineParams {
 export interface PipelineTask {
   id: string;
   step: string;
-  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  status: "pending" | "running" | "completed" | "failed" | "cancelled" | "paused";
   progress: number;
   progress_message?: string;
   result_path?: string;
@@ -58,4 +58,13 @@ export async function listPipelines(
   limit: number = 10
 ): Promise<Pipeline[]> {
   return apiFetch(`/api/pipeline?project_id=${projectId}&limit=${limit}`);
+}
+
+export async function resumePipeline(
+  token: string,
+  pipelineId: string
+): Promise<{ pipeline_id: string; status: string; message: string }> {
+  return apiFetch(`/api/pipeline/${pipelineId}/resume`, {
+    method: "POST",
+  });
 }

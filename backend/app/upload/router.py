@@ -173,6 +173,14 @@ async def complete_upload(
 
     # 生成唯一文件名
     ext = os.path.splitext(original_filename)[1].lower()
+
+    # 去重：删除同名文件的旧副本，防止重复上传产生多个 UUID 前缀文件
+    for existing in os.listdir(dest_dir):
+        if existing.endswith(f"_{original_filename}") or existing == original_filename:
+            existing_path = os.path.join(dest_dir, existing)
+            if os.path.isfile(existing_path):
+                os.unlink(existing_path)
+
     safe_name = f"{uuid.uuid4().hex[:8]}_{original_filename}"
     final_path = os.path.join(dest_dir, safe_name)
 

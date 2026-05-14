@@ -185,7 +185,7 @@ class Pipeline(Base):
     params = Column(JSON, nullable=False)  # 全 8 步的参数集合：{"qc": {...}, "normalize": {...}, ...}
     status = Column(
         Enum(
-            "pending", "running", "completed", "failed", "cancelled",
+            "pending", "running", "completed", "failed", "cancelled", "paused",
             name="pipeline_status",
         ),
         default="pending",

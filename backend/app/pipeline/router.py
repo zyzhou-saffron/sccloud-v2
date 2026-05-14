@@ -220,6 +220,35 @@ async def get_pipeline(
     return PipelineResponse(pipeline).dict()
 
 
+@router.post("/{pipeline_id}/resume")
+async def resume_pipeline_endpoint(
+    pipeline_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    POST /api/pipeline/{pipeline_id}/resume
+
+    从暂停状态继续执行 Phase 2（markers 及后续步骤）。
+    """
+    pipeline = db.query(Pipeline).filter(Pipeline.id == pipeline_id).first()
+    if not pipeline:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    if pipeline.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    if pipeline.status != "paused":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Pipeline 状态为 '{pipeline.status}'，无法继续（需要 'paused' 状态）",
+        )
+
+    from app.pipeline.executor import resume_pipeline
+
+    background_tasks.add_task(resume_pipeline, pipeline_id)
+    return {"pipeline_id": pipeline_id, "status": "running", "message": "继续执行 Phase 2"}
+
+
 @router.get("")
 async def list_pipelines(
     project_id: Optional[int] = None,

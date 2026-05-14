@@ -789,9 +789,18 @@ function(req) {
 
   report(5, "加载聚类数据...")
 
-  input_path <- file.path(project_path, "seurat_clustered.rds")
-  if (!file.exists(input_path)) stop("请先运行聚类步骤")
-  pro <- readRDS(input_path)
+  group_by <- params$group_by %||% "Cluster"
+
+  if (group_by == "CellType") {
+    input_path <- file.path(project_path, "seurat_annotated.rds")
+    if (!file.exists(input_path)) stop("请先运行细胞注释步骤")
+    pro <- readRDS(input_path)
+    Idents(pro) <- pro$CellType
+  } else {
+    input_path <- file.path(project_path, "seurat_clustered.rds")
+    if (!file.exists(input_path)) stop("请先运行聚类步骤")
+    pro <- readRDS(input_path)
+  }
 
   cluster_raw <- params$cluster %||% "All"
   # 前端多选时传逗号分隔字符串（如 "0,1,3"），需拆分为向量
@@ -859,7 +868,8 @@ function(req) {
     heatmap_path = heatmap_path,
     stats = list(
       total_deg = nrow(diffTable),
-      clusters_analyzed = ifelse(cluster_label == "All", "所有聚类", cluster_label)
+      clusters_analyzed = ifelse(cluster_label == "All", "所有聚类", cluster_label),
+      group_by = group_by
     ),
     cluster_labels = paste(levels(Idents(pro)), collapse = ","),
     top_genes = head(diffTable, 20)
@@ -981,9 +991,18 @@ function(req) {
 
   report(5, "加载聚类数据...")
 
-  input_path <- file.path(project_path, "seurat_clustered.rds")
-  if (!file.exists(input_path)) stop("请先运行聚类步骤")
-  pro <- readRDS(input_path)
+  group_by <- params$group_by %||% "Cluster"
+
+  if (group_by == "CellType") {
+    input_path <- file.path(project_path, "seurat_annotated.rds")
+    if (!file.exists(input_path)) stop("请先运行细胞注释步骤")
+    pro <- readRDS(input_path)
+    Idents(pro) <- pro$CellType
+  } else {
+    input_path <- file.path(project_path, "seurat_clustered.rds")
+    if (!file.exists(input_path)) stop("请先运行聚类步骤")
+    pro <- readRDS(input_path)
+  }
 
   cluster_raw <- params$cluster %||% "C1"
   # 前端多选时传逗号分隔字符串（如 "C1,C3"），需拆分为向量
@@ -1285,9 +1304,18 @@ function(req) {
 
   report(5, "加载聚类数据...")
 
-  input_path <- file.path(project_path, "seurat_clustered.rds")
-  if (!file.exists(input_path)) stop("请先运行聚类步骤")
-  pro <- readRDS(input_path)
+  group_by <- params$group_by %||% "Cluster"
+
+  if (group_by == "CellType") {
+    input_path <- file.path(project_path, "seurat_annotated.rds")
+    if (!file.exists(input_path)) stop("请先运行细胞注释步骤")
+    pro <- readRDS(input_path)
+    Idents(pro) <- pro$CellType
+  } else {
+    input_path <- file.path(project_path, "seurat_clustered.rds")
+    if (!file.exists(input_path)) stop("请先运行聚类步骤")
+    pro <- readRDS(input_path)
+  }
 
   # 前端传逗号分隔字符串，需拆分为向量
   parse_clusters <- function(raw, default) {

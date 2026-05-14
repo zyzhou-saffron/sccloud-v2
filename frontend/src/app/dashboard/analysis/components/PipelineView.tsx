@@ -5,8 +5,8 @@
  */
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { getPipeline, type Pipeline, type PipelineTask } from "../../../lib/pipeline-api";
+import React, { useEffect, useRef, useState } from "react";
+import { getPipeline, resumePipeline, type Pipeline, type PipelineTask } from "../../../lib/pipeline-api";
 import ProgressTracker from "../../../components/ProgressTracker";
 import ResultViewer from "../../../components/ResultViewer";
 import type { Task } from "../../../lib/api";
@@ -39,6 +39,8 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState<string>("qc");
+  // 用户手动选择步骤后，停止自动跳转到运行中步骤
+  const userSelectedRef = useRef(false);
   // 降维与聚类步骤内的子 tab：默认显示聚类结果
   const [reduceClusterTab, setReduceClusterTab] = useState<"cluster" | "reduce">("cluster");
 
@@ -52,6 +54,8 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
         setLoading(false);
 
         // 自动选中：运行中步骤 > 最后一个已完成步骤 > 第一个步骤
+        // 用户手动选择后停止自动跳转
+        if (!userSelectedRef.current) {
         if (data.status === "running" && data.current_step) {
           const runningStep = STEPS.find(s => s.subSteps.includes(data.current_step!));
           if (runningStep) setActiveStep(runningStep.id);
@@ -64,8 +68,9 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
           });
           if (lastCompleted) setActiveStep(lastCompleted.id);
         }
+        }
 
-        if (data.status === "running" || data.status === "pending") {
+        if (data.status === "running" || data.status === "pending" || data.status === "paused") {
           timer = setTimeout(fetch, 2000);
         }
       } catch (err) {
@@ -99,13 +104,14 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
     return <div className="card p-4" style={{ color: "var(--clr-text-muted)" }}><div className="text-xs">Pipeline 未找到</div></div>;
   }
 
-  const statusLabel = { pending: "待执行", running: "运行中", completed: "已完成", failed: "已失败", cancelled: "已取消" }[pipeline.status] || "未知";
+  const statusLabel = { pending: "待执行", running: "运行中", completed: "已完成", failed: "已失败", cancelled: "已取消", paused: "已暂停" }[pipeline.status] || "未知";
   const statusStyle = {
     pending:   { bg: "rgba(128,128,128,0.1)", color: "var(--clr-text-muted)" },
     running:   { bg: "rgba(200, 96, 25, 0.1)", color: "var(--clr-amber)" },
     completed: { bg: "rgba(45,138,86,0.1)", color: "#2D8A56" },
     failed:    { bg: "rgba(220,53,69,0.1)", color: "var(--clr-danger)" },
     cancelled: { bg: "rgba(128,128,128,0.1)", color: "var(--clr-text-muted)" },
+    paused:    { bg: "rgba(59,130,246,0.1)", color: "#3b82f6" },
   }[pipeline.status] || {};
 
   const taskMap = new Map(pipeline.tasks.map(t => [t.step, t]));
@@ -170,6 +176,34 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
         </div>
       )}
 
+      {/* 暂停提示 + 继续按钮 */}
+      {pipeline.status === "paused" && (
+        <div className="w-full rounded-lg border px-4 py-3" style={{ borderColor: "#93c5fd", background: "rgba(59,130,246,0.05)" }}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-start gap-3 text-left">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" className="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+              <span className="text-xs" style={{ color: "#1e40af" }}>
+                细胞注释已完成，请查看注释结果。确认无误后点击"继续分析"执行差异基因分析。
+              </span>
+            </div>
+            <button
+              onClick={async () => {
+                try {
+                  await resumePipeline(token, pipelineId);
+                  getPipeline(token, pipelineId).then(setPipeline).catch(() => {});
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "继续执行失败");
+                }
+              }}
+              className="px-4 py-1.5 text-sm rounded font-medium shrink-0"
+              style={{ background: "#3b82f6", color: "white", cursor: "pointer" }}
+            >
+              继续分析
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 双面板布局 */}
       <div className="flex gap-6">
         {/* ── 左侧导航（sticky 固定） ── */}
@@ -183,7 +217,7 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
             return (
               <button
                 key={step.id}
-                onClick={() => isClickable && setActiveStep(step.id)}
+                onClick={() => { if (isClickable) { userSelectedRef.current = true; setActiveStep(step.id); } }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded text-sm text-left transition-all duration-200"
                 style={
                   isActive

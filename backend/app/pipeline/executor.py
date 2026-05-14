@@ -1,10 +1,12 @@
 """
-Pipeline 执行引擎 — 顺序执行 8 个分析步骤。
+Pipeline 执行引擎 — 分两阶段执行分析步骤。
+Phase 1: qc → normalize → reduce → annotate（完成后暂停）
+Phase 2: markers（用户确认后继续）
 """
 
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List
 
 from sqlalchemy.orm import Session
 
@@ -13,13 +15,51 @@ from app.utils.r_bridge import call_r_engine
 
 logger = logging.getLogger(__name__)
 
-PIPELINE_STEPS = ["qc", "normalize", "reduce", "annotate", "markers"]
+PIPELINE_PHASE1 = ["qc", "normalize", "reduce", "annotate"]
+PIPELINE_PHASE2 = ["markers"]
 # reduce 步骤内部依次执行 reduce + cluster 两个 R 引擎端点
+
+
+async def _run_steps(pipeline_id: str, steps: List[str], db: Session, pipeline: Pipeline) -> bool:
+    """
+    执行一组步骤，返回是否全部成功。
+    """
+    for step in steps:
+        r_steps = [step]
+        if step == "reduce":
+            r_steps = ["reduce", "cluster"]
+
+        for r_step in r_steps:
+            pipeline.current_step = r_step
+            db.commit()
+
+            logger.info(f"Pipeline {pipeline_id}: executing step {r_step}")
+
+            try:
+                step_params = dict(pipeline.params.get(r_step, {}))
+
+                # markers 强制覆盖 cluster = "All"（运行前不知道 cluster 列表）
+                if r_step == "markers":
+                    step_params["cluster"] = "All"
+                    step_params["group_by"] = "CellType"
+
+                ok = await _execute_step(db, pipeline, r_step, step_params)
+                if not ok:
+                    return False
+
+            except Exception as e:
+                logger.exception(f"Pipeline {pipeline_id}: error in step {r_step}: {e}")
+                pipeline.status = "failed"
+                pipeline.error_step = r_step
+                pipeline.error_msg = str(e)
+                db.commit()
+                return False
+    return True
 
 
 async def run_pipeline(pipeline_id: str) -> None:
     """
-    顺序执行全流程 8 个步骤。每步完成后自动触发下一步。
+    执行 Phase 1（qc → annotate），完成后暂停等待用户确认。
     """
     db = SessionLocal()
     try:
@@ -33,36 +73,46 @@ async def run_pipeline(pipeline_id: str) -> None:
         pipeline.started_at = datetime.utcnow()
         db.commit()
 
-        for step in PIPELINE_STEPS:
-            # reduce 步骤合并了降维 + 聚类，内部依次执行两个 R 引擎端点
-            r_steps = [step]
-            if step == "reduce":
-                r_steps = ["reduce", "cluster"]
+        ok = await _run_steps(pipeline_id, PIPELINE_PHASE1, db, pipeline)
+        if not ok:
+            return  # 失败，流程停止
 
-            for r_step in r_steps:
-                pipeline.current_step = r_step
-                db.commit()
+        # Phase 1 完成，暂停
+        pipeline.status = "paused"
+        pipeline.current_step = None
+        db.commit()
+        logger.info(f"Pipeline {pipeline_id} paused after annotation (Phase 1 complete)")
 
-                logger.info(f"Pipeline {pipeline_id}: executing step {r_step}")
+    except Exception as e:
+        logger.exception(f"Pipeline {pipeline_id} fatal error: {e}")
+        try:
+            pipeline.status = "failed"
+            pipeline.error_msg = str(e)
+            db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
 
-                try:
-                    step_params = dict(pipeline.params.get(r_step, {}))
 
-                    # markers 强制覆盖 cluster = "All"（运行前不知道 cluster 列表）
-                    if r_step == "markers":
-                        step_params["cluster"] = "All"
+async def resume_pipeline(pipeline_id: str) -> None:
+    """
+    从 Phase 2（markers）继续执行，直到全部完成。
+    """
+    db = SessionLocal()
+    try:
+        pipeline = db.query(Pipeline).filter(Pipeline.id == pipeline_id).first()
+        if not pipeline:
+            logger.error(f"Pipeline {pipeline_id} not found")
+            return
 
-                    ok = await _execute_step(db, pipeline, r_step, step_params)
-                    if not ok:
-                        return  # 失败，流程停止
+        logger.info(f"Resuming pipeline {pipeline_id}")
+        pipeline.status = "running"
+        db.commit()
 
-                except Exception as e:
-                    logger.exception(f"Pipeline {pipeline_id}: error in step {r_step}: {e}")
-                    pipeline.status = "failed"
-                    pipeline.error_step = r_step
-                    pipeline.error_msg = str(e)
-                    db.commit()
-                    return
+        ok = await _run_steps(pipeline_id, PIPELINE_PHASE2, db, pipeline)
+        if not ok:
+            return
 
         # 全部完成
         pipeline.status = "completed"
