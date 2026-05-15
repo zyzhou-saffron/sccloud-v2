@@ -849,6 +849,23 @@ function(req) {
   # 调用原始函数 — data_summary.R::my_diffTable()
   diffTable <- my_diffTable(pro, cluster, min_pct, logfc, test_use, only_pos)
 
+  # 当 group_by == "CellType" 时，Cluster 列实际是细胞类型名
+  # 将其拆分为 Cluster（原始聚类编号，逗号分隔）+ CellType（合并后的细胞类型）
+  if (group_by == "CellType") {
+    md <- pro@meta.data
+    # 一个 cell type 可能对应多个 cluster（合并后），用逗号拼接
+    ct2cl <- list()
+    for (cl in unique(as.character(md$Cluster))) {
+      ct <- as.character(md[md$Cluster == cl, "CellType"][1])
+      ct2cl[[ct]] <- c(ct2cl[[ct]], cl)
+    }
+    diffTable$CellType <- diffTable$Cluster
+    diffTable$Cluster <- sapply(diffTable$CellType, function(ct) {
+      cls <- ct2cl[[ct]]
+      if (is.null(cls)) ct else paste(sort(cls), collapse = ",")
+    })
+  }
+
   # 按 p_val_adj 阈值过滤
   diffTable <- diffTable[diffTable$p_val_adj < p_adj_cutoff, ]
 

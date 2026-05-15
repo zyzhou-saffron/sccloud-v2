@@ -186,11 +186,24 @@ async function fetchWithAuth(url: string, init?: RequestInit): Promise<Response>
   const headers = { ...(init?.headers as Record<string, string>), Authorization: `Bearer ${token}` };
   const res = await fetch(url, { ...init, headers });
   if (res.status === 401) {
+    // 先尝试 refresh token 续期
     const newToken = await tryRefresh();
     if (newToken) {
       const retry = await fetch(url, { ...init, headers: { ...(init?.headers as Record<string, string>), Authorization: `Bearer ${newToken}` } });
       if (retry.ok) return retry;
     }
+    // refresh 失败（guest token 过期等），重新 guest 登录
+    try {
+      const guestRes = await fetch("/api/auth/guest", { method: "POST" });
+      if (guestRes.ok) {
+        const data = await guestRes.json();
+        localStorage.setItem("access_token", data.access_token);
+        if (data.refresh_token) localStorage.setItem("refresh_token", data.refresh_token);
+        if (data.username) localStorage.setItem("username", data.username);
+        const retry2 = await fetch(url, { ...init, headers: { ...(init?.headers as Record<string, string>), Authorization: `Bearer ${data.access_token}` } });
+        if (retry2.ok) return retry2;
+      }
+    } catch { /* ignore */ }
   }
   return res;
 }
@@ -310,7 +323,7 @@ export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCa
             {stepId === "markers"   && <MarkersResult data={resultData} task={task} taskCache={taskCache} clusterLevels={clusterLevels} />}
             {stepId === "annotate" && <AnnotateResult data={resultData} task={task} token={getToken()} />}
             {!["qc","normalize","reduce","cluster","markers","annotate"].includes(stepId) && (
-              <div className="callout text-xs">分析完成，详细结果可在输出文件中查看</div>
+              <GenericStepResult data={resultData} stepId={stepId} taskId={task.id} />
             )}
           </>
         )}
@@ -964,7 +977,7 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
   // groupPrefix 在 analyzedClusters 定义后计算
 
   // 动态提取列名（优先排序常用列）
-  const preferredOrder = ["gene", "Cluster", "avg_log2FC", "p_val", "p_val_adj", "pct.1", "pct.2"];
+  const preferredOrder = ["gene", "Cluster", "CellType", "avg_log2FC", "p_val", "p_val_adj", "pct.1", "pct.2"];
   const geneCols = useMemo(() => {
     if (topGenes.length === 0) return [];
     const allKeys = Array.from(new Set(topGenes.flatMap(row => Object.keys(row))));
@@ -1810,6 +1823,170 @@ function MarkerExprResult({ data, taskId, task }: { data: Record<string, unknown
 
           {activeTab === "table" && renderTable()}
         </>
+      )}
+    </div>
+  );
+}
+
+
+/* ===================================================
+   通用步骤结果组件（Monocle / CellChat / inferCNV）
+=================================================== */
+
+function GenericStepResult({ data, stepId, taskId }: { data: Record<string, unknown> | null; stepId: string; taskId?: string }) {
+  if (!data) {
+    return (
+      <div className="text-center py-8" style={{ color: "var(--clr-text-faint)" }}>
+        <p className="text-xs">结果数据为空</p>
+      </div>
+    );
+  }
+
+  // R jsonlite 将单值包装为数组，需要解包
+  const unwrap = (val: unknown): unknown => Array.isArray(val) && val.length === 1 ? val[0] : val;
+  const unwrapStr = (val: unknown): string | undefined => {
+    const v = unwrap(val);
+    return typeof v === "string" ? v : undefined;
+  };
+  const unwrapNum = (val: unknown): number | undefined => {
+    const v = unwrap(val);
+    return typeof v === "number" ? v : undefined;
+  };
+
+  const stats = data.stats as Record<string, unknown> | undefined;
+  const rawPlotPaths = data.plot_paths as Record<string, unknown> | undefined;
+  const rawDataPaths = data.data_paths as Record<string, unknown> | undefined;
+  // 解包每个值（R jsonlite 可能将字符串包装为单元素数组）
+  const plotPaths = rawPlotPaths
+    ? Object.fromEntries(Object.entries(rawPlotPaths).map(([k, v]) => [k, unwrapStr(v)]).filter(([, v]) => !!v))
+    : undefined;
+  const dataPaths = rawDataPaths
+    ? Object.fromEntries(Object.entries(rawDataPaths).map(([k, v]) => [k, unwrapStr(v)]).filter(([, v]) => !!v))
+    : undefined;
+  const outdir = unwrapStr(data.outdir);
+
+  const stepLabels: Record<string, string> = {
+    monocle: "拟时序分析",
+    cellchat: "细胞通讯分析",
+    infercnv: "拷贝数变异分析",
+  };
+
+  const [activeTab, setActiveTab] = useState<"plots" | "data">("plots");
+
+  // 提取文件名
+  const getFileName = (path: string) => path.split("/").pop() || path;
+
+  // 构建下载 URL
+  const getDownloadUrl = (filePath: string) => {
+    const fileName = getFileName(filePath);
+    return `/api/tasks/${taskId}/plot?name=${encodeURIComponent(fileName)}`;
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* 统计摘要 */}
+      {stats && (
+        <div className="flex flex-wrap gap-3">
+          {Object.entries(stats).map(([key, val]) => {
+            const v = unwrap(val);
+            return (
+              <div key={key} className="px-3 py-2 rounded border" style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-alt)" }}>
+                <div className="text-[10px] font-medium" style={{ color: "var(--clr-text-faint)" }}>{key.replace(/_/g, " ")}</div>
+                <div className="text-sm font-semibold" style={{ color: "var(--clr-text)" }}>{String(v)}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Tab 切换 */}
+      <div className="flex gap-1 p-0.5 rounded" style={{ background: "var(--clr-bg-alt)" }}>
+        {(["plots", "data"] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className="flex-1 px-3 py-1.5 rounded text-xs transition-all"
+            style={activeTab === tab
+              ? { background: "var(--clr-bg-card)", color: "var(--clr-amber-dark)", fontWeight: 600, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }
+              : { color: "var(--clr-text-muted)", cursor: "pointer" }
+            }
+          >
+            {tab === "plots" ? "图表" : "数据文件"}
+          </button>
+        ))}
+      </div>
+
+      {/* 图表 Tab */}
+      {activeTab === "plots" && plotPaths && Object.keys(plotPaths).length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {Object.entries(plotPaths).map(([name, path]) => (
+            <div key={name} className="rounded-lg border overflow-hidden" style={{ borderColor: "var(--clr-border)" }}>
+              <div className="px-3 py-2 flex items-center justify-between" style={{ background: "var(--clr-bg-alt)", borderBottom: "1px solid var(--clr-border)" }}>
+                <span className="text-xs font-medium" style={{ color: "var(--clr-text)" }}>{name.replace(/_/g, " ")}</span>
+                <AuthDownloadLink
+                  url={getDownloadUrl(path)}
+                  filename={getFileName(path)}
+                  className="inline-flex items-center justify-center w-7 h-7 rounded transition-all hover:scale-110"
+                  style={{ color: "var(--clr-amber)" }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </AuthDownloadLink>
+              </div>
+              <AuthImg
+                src={getDownloadUrl(path)}
+                alt={name}
+                className="w-full h-auto"
+                style={{ maxHeight: 400, objectFit: "contain", background: "white" }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeTab === "plots" && (!plotPaths || Object.keys(plotPaths).length === 0) && (
+        <div className="text-center py-6" style={{ color: "var(--clr-text-faint)" }}>
+          <p className="text-xs">无图表输出</p>
+        </div>
+      )}
+
+      {/* 数据文件 Tab */}
+      {activeTab === "data" && dataPaths && Object.keys(dataPaths).length > 0 && (
+        <div className="space-y-2">
+          {Object.entries(dataPaths).map(([name, path]) => (
+            <div
+              key={name}
+              className="flex items-center justify-between px-3 py-2 rounded border"
+              style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-alt)" }}
+            >
+              <div className="flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--clr-text-muted)" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span className="text-xs" style={{ color: "var(--clr-text)" }}>{name.replace(/_/g, " ")}</span>
+                <span className="text-[10px]" style={{ color: "var(--clr-text-faint)", fontFamily: "var(--font-mono)" }}>{getFileName(path)}</span>
+              </div>
+              <AuthDownloadLink
+                url={getDownloadUrl(path)}
+                filename={getFileName(path)}
+                className="inline-flex items-center justify-center w-7 h-7 rounded transition-all hover:scale-110"
+                style={{ color: "var(--clr-amber)" }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              </AuthDownloadLink>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeTab === "data" && (!dataPaths || Object.keys(dataPaths).length === 0) && (
+        <div className="text-center py-6" style={{ color: "var(--clr-text-faint)" }}>
+          <p className="text-xs">无数据文件输出</p>
+        </div>
+      )}
+
+      {/* 输出目录信息 */}
+      {outdir && (
+        <div className="text-[10px] px-3 py-1.5 rounded border border-dashed" style={{ borderColor: "var(--clr-border)", color: "var(--clr-text-faint)" }}>
+          输出目录: {outdir}
+        </div>
       )}
     </div>
   );
