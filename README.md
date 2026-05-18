@@ -121,10 +121,28 @@ docker load < data/sccloud-r-engine-image.tar.gz
 
 #### 方式 C: 从零编译安装（~2 小时）
 
+适用于没有预编译 `r-library/` 和预构建镜像的场景。
+
 ```bash
 cd r-engine
-# 修改 Dockerfile，将 COPY r-library/ 替换为运行 install_packages.R
-# 然后构建
+```
+
+修改 `Dockerfile`，将这一行：
+
+```dockerfile
+COPY r-library/ /usr/local/lib/R/site-library/
+```
+
+替换为：
+
+```dockerfile
+COPY install_packages.R .
+RUN Rscript install_packages.R
+```
+
+然后构建：
+
+```bash
 docker build -t sccloud-r-engine .
 ```
 
