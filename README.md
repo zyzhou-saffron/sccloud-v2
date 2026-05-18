@@ -165,7 +165,10 @@ curl http://localhost:8000/api/health
 ```bash
 # 创建服务器专用环境配置
 cp .env.example .env.server
-vim .env.server  # 修改密码和 JWT_SECRET
+vim .env.server  # 修改以下必填项：
+#   - DB_PASS / DB_ROOT_PASS（数据库密码）
+#   - JWT_SECRET — 用 `openssl rand -hex 32` 生成，如：
+#     a583661e1b2f7bf173e2ca320a5889009f9ae2f64ab5365434a4914935d500f8
 
 # 启动（使用 server 配置文件）
 docker compose --env-file .env.server -f docker-compose.server.yml up -d --build
