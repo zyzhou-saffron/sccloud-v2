@@ -313,7 +313,7 @@ sccloud-v2/
 │   ├── R/                      # 分析模块
 │   │   ├── data_plot.R         # 绘图函数 (QC/降维/差异/Marker)
 │   │   └── data_summary.R     # 数据汇总函数
-│   └── data/                   # SingleR 参考数据等
+│   └── data/                   # SingleR 参考数据等（首次运行时自动下载，无需手动准备）
 │
 ├── nginx/
 │   └── nginx.conf              # 反向代理配置
@@ -401,6 +401,16 @@ curl http://localhost:8787/health
 
 # 查看 R 引擎日志
 docker compose logs r-engine
+```
+
+### SingleR 参考数据
+
+SingleR 细胞注释所需的参考数据集（~460MB）**无需手动准备**。首次运行自动注释时，`celldex` 包会自动从 Bioconductor 下载并缓存到容器内 `~/.cache/R/ExperimentHub/`。后续分析直接从缓存读取。
+
+如果下载失败（网络问题），可重试任务或检查 R 引擎容器的网络连通性：
+
+```bash
+docker exec sccloud-r-engine-r-engine-1 curl -I https://experimenthub.bioconductor.org
 ```
 
 ### 数据库初始化
