@@ -20,6 +20,11 @@ export interface PipelineTask {
   error_msg?: string;
 }
 
+export interface ResumePipelineParams {
+  params: Record<string, Record<string, unknown>>;
+  enabled_steps: string[];
+}
+
 export interface Pipeline {
   id: string;
   project_id: number;
@@ -62,9 +67,12 @@ export async function listPipelines(
 
 export async function resumePipeline(
   token: string,
-  pipelineId: string
+  pipelineId: string,
+  params?: ResumePipelineParams
 ): Promise<{ pipeline_id: string; status: string; message: string }> {
   return apiFetch(`/api/pipeline/${pipelineId}/resume`, {
     method: "POST",
+    headers: params ? { "Content-Type": "application/json" } : undefined,
+    body: params ? JSON.stringify(params) : undefined,
   });
 }

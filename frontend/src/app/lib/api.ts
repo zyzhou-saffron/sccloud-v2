@@ -76,6 +76,21 @@ function forceLogout(): never {
   throw new Error("登录已过期，请重新登录");
 }
 
+/** Guest 登录兜底 — 当 refresh 失败时自动获取新 guest token */
+async function guestLoginFallback(): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/guest`, { method: "POST" });
+    if (!res.ok) return null;
+    const data = await res.json();
+    localStorage.setItem("access_token", data.access_token);
+    if (data.refresh_token) localStorage.setItem("refresh_token", data.refresh_token);
+    if (data.username) localStorage.setItem("username", data.username);
+    return data.access_token as string;
+  } catch {
+    return null;
+  }
+}
+
 /** 通用 fetch 封装 — 自动注入 auth header + 401 自动续期 */
 export async function apiFetch<T>(
   path: string,
@@ -119,12 +134,32 @@ export async function apiFetch<T>(
           if (retry.status === 204) return undefined as T;
           return retry.json();
         }
-        /* 重试仍然失败 → 强制登出 */
-        if (retry.status === 401) forceLogout();
+        if (retry.status === 401) {
+          /* 重试仍 401 → 尝试 guest 登录兜底 */
+          const guestToken = await guestLoginFallback();
+          if (guestToken) {
+            headers["Authorization"] = `Bearer ${guestToken}`;
+            const retry2 = await fetch(`${API_BASE}${path}`, { ...options, headers });
+            if (retry2.ok) {
+              if (retry2.status === 204) return undefined as T;
+              return retry2.json();
+            }
+          }
+          forceLogout();
+        }
         const text = await retry.text();
         throw new Error(`API ${retry.status}: ${text}`);
       }
-      /* refresh 也失败 → 强制登出 */
+      /* refresh 也失败 → 尝试 guest 登录兜底 */
+      const guestToken = await guestLoginFallback();
+      if (guestToken) {
+        headers["Authorization"] = `Bearer ${guestToken}`;
+        const retry = await fetch(`${API_BASE}${path}`, { ...options, headers });
+        if (retry.ok) {
+          if (retry.status === 204) return undefined as T;
+          return retry.json();
+        }
+      }
       forceLogout();
     }
 

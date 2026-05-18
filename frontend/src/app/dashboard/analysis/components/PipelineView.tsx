@@ -9,10 +9,11 @@ import React, { useEffect, useRef, useState } from "react";
 import { getPipeline, resumePipeline, type Pipeline, type PipelineTask } from "../../../lib/pipeline-api";
 import ProgressTracker from "../../../components/ProgressTracker";
 import ResultViewer from "../../../components/ResultViewer";
+import Phase2ParamPage from "./Phase2ParamPage";
 import type { Task } from "../../../lib/api";
 import {
   IconMicroscope, IconBarChart, IconAxis, IconCluster,
-  IconTestTube, IconTag,
+  IconTestTube, IconTag, IconBranch, IconNetwork, IconDNA,
 } from "../../../components/Icons";
 
 const STEPS = [
@@ -20,6 +21,9 @@ const STEPS = [
   { id: "reduce_cluster", num: 2, label: "降维与聚类", desc: "PCA · Harmony · UMAP", Icon: IconAxis, subSteps: ["reduce", "cluster"] },
   { id: "annotate", num: 3, label: "细胞注释", desc: "SingleR/手动", Icon: IconTag, subSteps: ["annotate"] },
   { id: "markers", num: 4, label: "差异基因", desc: "FindMarkers", Icon: IconTestTube, subSteps: ["markers"] },
+  { id: "monocle", num: 5, label: "拟时序分析", desc: "Monocle 2", Icon: IconBranch, subSteps: ["monocle"] },
+  { id: "cellchat", num: 6, label: "细胞通讯", desc: "CellChat", Icon: IconNetwork, subSteps: ["cellchat"] },
+  { id: "infercnv", num: 7, label: "拷贝数变异", desc: "inferCNV", Icon: IconDNA, subSteps: ["infercnv"] },
 ];
 
 const STATUS_DOT: Record<string, string> = {
@@ -43,6 +47,8 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
   const userSelectedRef = useRef(false);
   // 降维与聚类步骤内的子 tab：默认显示聚类结果
   const [reduceClusterTab, setReduceClusterTab] = useState<"cluster" | "reduce">("cluster");
+  // Phase 2 参数页显示状态
+  const [showPhase2Param, setShowPhase2Param] = useState(false);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -114,8 +120,22 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
     paused:    { bg: "rgba(59,130,246,0.1)", color: "#3b82f6" },
   }[pipeline.status] || {};
 
-  const taskMap = new Map(pipeline.tasks.map(t => [t.step, t]));
+  // 构建 taskMap：优先级 running > failed > pending > completed（避免重复任务时 map 被旧状态覆盖）
+  const STATUS_PRIORITY: Record<string, number> = { running: 4, failed: 3, pending: 2, completed: 1 };
+  const taskMap = new Map<string, typeof pipeline.tasks[0]>();
+  for (const t of pipeline.tasks) {
+    const existing = taskMap.get(t.step);
+    if (!existing || (STATUS_PRIORITY[t.status] || 0) > (STATUS_PRIORITY[existing.status] || 0)) {
+      taskMap.set(t.step, t);
+    }
+  }
   const activeStepDef = STEPS.find(s => s.id === activeStep)!;
+
+  // Phase 2 步骤是否已配置/执行
+  const enabledPhase2 = (pipeline.params?.enabled_steps as string[]) || [];
+  const hasPhase2Tasks = pipeline.tasks.some(t => ["monocle", "cellchat", "infercnv"].includes(t.step));
+  // 始终显示所有步骤
+  const visibleSteps = STEPS;
 
   // 组合步骤状态：优先级 running > failed > pending > completed
   const getStepStatus = (stepId: string) => {
@@ -176,43 +196,51 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
         </div>
       )}
 
-      {/* 暂停提示 + 继续按钮 */}
-      {pipeline.status === "paused" && (
+      {/* 暂停提示 + 参数设置按钮 */}
+      {pipeline.status === "paused" && !showPhase2Param && (
         <div className="w-full rounded-lg border px-4 py-3" style={{ borderColor: "#93c5fd", background: "rgba(59,130,246,0.05)" }}>
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-start gap-3 text-left">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" className="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
               <span className="text-xs" style={{ color: "#1e40af" }}>
-                细胞注释已完成，请查看注释结果。确认无误后点击"继续分析"执行差异基因分析。
+                细胞注释已完成，请查看注释结果。确认无误后点击"设置后续分析参数"配置 Phase 2 分析。
               </span>
             </div>
             <button
-              onClick={async () => {
-                try {
-                  await resumePipeline(token, pipelineId);
-                  getPipeline(token, pipelineId).then(setPipeline).catch(() => {});
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : "继续执行失败");
-                }
-              }}
+              onClick={() => setShowPhase2Param(true)}
               className="px-4 py-1.5 text-sm rounded font-medium shrink-0"
               style={{ background: "#3b82f6", color: "white", cursor: "pointer" }}
             >
-              继续分析
+              设置后续分析参数
             </button>
           </div>
         </div>
+      )}
+
+      {/* Phase 2 参数选择页 */}
+      {pipeline.status === "paused" && showPhase2Param && (
+        <Phase2ParamPage
+          pipeline={pipeline}
+          token={token}
+          species={pipeline.params?.annotate?.species as string || "Human"}
+          onComplete={() => {
+            setShowPhase2Param(false);
+            getPipeline(token, pipelineId).then(setPipeline).catch(() => {});
+          }}
+        />
       )}
 
       {/* 双面板布局 */}
       <div className="flex gap-6">
         {/* ── 左侧导航（sticky 固定） ── */}
         <div className="w-56 shrink-0 space-y-1 sticky top-4 self-start">
-          {STEPS.map((step) => {
+          {visibleSteps.map((step) => {
             const st = getStepStatus(step.id);
             const isActive = activeStep === step.id;
             const dotCls = STATUS_DOT[st] || STATUS_DOT.pending;
-            const isClickable = st === "completed" || st === "running" || st === "failed";
+            // Phase 2 步骤在 pipeline 暂停时也可点击（用于查看配置状态）
+            const isPhase2 = ["monocle", "cellchat", "infercnv"].includes(step.subSteps[0]);
+            const isClickable = st === "completed" || st === "running" || st === "failed" || (isPhase2 && pipeline.status === "paused");
 
             return (
               <button

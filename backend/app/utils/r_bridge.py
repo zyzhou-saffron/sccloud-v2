@@ -100,7 +100,8 @@ async def call_r_engine(
         task.status = "completed"
         task.progress = 100
         task.progress_message = "✅ 分析完成"
-        task.result_path = result.get("result_path")
+        # result_path 优先取 R 引擎返回值，否则用保存的 JSON 文件路径
+        task.result_path = result.get("result_path") or result_data_path
         task.completed_at = datetime.now(timezone.utc)
         db.commit()
 

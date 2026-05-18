@@ -2019,6 +2019,7 @@ function(req) {
   params <- body$params
   task_id <- params$task_id
   report <- create_progress_reporter(task_id)
+  suppressMessages(library(ComplexHeatmap))
 
   report(3, "加载注释数据...")
 
