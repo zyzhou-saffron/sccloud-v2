@@ -425,7 +425,7 @@ RunMonocle <- function(pro, group_beam = "CellType", group_traj = "CellType",
 
   # 9. BEAM 分支分析
   send_msg(82, "BEAM 分支分析...")
-  BEAM_res <- BEAM(cd[expressed_genes, ], branch_point = 1, cores = 4, progenitor_method = "duplicate")
+  BEAM_res <- BEAM(cd[expressed_genes, ], branch_point = 1, cores = 1, progenitor_method = "duplicate")
   BEAM_res <- BEAM_res[order(BEAM_res$qval), ]
   BEAM_res <- BEAM_res[, c("gene_short_name", "pval", "qval")]
   MonocleResult$data8 <- BEAM_res
@@ -435,7 +435,7 @@ RunMonocle <- function(pro, group_beam = "CellType", group_traj = "CellType",
   beam_sig <- row.names(subset(BEAM_res, qval < 1e-4))
   if (length(beam_sig) > 10) {
     tmp1 <- plot_genes_branched_heatmap(cd[beam_sig, ],
-                                        branch_point = 1, num_clusters = 4, cores = 4,
+                                        branch_point = 1, num_clusters = 4, cores = 1,
                                         use_gene_short_name = TRUE, show_rownames = FALSE,
                                         return_heatmap = TRUE)
     MonocleResult$plot5 <- tmp1$ph_res

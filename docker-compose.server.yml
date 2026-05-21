@@ -73,7 +73,7 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8787/health"]
       interval: 30s
-      timeout: 5s
+      timeout: 60s
       retries: 3
 
   # ---- 数据库 (MariaDB :3307) ----
@@ -92,7 +92,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "mariadb -h 127.0.0.1 -P 3307 -u root -p$$MYSQL_ROOT_PASSWORD -e 'SELECT 1'"]
       interval: 10s
-      timeout: 5s
+      timeout: 60s
       retries: 10
 
   # ---- 消息队列 (Redis :6380) ----
@@ -110,3 +110,5 @@ services:
 volumes:
   db_data:
   projects_data:
+    external: true
+    name: sccloud-r-engine_projects_data
