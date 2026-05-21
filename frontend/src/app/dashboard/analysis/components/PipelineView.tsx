@@ -13,7 +13,7 @@ import Phase2ParamPage from "./Phase2ParamPage";
 import type { Task } from "../../../lib/api";
 import {
   IconMicroscope, IconBarChart, IconAxis, IconCluster,
-  IconTestTube, IconTag, IconBranch, IconNetwork, IconDNA,
+  IconTestTube, IconPathway, IconTag, IconBranch, IconNetwork, IconDNA,
 } from "../../../components/Icons";
 
 const STEPS = [
@@ -21,9 +21,10 @@ const STEPS = [
   { id: "reduce_cluster", num: 2, label: "降维与聚类", desc: "PCA · Harmony · UMAP", Icon: IconAxis, subSteps: ["reduce", "cluster"] },
   { id: "annotate", num: 3, label: "细胞注释", desc: "SingleR/手动", Icon: IconTag, subSteps: ["annotate"] },
   { id: "markers", num: 4, label: "差异基因", desc: "FindMarkers", Icon: IconTestTube, subSteps: ["markers"] },
-  { id: "monocle", num: 5, label: "拟时序分析", desc: "Monocle 2", Icon: IconBranch, subSteps: ["monocle"] },
-  { id: "cellchat", num: 6, label: "细胞通讯", desc: "CellChat", Icon: IconNetwork, subSteps: ["cellchat"] },
-  { id: "infercnv", num: 7, label: "拷贝数变异", desc: "inferCNV", Icon: IconDNA, subSteps: ["infercnv"] },
+  { id: "enrich", num: 5, label: "通路富集分析", desc: "GO / KEGG / GSEA", Icon: IconPathway, subSteps: ["enrich"] },
+  { id: "monocle", num: 6, label: "拟时序分析", desc: "Monocle 2", Icon: IconBranch, subSteps: ["monocle"] },
+  { id: "cellchat", num: 7, label: "细胞通讯", desc: "CellChat", Icon: IconNetwork, subSteps: ["cellchat"] },
+  { id: "infercnv", num: 8, label: "拷贝数变异", desc: "inferCNV", Icon: IconDNA, subSteps: ["infercnv"] },
 ];
 
 const STATUS_DOT: Record<string, string> = {
