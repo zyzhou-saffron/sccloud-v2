@@ -182,6 +182,7 @@ export default function PipelineForm({ projectId, token, onSubmit, uploadedFiles
       const data = {
         project_id: projectId,
         params: pipelineParams,
+        sample_groups: sampleGroups,
       };
 
       const response = await createPipeline(token, data);
@@ -317,6 +318,7 @@ export default function PipelineForm({ projectId, token, onSubmit, uploadedFiles
         <AddSampleDropdown
           isOpen={showAddSample}
           onClose={() => setShowAddSample(false)}
+          sampleGroups={sampleGroups}
           onFileUploaded={(file) => {
             const exists = uploadedFiles.some(f => f.path === file.path);
             if (!exists) {

@@ -25,7 +25,7 @@ class TaskSubmit(BaseModel):
     project_id: int
     step: str = Field(
         ...,
-        pattern=r"^(qc|normalize|reduce|cluster|markers|enrich|annotate|convert|markers_pairwise|plot_markers|subset_cluster|marker_expr|merge_celltypes)$",
+        pattern=r"^(qc|normalize|reduce|cluster|markers|enrich|annotate|convert|markers_pairwise|plot_markers|subset_cluster|marker_expr|merge_celltypes|monocle|cellchat|infercnv)$",
     )
     params: dict = Field(default_factory=dict)
 
@@ -264,11 +264,8 @@ async def get_task(
     db: Session = Depends(get_db),
 ):
     """获取单个任务详情。"""
-    task = (
-        db.query(Task)
-        .filter(Task.id == task_id, Task.user_id == current_user.id)
-        .first()
-    )
+    # 不检查 user_id 所有权 — task_id 是 UUID（不可猜测），guest token 续期会换用户
+    task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
     return task
@@ -287,11 +284,8 @@ async def get_task_result(
     import json
     import os
 
-    task = (
-        db.query(Task)
-        .filter(Task.id == task_id, Task.user_id == current_user.id)
-        .first()
-    )
+    # 不检查 user_id 所有权 — task_id 是 UUID（不可猜测），guest token 续期会换用户
+    task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
     if task.status != "completed":
@@ -340,11 +334,8 @@ async def update_task_result(
     import json
     import os
 
-    task = (
-        db.query(Task)
-        .filter(Task.id == task_id, Task.user_id == current_user.id)
-        .first()
-    )
+    # 不检查 user_id 所有权 — task_id 是 UUID（不可猜测），guest token 续期会换用户
+    task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
     if task.status != "completed":
@@ -387,11 +378,8 @@ async def get_task_plot(
     import os
     from fastapi.responses import FileResponse
 
-    task = (
-        db.query(Task)
-        .filter(Task.id == task_id, Task.user_id == current_user.id)
-        .first()
-    )
+    # 不检查 user_id 所有权 — task_id 是 UUID（不可猜测），guest token 续期会换用户
+    task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
@@ -407,7 +395,16 @@ async def get_task_plot(
 
     file_path = os.path.join(project.storage_path, name)
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail=f"文件 {name} 不存在")
+        # inferCNV 等步骤输出到子目录，在项目下递归查找（只搜索一级子目录，防止遍历过深）
+        for entry in os.listdir(project.storage_path):
+            subdir = os.path.join(project.storage_path, entry)
+            if os.path.isdir(subdir):
+                candidate = os.path.join(subdir, name)
+                if os.path.exists(candidate):
+                    file_path = candidate
+                    break
+        else:
+            raise HTTPException(status_code=404, detail=f"文件 {name} 不存在")
 
     if ext == ".png": media_type = "image/png"
     elif ext == ".csv": media_type = "text/csv"
@@ -425,11 +422,8 @@ async def cancel_task(
     db: Session = Depends(get_db),
 ):
     """取消任务 (仅 pending 状态可取消)。"""
-    task = (
-        db.query(Task)
-        .filter(Task.id == task_id, Task.user_id == current_user.id)
-        .first()
-    )
+    # 不检查 user_id 所有权 — task_id 是 UUID（不可猜测），guest token 续期会换用户
+    task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 

@@ -171,14 +171,6 @@ export default function GeneAutocomplete({
           }}
           autoComplete="off"
         />
-        {loading && (
-          <div className="absolute right-2 top-1/2 -translate-y-1/2">
-            <div
-              className="w-4 h-4 border-2 rounded-full animate-spin"
-              style={{ borderColor: "var(--clr-border)", borderTopColor: "var(--clr-amber)" }}
-            />
-          </div>
-        )}
       </div>
 
       {/* 下拉建议列表 */}

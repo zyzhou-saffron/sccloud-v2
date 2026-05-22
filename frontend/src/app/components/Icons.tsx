@@ -219,3 +219,43 @@ export function IconClose({ className, size = defaultProps.size }: IconProps) {
     </svg>
   );
 }
+
+/** 分支路径 — 拟时序/Monocle */
+export function IconBranch({ className, size = defaultProps.size }: IconProps) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="6" cy="6" r="2" />
+      <circle cx="18" cy="18" r="2" />
+      <circle cx="18" cy="8" r="2" />
+      <path d="M8 6h4a4 4 0 0 1 4 4v2" />
+      <path d="M8 6h4a4 4 0 0 1 4 4v6" />
+    </svg>
+  );
+}
+
+/** 网络节点 — 细胞通讯/CellChat */
+export function IconNetwork({ className, size = defaultProps.size }: IconProps) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="5" cy="12" r="2.5" />
+      <circle cx="19" cy="6" r="2.5" />
+      <circle cx="19" cy="18" r="2.5" />
+      <path d="M7.5 11 16.5 7" />
+      <path d="M7.5 13l9 3" />
+      <path d="M19 8.5v7" />
+    </svg>
+  );
+}
+
+/** DNA 双螺旋 — 拷贝数变异/inferCNV */
+export function IconHelix({ className, size = defaultProps.size }: IconProps) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 2c0 6 6 8 6 12s-6 6-6 10" />
+      <path d="M18 2c0 6-6 8-6 12s6 6 6 10" />
+      <path d="M6 7h12" />
+      <path d="M6 12h12" />
+      <path d="M6 17h12" />
+    </svg>
+  );
+}

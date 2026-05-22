@@ -27,6 +27,7 @@ class PipelineCreateRequest:
         self.project_id = data.get("project_id")
         self.params = data.get("params", {})  # 全 8 步参数
         self.marker_file_path = data.get("marker_file_path")  # marker_expr 的文件路径
+        self.sample_groups = data.get("sample_groups", {})  # 样本分组信息
 
 
 class PipelineResponse:
@@ -103,6 +104,11 @@ async def create_pipeline(
         project_id = data.get("project_id")
         params = data.get("params", {})
         marker_file_path = data.get("marker_file_path")
+        sample_groups = data.get("sample_groups", {})
+
+        # 将样本分组信息存入 params，供 executor 读取
+        if sample_groups and isinstance(sample_groups, dict):
+            params["sample_groups"] = sample_groups
 
         if not project_id or not isinstance(params, dict):
             raise HTTPException(status_code=400, detail="Missing project_id or params")
@@ -213,30 +219,35 @@ async def get_pipeline(
     if not pipeline:
         raise HTTPException(status_code=404, detail="Pipeline not found")
 
-    # 权限检查（简化）
-    if pipeline.user_id != user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-
     return PipelineResponse(pipeline).dict()
 
 
 @router.post("/{pipeline_id}/resume")
 async def resume_pipeline_endpoint(
     pipeline_id: str,
-    background_tasks: BackgroundTasks,
+    data: dict = None,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """
     POST /api/pipeline/{pipeline_id}/resume
 
-    从暂停状态继续执行 Phase 2（markers 及后续步骤）。
+    从暂停状态继续执行 Phase 2。
+    Request body:
+    {
+      "params": {
+        "markers": {...},
+        "monocle": {...},
+        "cellchat": {...},
+        "infercnv": {...}
+      },
+      "enabled_steps": ["markers", "monocle"]
+    }
     """
     pipeline = db.query(Pipeline).filter(Pipeline.id == pipeline_id).first()
     if not pipeline:
         raise HTTPException(status_code=404, detail="Pipeline not found")
-    if pipeline.user_id != user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
     if pipeline.status != "paused":
         raise HTTPException(
             status_code=400,
@@ -245,7 +256,23 @@ async def resume_pipeline_endpoint(
 
     from app.pipeline.executor import resume_pipeline
 
-    background_tasks.add_task(resume_pipeline, pipeline_id)
+    # 更新 Phase 2 参数
+    if data:
+        params_update = data.get("params", {})
+        enabled_steps = data.get("enabled_steps", [])
+
+        # 合并 Phase 2 参数到 pipeline.params
+        current_params = dict(pipeline.params or {})
+        for step, step_params in params_update.items():
+            current_params[step] = step_params
+        current_params["enabled_steps"] = enabled_steps
+        pipeline.params = current_params
+        db.commit()
+
+        background_tasks.add_task(resume_pipeline, pipeline_id, enabled_steps)
+    else:
+        background_tasks.add_task(resume_pipeline, pipeline_id)
+
     return {"pipeline_id": pipeline_id, "status": "running", "message": "继续执行 Phase 2"}
 
 

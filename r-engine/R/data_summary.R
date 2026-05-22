@@ -20,10 +20,21 @@ suppressMessages({
   library(cowplot)
 })
 
+# 高级分析库按需加载（在各函数内部），避免启动时依赖系统库
+
 # [替换] 旧系统使用 this.path::this.path() 定位脚本目录
 # 容器环境下数据存放在 /app/data/
 script_dir <- "data/ref"
 
+# 加载 SingleR 参考数据：优先读本地 .rds，没有则用 celldex 自动下载
+loadRefData <- function(rds_name, celldex_fn) {
+  rds_path <- file.path(script_dir, rds_name)
+  if (file.exists(rds_path)) {
+    return(readRDS(rds_path))
+  }
+  message("本地参考数据不存在，使用 celldex 下载: ", rds_name)
+  return(celldex_fn())
+}
 
 RunSCT <- function(data){
   pro <- SCTransform(data, method = "glmGamPoi", vars.to.regress = "percent.mt", verbose = F)
@@ -170,24 +181,24 @@ RunAnno <- function(pro,mkfs,cellAnno,group,species="Human",tissue="Blood") {
     labels_list <- list()
 
     if(species=="Human"){
-      hpca.se = readRDS(file.path(script_dir,"HumanPrimaryCellAtlasDatar.rds"))
-      bpe.se = readRDS(file.path(script_dir,"BlueprintEncodeDatar.rds"))
+      hpca.se = loadRefData("HumanPrimaryCellAtlasDatar.rds", celldex::HumanPrimaryCellAtlasData)
+      bpe.se = loadRefData("BlueprintEncodeDatar.rds", celldex::BlueprintEncodeData)
       ref_list[["HPCA"]] <- hpca.se
       ref_list[["BPE"]] <- bpe.se
       labels_list <- c(labels_list, list(hpca.se$label.main, bpe.se$label.main))
 
       if(tissue=="Blood"){
-        dice.se = readRDS(file.path(script_dir,"DatabaseImmuneCellExpressionData.rds"))
-        nhd.se = readRDS(file.path(script_dir,"NovershternHematopoieticData.rds"))
-        mid.se = readRDS(file.path(script_dir,"MonacoImmuneData.rds"))
+        dice.se = loadRefData("DatabaseImmuneCellExpressionData.rds", celldex::DatabaseImmuneCellExpressionData)
+        nhd.se = loadRefData("NovershternHematopoieticData.rds", celldex::NovershternHematopoieticData)
+        mid.se = loadRefData("MonacoImmuneData.rds", celldex::MonacoImmuneData)
         ref_list[["DICE"]] <- dice.se
         ref_list[["NHD"]] <- nhd.se
         ref_list[["MID"]] <- mid.se
         labels_list <- c(labels_list, list(dice.se$label.main, nhd.se$label.main, mid.se$label.main))
       }
     }else if(species=="Mouse"){
-      mrd.se = readRDS(file.path(script_dir,"MouseRNAseqData.rds"))
-      igd.se = readRDS(file.path(script_dir,"ImmGenData.rds"))
+      mrd.se = loadRefData("MouseRNAseqData.rds", celldex::MouseRNAseqData)
+      igd.se = loadRefData("ImmGenData.rds", celldex::ImmGenData)
       ref_list[["MRD"]] <- mrd.se
       ref_list[["IGD"]] <- igd.se
       labels_list <- c(labels_list, list(mrd.se$label.main, igd.se$label.main))
@@ -239,5 +250,395 @@ RunAnno <- function(pro,mkfs,cellAnno,group,species="Human",tissue="Blood") {
     
     return(list(data1 = pro, data2 = freqTable))
   }
-   
+
+}
+
+
+# =====================================================================
+# 高级分析函数 — 移植自 _archive/app.new3/data_summary.R
+# RunMonocle / RunCellChat / RunInfercnv
+# =====================================================================
+
+# 调色板（与原脚本一致）
+clusterCols <- c("#D51F26", "#272E6A", "#208A42", "#89288F", "#F47D2B", "#FEE500", "#8A9FD1", "#C06CAB", "#E6C2DC",
+                 "#90D5E4", "#89C75F", "#F37B7D", "#9983BD", "#D24B27", "#3BBCA8", "#6E4B9E", "#0C727C", "#7E1416",
+                 "#D8A767", "#7DD06F", "#844081", "#688EC1", "#C17E73", "#484125", "#6CD3A7", "#597873", "#7B6FD0",
+                 "#D52126", "#88CCEE", "#FEE52C", "#117733", "#CC61B0", "#99C945", "#2F8AC4", "#332288", "#E68316",
+                 "#661101", "#F97B72", "#DDCC77", "#11A579", "#E73F74", "#A6CDE2", "#1E78B4", "#74C476", "#34A047",
+                 "#F59899", "#E11E26", "#FCBF6E", "#F47E1F", "#CAB2D6", "#6A3E98", "#FAF39B", "#B15928", "#1a1334",
+                 "#01545a", "#017351", "#03c383", "#aad962", "#fbbf45", "#ef6a32", "#ed0345", "#a12a5e", "#710162",
+                 "#3B9AB2", "#2a7185", "#a64027", "#9cdff0", "#022336", "#78B7C5", "#EBCC2A", "#E1AF00", "#F21A00",
+                 "#FF0000", "#00A08A", "#F2AD00", "#F98400", "#5BBCD6")
+
+
+#' Monocle 2 拟时序分析
+#'
+#' @param pro Seurat 对象（需含 RNA counts + CellType）
+#' @param group_beam BEAM 分支分析的分组列（"CellType" 或 "Cluster"）
+#' @param group_traj 轨迹可视化的分组列（"CellType"、"Cluster"、"State"、"Pseudotime"）
+#' @param min_expr_threshold 最低表达阈值
+#' @param min_cells_pct 最低细胞检出百分比
+#' @param mean_expr 离散基因筛选的平均表达阈值
+#' @param qvalue1 差异基因 q 值阈值
+#' @param reverse 是否反转拟时序方向
+#' @param progress_callback 进度回调函数
+#' @return list(data1~data8, plot~plot6)
+RunMonocle <- function(pro, group_beam = "CellType", group_traj = "CellType",
+                       min_expr_threshold = 0.5, min_cells_pct = 0.01,
+                       mean_expr = 0.3, qvalue1 = 1e-5, reverse = FALSE,
+                       progress_callback = NULL) {
+  suppressMessages(library(monocle))
+  send_msg <- function(pct, msg) {
+    if (!is.null(progress_callback)) progress_callback(pct, msg)
+    else message(sprintf("[%d%%] %s", pct, msg))
+  }
+
+  MonocleResult <- list()
+
+  # 1. 从 Seurat 提取数据
+  send_msg(5, "提取表达矩阵...")
+  if (as.character(packageVersion("Seurat")) >= "4.0") {
+    expr_matrix <- LayerData(pro, assay = "RNA", layer = "counts")
+  } else {
+    expr_matrix <- GetAssayData(pro, assay = "RNA", slot = "counts")
+  }
+
+  p_data <- pro@meta.data
+  f_data <- data.frame(gene_short_name = rownames(expr_matrix), row.names = rownames(expr_matrix))
+
+  pd <- new("AnnotatedDataFrame", data = p_data)
+  fd <- new("AnnotatedDataFrame", data = f_data)
+
+  # 2. 创建 Monocle 对象
+  send_msg(10, "创建 Monocle 对象...")
+  cd <- newCellDataSet(as.matrix(expr_matrix),
+                       phenoData = pd,
+                       featureData = fd,
+                       lowerDetectionLimit = 0.5,
+                       expressionFamily = negbinomial.size())
+  rm(expr_matrix)
+
+  cd <- estimateSizeFactors(cd)
+  cd <- estimateDispersions(cd)
+  MonocleResult$data1 <- cd
+
+  # 3. 数据过滤
+  send_msg(15, "基因过滤...")
+  cd <- detectGenes(cd, min_expr = min_expr_threshold)
+  expressed_genes <- row.names(subset(fData(cd), num_cells_expressed > nrow(p_data) * min_cells_pct))
+  send_msg(18, paste0("过滤后基因数: ", length(expressed_genes)))
+
+  # 4. 关键基因筛选
+  # 4.1 高离散基因
+  send_msg(20, "筛选高离散基因...")
+  disp_table <- dispersionTable(cd[expressed_genes, ])
+  disp_table_genes <- as.character(subset(disp_table, mean_expression >= mean_expr & dispersion_empirical >= dispersion_fit)$gene_id)
+
+  # 4.2 差异表达基因（按 group_beam 分组）
+  send_msg(25, "差异表达基因检验...")
+  diff_table <- differentialGeneTest(cd[expressed_genes, ], fullModelFormulaStr = paste0("~", group_beam))
+  diff_table_genes <- row.names(subset(diff_table, qval < qvalue1))
+  send_msg(35, paste0("差异基因数: ", length(diff_table_genes)))
+
+  # 4.3 取最大交集
+  genes1 <- list(intersect(disp_table_genes, expressed_genes))
+  genes2 <- list(intersect(diff_table_genes, expressed_genes))
+  genes3 <- list(Reduce(intersect, list(expressed_genes, disp_table_genes, diff_table_genes)))
+  gg <- list(genes1, genes2, genes3)
+  lengths <- sapply(gg, lengths)
+  ordering_genes <- unlist(gg[[which.max(lengths)]])
+  send_msg(38, paste0("排序基因数: ", length(ordering_genes)))
+
+  MonocleResult$data2 <- data.frame(Ordering_Genes = ordering_genes, stringsAsFactors = FALSE)
+  cd <- setOrderingFilter(cd, ordering_genes)
+
+  # 基因筛选图
+  text_labels <- paste0("genes obtained after filter: ", length(expressed_genes),
+                        "\ngenes with high dispersion: ", length(disp_table_genes),
+                        "\ngenes diff between types: ", length(diff_table_genes),
+                        "\ngenes ordered: ", length(ordering_genes))
+  if (length(ordering_genes) > 0) {
+    p <- plot_ordering_genes(cd) +
+      annotate("text", x = Inf, y = Inf, label = text_labels, hjust = 1, vjust = 1, size = 5, color = "black", fontface = "bold") +
+      theme(plot.margin = unit(c(1, 2, 1, 1), "cm"))
+  } else {
+    p <- ggplot() + annotate("text", x = 0.5, y = 0.5, label = text_labels, size = 5) + theme_void()
+  }
+  MonocleResult$plot <- p
+
+  # 5. 降维 + 排序
+  send_msg(40, "DDRTree 降维...")
+  cd <- reduceDimension(cd, max_components = 2, reduction_method = "DDRTree")
+  send_msg(55, "细胞排序...")
+  cd <- orderCells(cd, reverse = reverse)
+  MonocleResult$data3 <- cd
+
+  # 6. 轨迹可视化
+  send_msg(58, "生成轨迹图...")
+  df <- pData(cd)
+  df$State <- as.character(df$State)
+  MonocleResult$data4 <- df
+  MonocleResult$data5 <- sort(as.character(unique(df$State)))
+
+  p11 <- plot_cell_trajectory(cd, show_cell_names = F, color_by = group_traj, cell_size = 0.5) +
+    scale_color_manual(values = clusterCols) +
+    theme(legend.text = element_text(size = 12), legend.title = element_text(size = 12), legend.key.size = unit(0.5, "cm"))
+  p12 <- plot_cell_trajectory(cd, show_cell_names = F, color_by = group_traj, cell_size = 0.5) +
+    scale_color_manual(values = clusterCols) +
+    theme(legend.text = element_text(size = 12), legend.title = element_text(size = 12), legend.key.size = unit(0.5, "cm")) +
+    facet_wrap(as.formula(paste0("~", group_traj)), nrow = 2)
+  MonocleResult$plot1 <- p11 | p12
+
+  # 7. Top 基因表达变化
+  send_msg(62, "拟时序基因表达图...")
+  keygenes <- head(ordering_genes, 2)
+  if (length(keygenes) >= 1) {
+    cd_subset <- cd[keygenes, ]
+    p_gip <- plot_genes_in_pseudotime(cd_subset, color_by = "Pseudotime")
+    MonocleResult$plot2 <- p_gip
+  }
+
+  # 8. 拟时序差异基因
+  send_msg(65, "拟时序差异基因检验...")
+  pseudotime_de <- differentialGeneTest(cd[expressed_genes, ], fullModelFormulaStr = "~sm.ns(Pseudotime)")
+  pseudotime_de <- pseudotime_de[order(pseudotime_de$qval), ]
+  MonocleResult$data6 <- pseudotime_de[, c(5, 2, 3, 4, 1, 6, 7)]
+
+  send_msg(72, "状态差异基因检验...")
+  states_de <- differentialGeneTest(cd[expressed_genes, ], fullModelFormulaStr = "~State")
+  states_de <- states_de[order(states_de$qval), ]
+  MonocleResult$data7 <- states_de[, c(5, 2, 3, 4, 1, 6, 7)]
+
+  # 热图
+  send_msg(78, "生成热图...")
+  pseudotime_de_top <- head(pseudotime_de$gene_short_name[order(pseudotime_de$qval)], 100)
+  if (length(pseudotime_de_top) > 0) {
+    p2 <- plot_pseudotime_heatmap(cd[pseudotime_de_top, ], num_clusters = 4, show_rownames = T, return_heatmap = T)
+    MonocleResult$plot3 <- p2
+  }
+
+  states_de_top <- head(states_de$gene_short_name[order(states_de$qval)], 100)
+  if (length(states_de_top) > 0) {
+    p3 <- plot_pseudotime_heatmap(cd[states_de_top, ], num_clusters = 4, show_rownames = T, return_heatmap = T)
+    MonocleResult$plot4 <- p3
+  }
+
+  # 9. BEAM 分支分析
+  send_msg(82, "BEAM 分支分析...")
+  BEAM_res <- BEAM(cd[expressed_genes, ], branch_point = 1, cores = 1, progenitor_method = "duplicate")
+  BEAM_res <- BEAM_res[order(BEAM_res$qval), ]
+  BEAM_res <- BEAM_res[, c("gene_short_name", "pval", "qval")]
+  MonocleResult$data8 <- BEAM_res
+
+  # BEAM 热图
+  send_msg(90, "BEAM 热图...")
+  beam_sig <- row.names(subset(BEAM_res, qval < 1e-4))
+  if (length(beam_sig) > 10) {
+    tmp1 <- plot_genes_branched_heatmap(cd[beam_sig, ],
+                                        branch_point = 1, num_clusters = 4, cores = 1,
+                                        use_gene_short_name = TRUE, show_rownames = FALSE,
+                                        return_heatmap = TRUE)
+    MonocleResult$plot5 <- tmp1$ph_res
+  }
+
+  # BEAM 分支基因可视化
+  send_msg(95, "分支基因可视化...")
+  beam_genes <- head(BEAM_res$gene_short_name, 2)
+  if (length(beam_genes) >= 1) {
+    tmp3 <- plot_genes_branched_pseudotime(cd[beam_genes, ], branch_point = 1, color_by = "State", cell_size = 2, ncol = 2)
+    MonocleResult$plot6 <- tmp3
+  }
+
+  send_msg(100, "Monocle 分析完成")
+  return(MonocleResult)
+}
+
+
+#' CellChat 细胞通讯分析
+#'
+#' @param pro Seurat 对象（需含 SCT@data + CellType）
+#' @param species 物种（"Human" 或 "Mouse"）
+#' @param db_use 数据库子集（"Secreted" / "ECM-Receptor" / "Cell-Cell Contact"）
+#' @param thresh 通讯显著性阈值
+#' @param progress_callback 进度回调函数
+#' @return list(data1~data3, plot1, plot4~5, f1, p91~92)
+RunCellChat <- function(pro, species = "Human", db_use = "Secreted", thresh = 0.05,
+                        progress_callback = NULL) {
+  suppressMessages(library(CellChat))
+  send_msg <- function(pct, msg) {
+    if (!is.null(progress_callback)) progress_callback(pct, msg)
+    else message(sprintf("[%d%%] %s", pct, msg))
+  }
+
+  CellChatResult <- list()
+
+  # 确保 samples 列存在
+  if (!"samples" %in% colnames(pro@meta.data)) {
+    pro@meta.data$samples <- pro@meta.data$Sample
+  }
+
+  # 1. 创建 CellChat 对象
+  send_msg(5, "创建 CellChat 对象...")
+  cellchat <- createCellChat(pro@assays$SCT@data, meta = pro@meta.data, group.by = "CellType")
+  groupSize <- as.numeric(table(cellchat@idents))
+
+  # 2. 加载数据库
+  send_msg(10, "加载信号通路数据库...")
+  if (species == "Human") {
+    CellChatDB <- CellChatDB.human
+  } else {
+    CellChatDB <- CellChatDB.mouse
+  }
+
+  # 按 db_use 子集
+  if (db_use == "Secreted") {
+    CellChatDB.use <- subsetDB(CellChatDB, search = "Secreted Signaling")
+  } else if (db_use == "ECM-Receptor") {
+    CellChatDB.use <- subsetDB(CellChatDB, search = "ECM-Receptor")
+  } else if (db_use == "Cell-Cell Contact") {
+    CellChatDB.use <- subsetDB(CellChatDB, search = "Cell-Cell Contact")
+  } else {
+    CellChatDB.use <- CellChatDB
+  }
+  cellchat@DB <- CellChatDB.use
+
+  # 3. 预处理
+  send_msg(20, "预处理信号基因...")
+  cellchat <- subsetData(cellchat)
+  cellchat <- identifyOverExpressedGenes(cellchat)
+  cellchat <- identifyOverExpressedInteractions(cellchat)
+
+  # 4. 推断通讯网络
+  send_msg(35, "推断通讯概率...")
+  cellchat <- computeCommunProb(cellchat, type = "triMean")
+  cellchat <- filterCommunication(cellchat, min.cells = 10)
+
+  send_msg(50, "提取通讯结果...")
+  df.net <- subsetCommunication(cellchat)
+  CellChatResult$data1 <- df.net
+
+  send_msg(55, "计算通路概率...")
+  cellchat <- computeCommunProbPathway(cellchat)
+  df.netp <- subsetCommunication(cellchat, slot.name = "netP")
+  CellChatResult$data2 <- df.netp
+
+  send_msg(62, "聚合通讯网络...")
+  cellchat <- aggregateNet(cellchat)
+
+  groupSizes <- as.numeric(table(cellchat@idents))
+  CellChatResult$data3 <- groupSizes
+
+  # 5. 通讯数量和强度图
+  send_msg(68, "生成通讯网络图...")
+  p_count <- netVisual_circle(cellchat@net$count, vertex.weight = groupSize, weight.scale = T,
+                               label.edge = F, title.name = "Number of interactions")
+  p_weight <- netVisual_circle(cellchat@net$weight, vertex.weight = groupSize, weight.scale = T,
+                                label.edge = F, title.name = "Interaction weights/strength")
+  CellChatResult$plot1 <- grid.grab()
+  CellChatResult$plot1b <- grid.grab()
+
+  # 6. 信号通路可视化
+  send_msg(75, "信号通路可视化...")
+  pathways.show.all <- cellchat@netP$pathways
+  pathways.show <- pathways.show.all[1]
+
+  if (!is.null(pathways.show) && length(pathways.show) > 0) {
+    # 热图
+    p4 <- netVisual_heatmap(cellchat, signaling = pathways.show, color.heatmap = "Reds")
+    CellChatResult$plot4 <- p4
+
+    # 通路贡献
+    p5 <- netAnalysis_contribution(cellchat, signaling = pathways.show)
+    CellChatResult$plot5 <- p5
+  }
+
+  # 7. 气泡图（所有细胞类型间的相互作用）
+  send_msg(82, "生成气泡图...")
+  tryCatch({
+    f1 <- netVisual_bubble(cellchat, remove.isolate = FALSE)
+    CellChatResult$f1 <- f1
+  }, error = function(e) send_msg(82, paste0("Bubble plot error: ", e$message)))
+
+  # 8. 基因表达
+  send_msg(90, "基因表达图...")
+  if (!is.null(pathways.show) && length(pathways.show) > 0) {
+    tryCatch({
+      p91 <- plotGeneExpression(cellchat, signaling = pathways.show)
+      CellChatResult$p91 <- p91
+    }, error = function(e) send_msg(90, paste0("Gene expression plot error: ", e$message)))
+
+    tryCatch({
+      p92 <- plotGeneExpression(cellchat, signaling = pathways.show, type = "dot", color.use = clusterCols)
+      CellChatResult$p92 <- p92
+    }, error = function(e) send_msg(90, paste0("Gene expression dot plot error: ", e$message)))
+  }
+
+  # 保存 cellchat 对象供后续使用
+  CellChatResult$cellchat <- cellchat
+
+  send_msg(100, "CellChat 分析完成")
+  return(CellChatResult)
+}
+
+
+#' inferCNV 拷贝数变异分析
+#'
+#' @param pro Seurat 对象（需含 SCT@counts + CellType）
+#' @param inferDf 数据框，两列: cellType, refType（"reference" 标记正常细胞）
+#' @param cutoff_gene 表达量截断值
+#' @param outdir 输出目录
+#' @param numThreads 线程数
+#' @param progress_callback 进度回调函数
+#' @return list(infercnv_obj, outdir)
+RunInfercnv <- function(pro, inferDf, cutoff_gene = 0.1, outdir, numThreads = 1,
+                        species = "Human", progress_callback = NULL) {
+  suppressMessages(library(infercnv))
+  send_msg <- function(pct, msg) {
+    if (!is.null(progress_callback)) progress_callback(pct, msg)
+    else message(sprintf("[%d%%] %s", pct, msg))
+  }
+
+  send_msg(5, "准备参考文件...")
+  options(scipen = 100)
+  bedFileName <- if (species == "Mouse") "gene_name_pos_mouse.bed" else "gene_name_pos_human.bed"
+  bedFile <- file.path("data/ref", bedFileName)
+  if (!file.exists(bedFile)) {
+    stop("gene_name_pos.bed not found at: ", bedFile)
+  }
+
+  colnames(inferDf) <- c("cellType", "refType")
+  refGroupNames <- inferDf[which(inferDf$refType == "reference"), ]$cellType
+
+  if (length(refGroupNames) == 0) {
+    stop("No reference cell types specified in inferDf")
+  }
+
+  send_msg(10, paste0("参考细胞: ", paste(refGroupNames, collapse = ", ")))
+
+  send_msg(15, "提取子集...")
+  prosub <- subset(pro, idents = inferDf$cellType)
+  rm(pro)
+
+  annotationsDf <- data.frame(as.character(prosub@meta.data[, "CellType"]))
+  rownames(annotationsDf) <- rownames(prosub@meta.data)
+
+  send_msg(20, "创建 inferCNV 对象...")
+  infercnv_obj <- CreateInfercnvObject(raw_counts_matrix = prosub$SCT@counts,
+                                        annotations_file = annotationsDf,
+                                        delim = "\t",
+                                        gene_order_file = bedFile,
+                                        ref_group_names = refGroupNames)
+
+  send_msg(25, "运行 inferCNV 分析...")
+  infercnv_obj <- infercnv::run(infercnv_obj,
+                                 cutoff = cutoff_gene,
+                                 out_dir = outdir,
+                                 num_threads = numThreads,
+                                 cluster_by_groups = TRUE,
+                                 denoise = TRUE,
+                                 write_expr_matrix = TRUE,
+                                 HMM = TRUE)
+
+  send_msg(100, "inferCNV 分析完成")
+  return(list(infercnv_obj = infercnv_obj, outdir = outdir))
 }

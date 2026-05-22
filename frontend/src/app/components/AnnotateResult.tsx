@@ -115,6 +115,11 @@ export default function AnnotateResult({
   // 编辑中的 annotation_result 值
   const [editedResults, setEditedResults] = useState<Record<string, string>>({});
 
+  // ── 基因表达查询 ──
+  const [geneQueryInputs, setGeneQueryInputs] = useState<Record<string, string>>({});
+  const [showMarkerPanel, setShowMarkerPanel] = useState<Record<string, boolean>>({});
+  const [expandedMarkers, setExpandedMarkers] = useState<Record<string, boolean>>({});
+
   // ── 合并模式状态 ──
   const [mergeMode, setMergeMode] = useState(false);
   const [selectedForMerge, setSelectedForMerge] = useState<Set<string>>(new Set());
@@ -427,6 +432,7 @@ export default function AnnotateResult({
             onColorByChange={setCurrentColorBy}
             mergeIdKey={deckMergeIdKey}
             colorBy={deckColorBy}
+            excludeGroups={["group"]}
           />
         </div>
       ) : plotSrc && (
@@ -526,6 +532,9 @@ export default function AnnotateResult({
                   <th className="px-3 py-2 text-left font-semibold" style={{ color: "var(--clr-amber-dark)" }}>
                     Marker Genes
                   </th>
+                  <th className="px-3 py-2 text-left font-semibold" style={{ color: "var(--clr-amber-dark)", width: 140 }}>
+                    基因表达查询
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -624,6 +633,114 @@ export default function AnnotateResult({
                         ) : (
                           <span style={{ color: "var(--clr-text-faint)" }}>—</span>
                         )}
+                      </td>
+                      <td className="px-2 py-1.5" style={{ position: "relative" }}>
+                        <div style={{ position: "relative" }}>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={geneQueryInputs[row.cluster_id] || ""}
+                              onChange={(e) => setGeneQueryInputs(prev => ({ ...prev, [row.cluster_id]: e.target.value }))}
+                              onFocus={() => setShowMarkerPanel(prev => ({ ...prev, [row.cluster_id]: true }))}
+                              onBlur={() => setTimeout(() => setShowMarkerPanel(prev => ({ ...prev, [row.cluster_id]: false })), 180)}
+                              placeholder="基因名"
+                              className="px-1.5 py-0.5 rounded text-xs"
+                              style={{
+                                border: "1px solid var(--clr-border)",
+                                background: "var(--clr-bg)",
+                                color: "var(--clr-text)",
+                                width: 80,
+                              }}
+                            />
+                            <button
+                              onClick={(e) => {
+                                const gene = geneQueryInputs[row.cluster_id]?.trim();
+                                if (gene) {
+                                  const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                  setActiveGene(gene);
+                                  setActiveCellType(row.celltype);
+                                  setGeneMousePos({ x: rect.left, y: rect.bottom + 4 });
+                                }
+                              }}
+                              className="px-1.5 py-0.5 rounded text-xs"
+                              style={{
+                                background: "var(--clr-amber)",
+                                color: "#fff",
+                                cursor: "pointer",
+                                border: "none",
+                              }}
+                            >
+                              查询
+                            </button>
+                          </div>
+
+                          {/* Marker genes 下拉面板 */}
+                          {showMarkerPanel[row.cluster_id] && row.markers.length > 0 && (
+                            <div
+                              style={{
+                                position: "absolute",
+                                right: "calc(100% + 8px)",
+                                top: 0,
+                                zIndex: 100,
+                                background: "var(--clr-bg-card)",
+                                border: "1px solid var(--clr-border)",
+                                borderRadius: 6,
+                                padding: "8px 12px",
+                                boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
+                                width: 320,
+                              }}
+                              onMouseDown={(e) => e.preventDefault()}
+                            >
+                              <div className="text-[10px] mb-1" style={{ color: "var(--clr-text-muted)" }}>
+                                该细胞类型的标记基因：
+                              </div>
+                              <div className="flex flex-wrap gap-1.5" style={{ maxHeight: 200, overflowY: "auto" }}>
+                                {row.markers.slice(0, expandedMarkers[row.cluster_id] ? row.markers.length : Math.min(6, row.markers.length)).map((g) => (
+                                  <button
+                                    key={g}
+                                    onMouseDown={() => {
+                                      setGeneQueryInputs(prev => ({ ...prev, [row.cluster_id]: g }));
+                                      setShowMarkerPanel(prev => ({ ...prev, [row.cluster_id]: false }));
+                                      setTimeout(() => {
+                                        setActiveGene(g);
+                                        setActiveCellType(row.celltype);
+                                        const inputEl = document.querySelector(`input[data-cluster="${row.cluster_id}"]`) as HTMLInputElement;
+                                        if (inputEl) {
+                                          const rect = inputEl.getBoundingClientRect();
+                                          setGeneMousePos({ x: rect.left, y: rect.bottom + 4 });
+                                        }
+                                      }, 50);
+                                    }}
+                                    className="px-1.5 py-0.5 rounded text-[10px] transition-colors hover:opacity-80"
+                                    style={{
+                                      background: "rgba(200,96,25,0.08)",
+                                      color: "var(--clr-amber-dark)",
+                                      border: "1px solid rgba(200,96,25,0.2)",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {g}
+                                  </button>
+                                ))}
+                              </div>
+                              {row.markers.length > 6 && (
+                                <button
+                                  onMouseDown={() => setExpandedMarkers(prev => ({ ...prev, [row.cluster_id]: !prev[row.cluster_id] }))}
+                                  className="mt-1 text-[10px]"
+                                  style={{
+                                    background: "transparent",
+                                    color: "var(--clr-amber)",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    padding: 0,
+                                  }}
+                                >
+                                  {expandedMarkers[row.cluster_id] ? "收起 ▲" : `展开 (+${row.markers.length - 6}) ▼`}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

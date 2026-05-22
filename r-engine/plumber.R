@@ -22,6 +22,12 @@
 library(plumber)
 library(jsonlite)
 
+# 全局 JSON 序列化：auto_unbox = TRUE 避免单值被包装为数组
+# R jsonlite 默认将单个字符串/数字包装为 ["value"]，前端需要的是 "value"
+options(plumber.json.serializer = function(...) {
+  jsonlite::toJSON(..., auto_unbox = TRUE, null = "null")
+})
+
 # 加载进度报告工具 (唯一的新增基础设施代码)
 source("R/utils.R")
 
@@ -69,6 +75,27 @@ save_with_canonical <- function(archive_path, canonical_path, object = NULL) {
     saveRDS(object, archive_path)
   }
   file.copy(archive_path, canonical_path, overwrite = TRUE)
+}
+
+#' 从 annotate_result.json 同步合并后的 CellType 到 Seurat 对象
+#'
+#' 前端合并细胞类型后只更新 JSON，不更新 RDS。
+#' 此函数检查 JSON 中是否有更新的 CellType 标签，若有则覆盖 pro$CellType。
+#' @param pro Seurat 对象（已加载 seurat_annotated.rds）
+#' @param project_path 项目目录路径
+#' @return 更新后的 Seurat 对象
+sync_celltype_from_json <- function(pro, project_path) {
+  json_path <- file.path(project_path, "annotate_result.json")
+  if (!file.exists(json_path)) return(pro)
+
+  anno <- tryCatch(jsonlite::fromJSON(json_path), error = function(e) NULL)
+  if (is.null(anno)) return(pro)
+
+  merged_ct <- anno$scatter_data$celltype
+  if (is.null(merged_ct) || length(merged_ct) != ncol(pro)) return(pro)
+
+  pro$CellType <- merged_ct
+  pro
 }
 
 
@@ -405,6 +432,29 @@ function(req) {
     rds_files <- list.files(project_path, pattern = "\\.rds$", full.names = TRUE)
     if (length(rds_files) == 0) stop("项目目录中未找到 .rds 文件，请先上传数据文件")
     exp <- readRDS(rds_files[1])
+  }
+
+  # --- 样本分组信息处理 ---
+  # 1. 优先从 Pipeline params 中读取分组信息
+  sample_groups <- params$sample_groups
+  # 2. 其次从上传时保存的 _groups.json 读取
+  if (is.null(sample_groups) || length(sample_groups) == 0) {
+    groups_json_path <- file.path(dirname(rds_file_path), paste0(basename(rds_file_path), "_groups.json"))
+    if (file.exists(groups_json_path)) {
+      tryCatch({
+        sample_groups <- jsonlite::fromJSON(groups_json_path)
+      }, error = function(e) {
+        sample_groups <- NULL
+      })
+    }
+  }
+  # 3. 如果存在分组信息，写入 Seurat 对象的 meta.data$Group 列
+  if (!is.null(sample_groups) && length(sample_groups) > 0 && "Sample" %in% colnames(exp@meta.data)) {
+    report(12, "写入样本分组信息...")
+    exp$Group <- sapply(as.character(exp@meta.data$Sample), function(s) {
+      grp <- sample_groups[[s]]
+      if (is.null(grp) || nchar(grp) == 0) "Unknown" else grp
+    })
   }
 
   # --- 非 Symbol 基因 ID → Gene Symbol 回退转换 ---
@@ -795,7 +845,16 @@ function(req) {
     input_path <- file.path(project_path, "seurat_annotated.rds")
     if (!file.exists(input_path)) stop("请先运行细胞注释步骤")
     pro <- readRDS(input_path)
+    pro <- sync_celltype_from_json(pro, project_path)
     Idents(pro) <- pro$CellType
+  } else if (group_by == "Group") {
+    input_path <- file.path(project_path, "seurat_clustered.rds")
+    if (!file.exists(input_path)) stop("请先运行聚类步骤")
+    pro <- readRDS(input_path)
+    if (!"Group" %in% colnames(pro@meta.data)) {
+      stop("Seurat 对象缺少 Group 列，请先在上传时设置样本分组")
+    }
+    Idents(pro) <- pro$Group
   } else {
     input_path <- file.path(project_path, "seurat_clustered.rds")
     if (!file.exists(input_path)) stop("请先运行聚类步骤")
@@ -820,6 +879,23 @@ function(req) {
 
   # 调用原始函数 — data_summary.R::my_diffTable()
   diffTable <- my_diffTable(pro, cluster, min_pct, logfc, test_use, only_pos)
+
+  # 当 group_by == "CellType" 时，Cluster 列实际是细胞类型名
+  # 将其拆分为 Cluster（原始聚类编号，逗号分隔）+ CellType（合并后的细胞类型）
+  if (group_by == "CellType") {
+    md <- pro@meta.data
+    # 一个 cell type 可能对应多个 cluster（合并后），用逗号拼接
+    ct2cl <- list()
+    for (cl in unique(as.character(md$Cluster))) {
+      ct <- as.character(md[md$Cluster == cl, "CellType"][1])
+      ct2cl[[ct]] <- c(ct2cl[[ct]], cl)
+    }
+    diffTable$CellType <- diffTable$Cluster
+    diffTable$Cluster <- sapply(diffTable$CellType, function(ct) {
+      cls <- ct2cl[[ct]]
+      if (is.null(cls)) ct else paste(sort(cls), collapse = ",")
+    })
+  }
 
   # 按 p_val_adj 阈值过滤
   diffTable <- diffTable[diffTable$p_val_adj < p_adj_cutoff, ]
@@ -1310,7 +1386,16 @@ function(req) {
     input_path <- file.path(project_path, "seurat_annotated.rds")
     if (!file.exists(input_path)) stop("请先运行细胞注释步骤")
     pro <- readRDS(input_path)
+    pro <- sync_celltype_from_json(pro, project_path)
     Idents(pro) <- pro$CellType
+  } else if (group_by == "Group") {
+    input_path <- file.path(project_path, "seurat_clustered.rds")
+    if (!file.exists(input_path)) stop("请先运行聚类步骤")
+    pro <- readRDS(input_path)
+    if (!"Group" %in% colnames(pro@meta.data)) {
+      stop("Seurat 对象缺少 Group 列，请先在上传时设置样本分组")
+    }
+    Idents(pro) <- pro$Group
   } else {
     input_path <- file.path(project_path, "seurat_clustered.rds")
     if (!file.exists(input_path)) stop("请先运行聚类步骤")
@@ -1851,5 +1936,318 @@ function(req) {
     cells = ncol(merged_obj),
     genes = nrow(merged_obj),
     file_size_mb = round(file.size(output_path) / 1024 / 1024, 2)
+  )
+}
+
+
+# ======================================================================
+# 9. Monocle 拟时序分析
+#     对应 v1: data_summary.R::RunMonocle()
+# ======================================================================
+
+#* Monocle 2 拟时序分析
+#* @post /monocle
+function(req) {
+  body <- jsonlite::fromJSON(req$postBody)
+  project_path <- body$project_path
+  params <- body$params
+  task_id <- params$task_id
+  report <- create_progress_reporter(task_id)
+
+  report(3, "加载注释数据...")
+
+  input_path <- file.path(project_path, "seurat_annotated.rds")
+  if (!file.exists(input_path)) stop("请先运行细胞注释步骤")
+  pro <- readRDS(input_path)
+  pro <- sync_celltype_from_json(pro, project_path)
+
+  group_beam <- params$group_beam %||% "CellType"
+  group_traj <- params$group_traj %||% "CellType"
+  min_expr_threshold <- params$min_expr_threshold %||% 0.5
+  min_cells_pct <- params$min_cells_pct %||% 0.01
+  mean_expr <- params$mean_expr %||% 0.3
+  qvalue1 <- params$qvalue1 %||% 1e-5
+  reverse <- params$reverse %||% FALSE
+
+  progress_cb <- function(pct, msg) report(pct, msg)
+
+  result <- RunMonocle(pro, group_beam = group_beam, group_traj = group_traj,
+                       min_expr_threshold = min_expr_threshold,
+                       min_cells_pct = min_cells_pct, mean_expr = mean_expr,
+                       qvalue1 = qvalue1, reverse = reverse,
+                       progress_callback = progress_cb)
+
+  report(97, "保存图表...")
+
+  # 保存所有 plots
+  plot_paths <- list()
+  plot_names <- c("ordering_genes", "trajectory", "pseudotime_genes",
+                   "heatmap_pseudotime", "heatmap_state", "beam_heatmap", "beam_genes")
+  plot_keys <- c("plot", "plot1", "plot2", "plot3", "plot4", "plot5", "plot6")
+
+  for (i in seq_along(plot_keys)) {
+    if (!is.null(result[[plot_keys[i]]])) {
+      fname <- make_output_name(project_path, "9", "monocle", plot_names[i], "png")
+      fpath <- file.path(project_path, fname)
+      tryCatch({
+        png(fpath, width = 1400, height = 800, res = 150)
+        if (inherits(result[[plot_keys[i]]], "Heatmap")) {
+          draw(result[[plot_keys[i]]])
+        } else {
+          print(result[[plot_keys[i]]])
+        }
+        dev.off()
+        plot_paths[[plot_names[i]]] <- fpath
+      }, error = function(e) {
+        dev.off()
+        message(paste0("Plot save error (", plot_names[i], "): ", e$message))
+      })
+    }
+  }
+
+  report(85, "保存数据...")
+
+  # 保存关键数据对象
+  data_paths <- list()
+  data_names <- c("cd_filtered", "ordering_genes", "cd_pseudotime",
+                   "pseudotime_meta", "pseudotime_de", "states_de", "beam_res")
+  data_keys <- c("data1", "data2", "data3", "data4", "data6", "data7", "data8")
+
+  for (i in seq_along(data_keys)) {
+    if (!is.null(result[[data_keys[i]]])) {
+      fname <- make_output_name(project_path, "9", "monocle", data_names[i], "rds")
+      fpath <- file.path(project_path, fname)
+      saveRDS(result[[data_keys[i]]], fpath)
+      data_paths[[data_names[i]]] <- fpath
+    }
+  }
+
+  # 保存 BEAM 差异基因 CSV
+  if (!is.null(result$data8)) {
+    csv_name <- make_output_name(project_path, "9", "monocle", "beam_diff_genes", "csv")
+    csv_path <- file.path(project_path, csv_name)
+    write.csv(result$data8, csv_path, row.names = FALSE)
+    data_paths$beam_diff_genes_csv <- csv_path
+  }
+
+  report(100, "Monocle 分析完成")
+
+  list(
+    status = "success",
+    plot_paths = plot_paths,
+    data_paths = data_paths,
+    stats = list(
+      ordering_genes = nrow(result$data2 %||% data.frame()),
+      pseudotime_de_genes = nrow(result$data6 %||% data.frame()),
+      beam_genes = nrow(result$data8 %||% data.frame())
+    )
+  )
+}
+
+
+# ======================================================================
+# 10. CellChat 细胞通讯分析
+#      对应 v1: data_summary.R::RunCellChat()
+# ======================================================================
+
+#* CellChat 细胞通讯分析
+#* @post /cellchat
+function(req) {
+  body <- jsonlite::fromJSON(req$postBody)
+  project_path <- body$project_path
+  params <- body$params
+  task_id <- params$task_id
+  report <- create_progress_reporter(task_id)
+  suppressMessages(library(ComplexHeatmap))
+
+  report(3, "加载注释数据...")
+
+  input_path <- file.path(project_path, "seurat_annotated.rds")
+  if (!file.exists(input_path)) stop("请先运行细胞注释步骤")
+  pro <- readRDS(input_path)
+  pro <- sync_celltype_from_json(pro, project_path)
+
+  species <- params$species %||% "Human"
+  db_use <- params$db_use %||% "Secreted"
+  thresh <- params$thresh %||% 0.05
+
+  progress_cb <- function(pct, msg) report(pct, msg)
+
+  result <- RunCellChat(pro, species = species, db_use = db_use, thresh = thresh,
+                        progress_callback = progress_cb)
+
+  report(95, "保存图表...")
+
+  # 保存 plots
+  plot_paths <- list()
+  plot_configs <- list(
+    list(key = "plot4", name = "pathway_heatmap", w = 900, h = 800),
+    list(key = "plot5", name = "pathway_contribution", w = 900, h = 600),
+    list(key = "p91", name = "gene_vln", w = 1400, h = 800),
+    list(key = "p92", name = "gene_dot", w = 1400, h = 800)
+  )
+
+  # net_number / net_strength: grid.grab() 无法在新设备中重绘，直接重新渲染
+  groupSize <- result$group_sizes
+  if (!is.null(result$cellchat)) {
+    cellchat <- result$cellchat
+    tryCatch({
+      fname <- make_output_name(project_path, "10", "cellchat", "net_number", "png")
+      fpath <- file.path(project_path, fname)
+      png(fpath, width = 1400, height = 700, res = 150)
+      netVisual_circle(cellchat@net$count, vertex.weight = groupSize, weight.scale = T,
+                       label.edge = F, title.name = "Number of interactions")
+      dev.off()
+      plot_paths$net_number <- fpath
+    }, error = function(e) { dev.off(); message(paste0("Plot save error (net_number): ", e$message)) })
+    tryCatch({
+      fname <- make_output_name(project_path, "10", "cellchat", "net_strength", "png")
+      fpath <- file.path(project_path, fname)
+      png(fpath, width = 1400, height = 700, res = 150)
+      netVisual_circle(cellchat@net$weight, vertex.weight = groupSize, weight.scale = T,
+                       label.edge = F, title.name = "Interaction weights/strength")
+      dev.off()
+      plot_paths$net_strength <- fpath
+    }, error = function(e) { dev.off(); message(paste0("Plot save error (net_strength): ", e$message)) })
+  }
+
+  for (cfg in plot_configs) {
+    if (!is.null(result[[cfg$key]])) {
+      fname <- make_output_name(project_path, "10", "cellchat", cfg$name, "png")
+      fpath <- file.path(project_path, fname)
+      tryCatch({
+        png(fpath, width = cfg$w, height = cfg$h, res = 150)
+        if (inherits(result[[cfg$key]], "Heatmap")) {
+          draw(result[[cfg$key]])
+        } else {
+          print(result[[cfg$key]])
+        }
+        dev.off()
+        plot_paths[[cfg$name]] <- fpath
+      }, error = function(e) {
+        dev.off()
+        message(paste0("Plot save error (", cfg$name, "): ", e$message))
+      })
+    }
+  }
+
+  # 保存气泡图（ggplot 对象用 ggsave）
+  if (!is.null(result$f1)) {
+    fname <- make_output_name(project_path, "10", "cellchat", "bubble", "png")
+    fpath <- file.path(project_path, fname)
+    tryCatch({
+      ggsave(fpath, plot = result$f1, width = 10, height = 8, dpi = 150)
+      plot_paths$bubble <- fpath
+    }, error = function(e) message(paste0("Bubble plot error: ", e$message)))
+  }
+
+  report(85, "保存数据...")
+
+  # 保存数据
+  data_paths <- list()
+  if (!is.null(result$data1)) {
+    fname <- make_output_name(project_path, "10", "cellchat", "net_LR", "csv")
+    fpath <- file.path(project_path, fname)
+    write.csv(result$data1, fpath, row.names = FALSE)
+    data_paths$net_LR <- fpath
+  }
+  if (!is.null(result$data2)) {
+    fname <- make_output_name(project_path, "10", "cellchat", "net_pathway", "csv")
+    fpath <- file.path(project_path, fname)
+    write.csv(result$data2, fpath, row.names = FALSE)
+    data_paths$net_pathway <- fpath
+  }
+
+  report(100, "CellChat 分析完成")
+
+  list(
+    status = "success",
+    plot_paths = plot_paths,
+    data_paths = data_paths,
+    stats = list(
+      n_interactions = nrow(result$data1 %||% data.frame()),
+      n_pathways = length(unique(result$data2$pathway_name %||% c())),
+      group_sizes = result$data3
+    )
+  )
+}
+
+
+# ======================================================================
+# 11. inferCNV 拷贝数变异分析
+#      对应 v1: data_summary.R::RunInfercnv()
+# ======================================================================
+
+#* inferCNV 拷贝数变异分析
+#* @post /infercnv
+function(req) {
+  body <- jsonlite::fromJSON(req$postBody)
+  project_path <- body$project_path
+  params <- body$params
+  task_id <- params$task_id
+  report <- create_progress_reporter(task_id)
+
+  report(3, "加载注释数据...")
+
+  input_path <- file.path(project_path, "seurat_annotated.rds")
+  if (!file.exists(input_path)) stop("请先运行细胞注释步骤")
+  pro <- readRDS(input_path)
+  pro <- sync_celltype_from_json(pro, project_path)
+
+  # 构建 inferDf
+  infer_df_data <- params$infer_df
+  if (is.null(infer_df_data) || length(infer_df_data) == 0) {
+    stop("请指定细胞类型的参考/查询分类 (infer_df)")
+  }
+  inferDf <- as.data.frame(infer_df_data)
+
+  cutoff_gene <- params$cutoff_gene %||% 0.1
+  num_threads <- params$num_threads %||% 1
+  species <- params$species %||% "Human"
+
+  # 创建输出目录
+  outdir <- file.path(project_path, paste0("infercnv_output_", format(Sys.time(), "%Y%m%d%H%M%S")))
+  dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
+
+  progress_cb <- function(pct, msg) report(pct, msg)
+
+  result <- RunInfercnv(pro, inferDf = inferDf, cutoff_gene = cutoff_gene,
+                         outdir = outdir, numThreads = num_threads,
+                         species = species, progress_callback = progress_cb)
+
+  report(95, "收集结果...")
+
+  # 收集输出文件
+  output_files <- list.files(outdir, full.names = TRUE)
+  plot_paths <- list()
+  data_paths <- list()
+
+  for (f in output_files) {
+    fname <- basename(f)
+    if (grepl("\\.png$", fname)) {
+      plot_paths[[fname]] <- f
+    } else if (grepl("\\.(txt|csv)$", fname)) {
+      data_paths[[fname]] <- f
+    }
+  }
+
+  # 保存 infercnv 对象
+  obj_name <- make_output_name(project_path, "11", "infercnv", "object", "rds")
+  obj_path <- file.path(project_path, obj_name)
+  saveRDS(result$infercnv_obj, obj_path)
+  data_paths$infercnv_obj <- obj_path
+
+  report(100, "inferCNV 分析完成")
+
+  list(
+    status = "success",
+    outdir = outdir,
+    plot_paths = plot_paths,
+    data_paths = data_paths,
+    stats = list(
+      n_ref_types = sum(inferDf$refType == "reference"),
+      n_query_types = sum(inferDf$refType != "reference"),
+      cutoff = cutoff_gene
+    )
   )
 }

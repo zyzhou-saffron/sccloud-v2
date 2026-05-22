@@ -121,10 +121,28 @@ docker load < data/sccloud-r-engine-image.tar.gz
 
 #### 方式 C: 从零编译安装（~2 小时）
 
+适用于没有预编译 `r-library/` 和预构建镜像的场景。
+
 ```bash
 cd r-engine
-# 修改 Dockerfile，将 COPY r-library/ 替换为运行 install_packages.R
-# 然后构建
+```
+
+修改 `Dockerfile`，将这一行：
+
+```dockerfile
+COPY r-library/ /usr/local/lib/R/site-library/
+```
+
+替换为：
+
+```dockerfile
+COPY install_packages.R .
+RUN Rscript install_packages.R
+```
+
+然后构建：
+
+```bash
 docker build -t sccloud-r-engine .
 ```
 
@@ -165,7 +183,10 @@ curl http://localhost:8000/api/health
 ```bash
 # 创建服务器专用环境配置
 cp .env.example .env.server
-vim .env.server  # 修改密码和 JWT_SECRET
+vim .env.server  # 修改以下必填项：
+#   - DB_PASS / DB_ROOT_PASS（数据库密码）
+#   - JWT_SECRET — 用 `openssl rand -hex 32` 生成，如：
+#     a583661e1b2f7bf173e2ca320a5889009f9ae2f64ab5365434a4914935d500f8
 
 # 启动（使用 server 配置文件）
 docker compose --env-file .env.server -f docker-compose.server.yml up -d --build
@@ -292,7 +313,7 @@ sccloud-v2/
 │   ├── R/                      # 分析模块
 │   │   ├── data_plot.R         # 绘图函数 (QC/降维/差异/Marker)
 │   │   └── data_summary.R     # 数据汇总函数
-│   └── data/                   # SingleR 参考数据等
+│   └── data/                   # SingleR 参考数据等（首次运行时自动下载，无需手动准备）
 │
 ├── nginx/
 │   └── nginx.conf              # 反向代理配置
@@ -380,6 +401,16 @@ curl http://localhost:8787/health
 
 # 查看 R 引擎日志
 docker compose logs r-engine
+```
+
+### SingleR 参考数据
+
+SingleR 细胞注释所需的参考数据集（~460MB）**无需手动准备**。首次运行自动注释时，`celldex` 包会自动从 Bioconductor 下载并缓存到容器内 `~/.cache/R/ExperimentHub/`。后续分析直接从缓存读取。
+
+如果下载失败（网络问题），可重试任务或检查 R 引擎容器的网络连通性：
+
+```bash
+docker exec sccloud-r-engine-r-engine-1 curl -I https://experimenthub.bioconductor.org
 ```
 
 ### 数据库初始化

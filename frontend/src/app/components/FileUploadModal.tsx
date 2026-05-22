@@ -26,6 +26,7 @@ interface FileUploadModalProps {
   onFileUploaded: (file: { name: string; path: string; metadata_columns?: string[]; n_rows?: number; n_cols?: number; file_size_mb?: number; samples?: { name: string; cell_count: number }[]; ensembl_version?: string }) => void;
   projectId: number;
   token: string;
+  sampleGroups?: Record<string, string>;
 }
 
 export default function FileUploadModal({
@@ -34,6 +35,7 @@ export default function FileUploadModal({
   onFileUploaded,
   projectId,
   token,
+  sampleGroups,
 }: FileUploadModalProps) {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [inspecting, setInspecting] = useState(false);
@@ -101,6 +103,9 @@ export default function FileUploadModal({
       const completeForm = new FormData();
       completeForm.append("upload_id", upload_id);
       completeForm.append("project_id", String(projectId));
+      if (sampleGroups && Object.keys(sampleGroups).length > 0) {
+        completeForm.append("sample_groups", JSON.stringify(sampleGroups));
+      }
       const completeRes = await fetch("/api/upload/complete", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
