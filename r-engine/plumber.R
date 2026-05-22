@@ -434,6 +434,29 @@ function(req) {
     exp <- readRDS(rds_files[1])
   }
 
+  # --- 样本分组信息处理 ---
+  # 1. 优先从 Pipeline params 中读取分组信息
+  sample_groups <- params$sample_groups
+  # 2. 其次从上传时保存的 _groups.json 读取
+  if (is.null(sample_groups) || length(sample_groups) == 0) {
+    groups_json_path <- file.path(dirname(rds_file_path), paste0(basename(rds_file_path), "_groups.json"))
+    if (file.exists(groups_json_path)) {
+      tryCatch({
+        sample_groups <- jsonlite::fromJSON(groups_json_path)
+      }, error = function(e) {
+        sample_groups <- NULL
+      })
+    }
+  }
+  # 3. 如果存在分组信息，写入 Seurat 对象的 meta.data$Group 列
+  if (!is.null(sample_groups) && length(sample_groups) > 0 && "Sample" %in% colnames(exp@meta.data)) {
+    report(12, "写入样本分组信息...")
+    exp$Group <- sapply(as.character(exp@meta.data$Sample), function(s) {
+      grp <- sample_groups[[s]]
+      if (is.null(grp) || nchar(grp) == 0) "Unknown" else grp
+    })
+  }
+
   # --- 非 Symbol 基因 ID → Gene Symbol 回退转换 ---
   id_info <- detect_gene_id_type(rownames(exp))
   if (id_info$id_type != "symbol") {
@@ -824,6 +847,14 @@ function(req) {
     pro <- readRDS(input_path)
     pro <- sync_celltype_from_json(pro, project_path)
     Idents(pro) <- pro$CellType
+  } else if (group_by == "Group") {
+    input_path <- file.path(project_path, "seurat_clustered.rds")
+    if (!file.exists(input_path)) stop("请先运行聚类步骤")
+    pro <- readRDS(input_path)
+    if (!"Group" %in% colnames(pro@meta.data)) {
+      stop("Seurat 对象缺少 Group 列，请先在上传时设置样本分组")
+    }
+    Idents(pro) <- pro$Group
   } else {
     input_path <- file.path(project_path, "seurat_clustered.rds")
     if (!file.exists(input_path)) stop("请先运行聚类步骤")
@@ -1357,6 +1388,14 @@ function(req) {
     pro <- readRDS(input_path)
     pro <- sync_celltype_from_json(pro, project_path)
     Idents(pro) <- pro$CellType
+  } else if (group_by == "Group") {
+    input_path <- file.path(project_path, "seurat_clustered.rds")
+    if (!file.exists(input_path)) stop("请先运行聚类步骤")
+    pro <- readRDS(input_path)
+    if (!"Group" %in% colnames(pro@meta.data)) {
+      stop("Seurat 对象缺少 Group 列，请先在上传时设置样本分组")
+    }
+    Idents(pro) <- pro$Group
   } else {
     input_path <- file.path(project_path, "seurat_clustered.rds")
     if (!file.exists(input_path)) stop("请先运行聚类步骤")
@@ -2163,7 +2202,7 @@ function(req) {
   inferDf <- as.data.frame(infer_df_data)
 
   cutoff_gene <- params$cutoff_gene %||% 0.1
-  num_threads <- params$num_threads %||% 4
+  num_threads <- params$num_threads %||% 1
   species <- params$species %||% "Human"
 
   # 创建输出目录

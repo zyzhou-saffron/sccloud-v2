@@ -6,7 +6,9 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { getPipeline, resumePipeline, type Pipeline, type PipelineTask } from "../../../lib/pipeline-api";
+import { submitTask } from "../../../lib/api";
 import ProgressTracker from "../../../components/ProgressTracker";
 import ResultViewer from "../../../components/ResultViewer";
 import Phase2ParamPage from "./Phase2ParamPage";
@@ -50,6 +52,11 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
   const [reduceClusterTab, setReduceClusterTab] = useState<"cluster" | "reduce">("cluster");
   // Phase 2 参数页显示状态
   const [showPhase2Param, setShowPhase2Param] = useState(false);
+  // 步骤失败对话框
+  const [showFailDialog, setShowFailDialog] = useState(false);
+  const [failStepInfo, setFailStepInfo] = useState<{ stepId: string; stepLabel: string; errorMsg: string; taskParams: Record<string, unknown> } | null>(null);
+  // 避免重复弹出同一个失败对话框
+  const dismissedFailsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -59,6 +66,21 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
         const data = await getPipeline(token, pipelineId);
         setPipeline(data);
         setLoading(false);
+
+        // 检测失败步骤，自动弹出对话框（未 dismissed 的）
+        if (data.status === "failed" && data.error_step) {
+          const failedStep = STEPS.find(s => s.subSteps.includes(data.error_step!));
+          if (failedStep && !dismissedFailsRef.current.has(data.error_step)) {
+            const failedTask = data.tasks.find(t => t.step === data.error_step);
+            setFailStepInfo({
+              stepId: data.error_step,
+              stepLabel: failedStep.label,
+              errorMsg: data.error_msg || failedTask?.error_msg || "未知错误",
+              taskParams: failedTask?.params || {},
+            });
+            setShowFailDialog(true);
+          }
+        }
 
         // 自动选中：运行中步骤 > 最后一个已完成步骤 > 第一个步骤
         // 用户手动选择后停止自动跳转
@@ -354,6 +376,25 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
                       </div>
                       <p className="text-xs font-medium mb-1" style={{ color: "var(--clr-danger)" }}>{reduceClusterTab === "cluster" ? "批次聚类" : "数据降维"}执行失败</p>
                       <div className="text-xs" style={{ color: "var(--clr-text-muted)" }}>{rcCurrentTask.error_msg || "未知错误"}</div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await submitTask({
+                              project_id: pipeline.project_id,
+                              step: reduceClusterTab,
+                              params: rcCurrentTask.params || {},
+                            });
+                            const data = await getPipeline(token, pipelineId);
+                            setPipeline(data);
+                          } catch (e) {
+                            alert("重新运行失败: " + (e instanceof Error ? e.message : "未知错误"));
+                          }
+                        }}
+                        className="mt-3 px-4 py-1.5 rounded text-xs font-medium text-white"
+                        style={{ background: "var(--clr-amber)", cursor: "pointer", border: "none" }}
+                      >
+                        重新运行
+                      </button>
                     </div>
                   )}
 
@@ -370,8 +411,10 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
                 const subTask = taskMap.get(subId);
                 const subLabel = { qc: "数据预处理", normalize: "数据标准化" }[subId] || subId;
                 const subStatus = (() => {
+                  if (subTask?.status === "failed") return "failed";
+                  if (subTask?.status === "completed") return "completed";
                   if (pipeline.current_step === subId) return "running";
-                  return subTask?.status || "pending";
+                  return "pending";
                 })();
 
                 return (
@@ -421,6 +464,25 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
                         </div>
                         <p className="text-xs font-medium mb-1" style={{ color: "var(--clr-danger)" }}>{subLabel}执行失败</p>
                         <div className="text-xs" style={{ color: "var(--clr-text-muted)" }}>{subTask.error_msg || "未知错误"}</div>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await submitTask({
+                                project_id: pipeline.project_id,
+                                step: subId,
+                                params: subTask.params || {},
+                              });
+                              const data = await getPipeline(token, pipelineId);
+                              setPipeline(data);
+                            } catch (e) {
+                              alert("重新运行失败: " + (e instanceof Error ? e.message : "未知错误"));
+                            }
+                          }}
+                          className="mt-3 px-4 py-1.5 rounded text-xs font-medium text-white"
+                          style={{ background: "var(--clr-amber)", cursor: "pointer", border: "none" }}
+                        >
+                          重新运行
+                        </button>
                       </div>
                     )}
 
@@ -437,6 +499,112 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
           </div>
         </div>
       </div>
+      {/* 步骤失败对话框 */}
+      {showFailDialog && failStepInfo && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* 背景遮罩 */}
+          <div
+            className="absolute inset-0"
+            style={{ background: "rgba(0,0,0,0.35)" }}
+            onClick={() => {
+              dismissedFailsRef.current.add(failStepInfo.stepId);
+              setShowFailDialog(false);
+            }}
+          />
+          {/* 对话框内容 */}
+          <div
+            className="relative w-full max-w-md rounded-xl shadow-2xl p-6"
+            style={{
+              background: "var(--clr-bg-card)",
+              border: "1px solid var(--clr-border)",
+            }}
+          >
+            {/* 标题 */}
+            <div className="flex items-center gap-3 mb-4"
+            >
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                style={{ background: "#FFF3F3", color: "var(--clr-danger)" }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+                >
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </div>
+              <div>
+                <h3
+                  className="text-base font-bold"
+                  style={{ fontFamily: "var(--font-serif)", color: "var(--clr-dark-deep)" }}
+                >
+                  步骤执行失败
+                </h3>
+                <p className="text-xs mt-0.5" style={{ color: "var(--clr-text-muted)" }}
+                >
+                  {failStepInfo.stepLabel}
+                </p>
+              </div>
+            </div>
+
+            {/* 错误信息 */}
+            <div
+              className="mb-5 px-3 py-2.5 rounded-lg text-sm"
+              style={{
+                background: "rgba(220, 53, 69, 0.05)",
+                border: "1px solid rgba(220, 53, 69, 0.15)",
+                color: "var(--clr-danger)",
+              }}
+            >
+              {failStepInfo.errorMsg}
+            </div>
+
+            {/* 按钮 */}
+            <div className="flex gap-3"
+            >
+              <button
+                onClick={() => {
+                  dismissedFailsRef.current.add(failStepInfo.stepId);
+                  setShowFailDialog(false);
+                }}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all"
+                style={{
+                  border: "1px solid var(--clr-border)",
+                  color: "var(--clr-text-muted)",
+                  background: "var(--clr-bg-alt)",
+                  cursor: "pointer",
+                }}
+              >
+                确定
+              </button>
+              <button
+                onClick={async () => {
+                  dismissedFailsRef.current.add(failStepInfo.stepId);
+                  setShowFailDialog(false);
+                  try {
+                    await submitTask({
+                      project_id: pipeline!.project_id,
+                      step: failStepInfo.stepId,
+                      params: failStepInfo.taskParams,
+                    });
+                    const refreshed = await getPipeline(token, pipelineId);
+                    setPipeline(refreshed);
+                  } catch (e) {
+                    alert("重新运行失败: " + (e instanceof Error ? e.message : "未知错误"));
+                  }
+                }}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold text-white transition-all"
+                style={{
+                  background: "var(--clr-amber)",
+                  cursor: "pointer",
+                  border: "none",
+                }}
+              >
+                重新运行
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

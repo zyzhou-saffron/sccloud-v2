@@ -188,6 +188,7 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
       )}
 
       {/* 分析模块卡片 */}
+      <div className="space-y-2">
       {MODULES.map((mod) => {
         const isEnabled = enabled[mod.key];
         const isAdvanced = showAdvanced[mod.key];
@@ -203,7 +204,7 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
           >
             {/* 模块头部：toggle + 标题 */}
             <div
-              className="px-4 py-3 flex items-center justify-between cursor-pointer"
+              className="px-4 py-2 flex items-center justify-between cursor-pointer"
               style={{ background: isEnabled ? "rgba(200,96,25,0.04)" : "var(--clr-bg-alt)" }}
               onClick={() => setEnabled(prev => ({ ...prev, [mod.key]: !prev[mod.key] }))}
             >
@@ -227,11 +228,11 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
 
             {/* 参数区域 */}
             {isEnabled && (
-              <div className="px-4 py-4 space-y-4" style={{ borderTop: "1px solid var(--clr-border)" }}>
+              <div className="px-4 py-2.5 space-y-2.5" style={{ borderTop: "1px solid var(--clr-border)" }}>
                 {/* markers 参数 */}
                 {mod.key === "markers" && (
                   <div className="space-y-3">
-                    <div className="flex flex-wrap gap-x-6 gap-y-3">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
                       <div>
                         <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>分组方式</label>
                         <select value={params.markers.group_by} onChange={(e) => updateParam("markers", "group_by", e.target.value)} className={selectCls} style={selectStyle}>
@@ -260,7 +261,7 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                 {/* enrich 参数 */}
                 {mod.key === "enrich" && (
                   <div className="space-y-3">
-                    <div className="flex flex-wrap gap-x-6 gap-y-3">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
                       <div>
                         <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>通路数据库</label>
                         <select value={params.enrich.pathway} onChange={(e) => updateParam("enrich", "pathway", e.target.value)} className={selectCls} style={selectStyle}>
@@ -295,7 +296,7 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                 {/* Monocle 参数 */}
                 {mod.key === "monocle" && (
                   <div className="space-y-3">
-                    <div className="flex flex-wrap gap-x-6 gap-y-3">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
                       <div>
                         <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>BEAM 分析分组</label>
                         <select value={params.monocle.group_beam} onChange={(e) => updateParam("monocle", "group_beam", e.target.value)} className={selectCls} style={selectStyle}>
@@ -359,7 +360,7 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                 {/* CellChat 参数 */}
                 {mod.key === "cellchat" && (
                   <div className="space-y-3">
-                    <div className="flex flex-wrap gap-x-6 gap-y-3">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
                       <div>
                         <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>信号通路数据库</label>
                         <select value={params.cellchat.db_use} onChange={(e) => updateParam("cellchat", "db_use", e.target.value)} className={selectCls} style={selectStyle}>
@@ -385,7 +386,7 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                 {/* inferCNV 参数 */}
                 {mod.key === "infercnv" && (
                   <div className="space-y-4">
-                    <div className="flex flex-wrap gap-x-6 gap-y-3">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
                       <div>
                         <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>表达量截断值 (cutoff)</label>
                         <input type="number" value={params.infercnv.cutoff_gene} onChange={(e) => updateParam("infercnv", "cutoff_gene", Number(e.target.value))} min={0} step={0.01} className={numberCls} style={inputStyle} />
@@ -439,6 +440,7 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
           </div>
         );
       })}
+      </div>
 
       {/* 开始分析按钮 */}
       <button

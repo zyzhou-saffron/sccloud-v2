@@ -7,9 +7,8 @@ import { saveAuthData, upgradeGuest } from "../lib/api";
 /**
  * AuthModal — 登录/注册/游客升级 二合一模态框
  *
- * 登录和注册共享同一个弹窗，通过 Tab 切换。
- * 游客升级模式：当 `upgradeMode=true` 时，只显示注册表单，
- * 调用 `/api/auth/upgrade` 而非 `/api/auth/register`。
+ * 新 UI：居中标题、图标输入框、圆角按钮、忘记密码/注册链接
+ * 游客升级模式：当 `upgradeMode=true` 时，只显示注册表单。
  */
 
 interface AuthModalProps {
@@ -47,9 +46,10 @@ export default function AuthModal({
     setLoading(false);
   };
 
-  const handleTabSwitch = (t: "login" | "register") => {
-    setTab(t);
+  const handleSwitchMode = (mode: "login" | "register") => {
+    setTab(mode);
     setError("");
+    resetForm();
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -96,10 +96,8 @@ export default function AuthModal({
     try {
       let data;
       if (upgradeMode) {
-        // 游客升级
         data = await upgradeGuest(username, password);
       } else {
-        // 全新注册
         const res = await fetch("/api/auth/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -122,22 +120,16 @@ export default function AuthModal({
     }
   };
 
-  // 共享的输入框样式
-  const inputStyle: React.CSSProperties = {
-    borderColor: "var(--clr-border)",
-    color: "var(--clr-text)",
-  };
+  const isLogin = tab === "login";
 
   return (
-    // Backdrop
     <div
       className="fixed inset-0 z-[999] flex items-center justify-center"
       style={{ background: "rgba(30,27,24,0.55)", backdropFilter: "blur(4px)" }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      {/* Card */}
       <div
-        className="w-full max-w-md mx-4 relative"
+        className="w-full max-w-sm mx-4 relative"
         style={{ animation: "fadeUp 0.3s ease-out forwards" }}
       >
         <div className="card p-8">
@@ -153,116 +145,129 @@ export default function AuthModal({
             </svg>
           </button>
 
-          {/* Header */}
-          <div className="text-center mb-6">
-            <h2
-              className="text-[22px] font-bold transition-all duration-300"
-              style={{ fontFamily: "var(--font-serif)", color: "var(--clr-dark-deep)" }}
+          {/* Title */}
+          <h2
+            className="text-center text-xl font-bold mb-8"
+            style={{ fontFamily: "var(--font-serif)", color: "var(--clr-dark-deep)" }}
+          >
+            {isLogin ? "登录" : upgradeMode ? "注册正式账号" : "注册"}
+          </h2>
+
+          {/* Form */}
+          <form onSubmit={isLogin ? handleLogin : handleRegister} className="space-y-5">
+            {/* Username */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--clr-text)" }}>
+                {isLogin ? "用户名或邮箱" : "用户名"}
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--clr-text-faint)" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <rect x="2" y="4" width="20" height="16" rx="2" />
+                    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                  </svg>
+                </span>
+                <input
+                  type="text" value={username} onChange={(e) => setUsername(e.target.value)}
+                  placeholder={isLogin ? "请输入您的用户名或邮箱地址" : "字母、数字、下划线"} required
+                  className="w-full pl-10 pr-4 py-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 transition-colors"
+                  style={{ borderColor: "var(--clr-border)", color: "var(--clr-text)" }}
+                />
+              </div>
+            </div>
+
+            {/* Password */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--clr-text)" }}>密码</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--clr-text-faint)" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                </span>
+                <input
+                  type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                  placeholder={isLogin ? "请输入您的密码" : "至少 6 位"} required
+                  className="w-full pl-10 pr-4 py-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 transition-colors"
+                  style={{ borderColor: "var(--clr-border)", color: "var(--clr-text)" }}
+                />
+              </div>
+            </div>
+
+            {/* Confirm Password (register only) */}
+            {!isLogin && (
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--clr-text)" }}>确认密码</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--clr-text-faint)" }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                  </span>
+                  <input
+                    type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="再次输入密码" required
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 transition-colors"
+                    style={{ borderColor: "var(--clr-border)", color: "var(--clr-text)" }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div className="px-3 py-2 rounded-lg text-sm" style={{ background: "rgba(220,53,69,0.08)", color: "var(--clr-danger)", border: "1px solid rgba(220,53,69,0.15)" }}>
+                {error}
+              </div>
+            )}
+
+            {/* Submit Button */}
+            <button
+              type="submit" disabled={loading}
+              className="w-full py-2.5 text-white font-semibold rounded-full text-sm transition-all duration-300 shadow-md disabled:opacity-50"
+              style={{ background: loading ? "var(--clr-dark-light)" : "var(--clr-amber)" }}
             >
-              {tab === "login" ? "scCloud" : upgradeMode ? "注册正式账号" : "注册"}
-            </h2>
-            <div
-              className="w-12 h-[3px] mx-auto mt-3 mb-2 rounded-full"
-              style={{ background: "linear-gradient(90deg, #C86019, #FFD42A)" }}
-            />
-            {tab === "register" && (
-              <p className="text-[13px] mt-3" style={{ color: "var(--clr-text-muted)", animation: "fadeIn 0.3s ease-in-out" }}>
-                注册后保留您所有的分析数据，并解锁更多项目
-              </p>
+              {loading ? (isLogin ? "登录中..." : "注册中...") : (isLogin ? "继续" : upgradeMode ? "注册并保留数据" : "注册")}
+            </button>
+          </form>
+
+          {/* Links */}
+          <div className="mt-6 space-y-3 text-center text-sm">
+            {isLogin ? (
+              <>
+                <button
+                  onClick={() => { /* TODO: forgot password */ }}
+                  className="transition-colors hover:underline"
+                  style={{ color: "var(--clr-text-muted)" }}
+                >
+                  忘记密码？
+                </button>
+                <div style={{ color: "var(--clr-text-muted)" }}>
+                  没有账户？{" "}
+                  <button
+                    onClick={() => handleSwitchMode("register")}
+                    className="font-medium transition-colors hover:underline"
+                    style={{ color: "var(--clr-amber)" }}
+                  >
+                    注册
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={{ color: "var(--clr-text-muted)" }}>
+                已有账户？{" "}
+                <button
+                  onClick={() => handleSwitchMode("login")}
+                  className="font-medium transition-colors hover:underline"
+                  style={{ color: "var(--clr-amber)" }}
+                >
+                  登录
+                </button>
+              </div>
             )}
           </div>
-
-          {/* Tabs — always shown so users can switch to login */}
-          {(
-            <div className="flex mb-6 rounded-lg overflow-hidden" style={{ border: "1px solid var(--clr-border)" }}>
-              {(["login", "register"] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => handleTabSwitch(t)}
-                  className="flex-1 py-2 text-sm font-medium transition-all duration-200"
-                  style={{
-                    background: tab === t ? "var(--clr-amber)" : "transparent",
-                    color: tab === t ? "#fff" : "var(--clr-text-muted)",
-                  }}
-                >
-                  {t === "login" ? "登录" : "注册"}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Login Form */}
-          {tab === "login" && (
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>用户名</label>
-                <input
-                  type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-                  placeholder="输入用户名" required
-                  className="w-full px-4 py-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 transition-colors"
-                  style={inputStyle}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>密码</label>
-                <input
-                  type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                  placeholder="输入密码" required
-                  className="w-full px-4 py-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 transition-colors"
-                  style={inputStyle}
-                />
-              </div>
-              {error && <div className="callout callout-danger text-sm">{error}</div>}
-              <button
-                type="submit" disabled={loading}
-                className="w-full py-2.5 text-white font-semibold rounded-lg text-sm transition-all duration-300 shadow-md disabled:opacity-50"
-                style={{ background: loading ? "var(--clr-dark-light)" : "var(--clr-amber)" }}
-              >
-                {loading ? "登录中..." : "登录"}
-              </button>
-            </form>
-          )}
-
-          {/* Register Form */}
-          {tab === "register" && (
-            <form onSubmit={handleRegister} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>用户名</label>
-                <input
-                  type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-                  placeholder="字母、数字、下划线" required
-                  className="w-full px-4 py-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 transition-colors"
-                  style={inputStyle}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>密码</label>
-                <input
-                  type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                  placeholder="至少 6 位" required
-                  className="w-full px-4 py-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 transition-colors"
-                  style={inputStyle}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: "var(--clr-text-muted)" }}>确认密码</label>
-                <input
-                  type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="再次输入密码" required
-                  className="w-full px-4 py-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 transition-colors"
-                  style={inputStyle}
-                />
-              </div>
-              {error && <div className="callout callout-danger text-sm">{error}</div>}
-              <button
-                type="submit" disabled={loading}
-                className="w-full py-2.5 text-white font-semibold rounded-lg text-sm transition-all duration-300 shadow-md disabled:opacity-50"
-                style={{ background: loading ? "var(--clr-dark-light)" : "var(--clr-amber)" }}
-              >
-                {loading ? "注册中..." : upgradeMode ? "注册并保留数据" : "注册"}
-              </button>
-            </form>
-          )}
         </div>
       </div>
     </div>

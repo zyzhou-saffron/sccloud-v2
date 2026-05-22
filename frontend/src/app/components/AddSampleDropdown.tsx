@@ -28,6 +28,7 @@ interface AddSampleDropdownProps {
   projectId: number;
   token: string;
   existingPaths: string[];
+  sampleGroups?: Record<string, string>;
 }
 
 export default function AddSampleDropdown({
@@ -38,6 +39,7 @@ export default function AddSampleDropdown({
   projectId,
   token,
   existingPaths,
+  sampleGroups,
 }: AddSampleDropdownProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [showUpload, setShowUpload] = useState(false);
@@ -98,6 +100,7 @@ export default function AddSampleDropdown({
       <FileUploadModal
         isOpen={showUpload}
         onClose={() => { setShowUpload(false); onClose(); }}
+        sampleGroups={sampleGroups}
         onFileUploaded={(file) => {
           onFileUploaded({
             name: file.name,

@@ -84,7 +84,14 @@ async def _run_steps(pipeline_id: str, steps: List[str], db: Session, pipeline: 
                 # markers 强制覆盖 cluster = "All"（运行前不知道 cluster 列表）
                 if r_step == "markers":
                     step_params["cluster"] = "All"
-                    step_params["group_by"] = "CellType"
+                    # 动态设置 group_by：优先使用用户配置，其次检测 Group 列，最后回退 CellType
+                    if "group_by" not in step_params:
+                        pipeline_params = pipeline.params or {}
+                        # 如果用户配置了样本分组，使用 Group 列
+                        if pipeline_params.get("sample_groups"):
+                            step_params["group_by"] = "Group"
+                        else:
+                            step_params["group_by"] = "CellType"
 
                 ok = await _execute_step(db, pipeline, r_step, step_params)
                 if not ok:

@@ -122,6 +122,7 @@ async def upload_chunk(
 async def complete_upload(
     upload_id: str = Form(...),
     project_id: int = Form(None),
+    sample_groups: str = Form(None),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -183,6 +184,17 @@ async def complete_upload(
 
     safe_name = f"{uuid.uuid4().hex[:8]}_{original_filename}"
     final_path = os.path.join(dest_dir, safe_name)
+
+    # 保存样本分组信息（如果前端提供了）
+    if sample_groups:
+        try:
+            groups_data = json.loads(sample_groups)
+            if isinstance(groups_data, dict) and groups_data:
+                groups_path = os.path.join(dest_dir, f"{safe_name}_groups.json")
+                with open(groups_path, "w", encoding="utf-8") as gf:
+                    json.dump(groups_data, gf, ensure_ascii=False)
+        except Exception:
+            pass  # 分组信息解析失败不影响主流程
 
     # 按序合并分片
     chunk_files = sorted(

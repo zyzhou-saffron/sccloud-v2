@@ -395,6 +395,8 @@ interface DeckScatterPlotProps {
   mergeIdKey?: "celltype" | "cluster";
   /** Controlled colorBy — if set, overrides internal state */
   colorBy?: string;
+  /** 不显示的分类字段 */
+  excludeGroups?: string[];
 }
 
 /** 将平行数组转为点对象数组（deck.gl accessor 需要） */
@@ -432,6 +434,7 @@ export default function DeckScatterPlot({
   onColorByChange,
   mergeIdKey = "celltype",
   colorBy: colorByProp,
+  excludeGroups,
 }: DeckScatterPlotProps) {
   const [hoverInfo, setHoverInfo] = useState<{
     x: number;
@@ -469,13 +472,14 @@ export default function DeckScatterPlot({
     if (!data) return GROUP_OPTIONS;
     const hasCelltype = !!(data as Record<string, unknown>).celltype;
     return GROUP_OPTIONS.filter(g => {
+      if (excludeGroups?.includes(g.key)) return false;
       if (g.key === "cluster") return true;
       return !!(data as Record<string, unknown>)[g.key];
     }).map(g => {
       if (g.key === "cluster" && !hasCelltype) return { ...g, label: "CellType" };
       return g;
     });
-  }, [data]);
+  }, [data, excludeGroups]);
 
   // 如果当前 colorBy 不在可用列表中，自动回退
   useEffect(() => {

@@ -29,6 +29,7 @@ export default function DashboardLayout({
   const [username, setUsername] = useState("");
   const [guest, setGuest] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -80,10 +81,18 @@ export default function DashboardLayout({
           <nav className="hidden md:flex items-center gap-1">
             {NAV_ITEMS.map((item) => {
               const active = pathname === item.href || pathname?.startsWith(item.href);
+              const isSettings = item.href === "/dashboard/settings";
+              const handleClick = (e: React.MouseEvent) => {
+                if (guest && isSettings) {
+                  e.preventDefault();
+                  setAuthOpen(true);
+                }
+              };
               return (
                 <Link
                   key={item.href}
                   href={item.href}
+                  onClick={handleClick}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all duration-200 ${
                     active
                       ? "text-[#FFD42A] bg-white/10"
@@ -170,6 +179,12 @@ export default function DashboardLayout({
         {children}
       </main>
 
+      {/* Auth Modal */}
+      <AuthModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        defaultTab="login"
+      />
       {/* Upgrade Modal */}
       <AuthModal
         open={upgradeOpen}

@@ -27,6 +27,7 @@ class PipelineCreateRequest:
         self.project_id = data.get("project_id")
         self.params = data.get("params", {})  # 全 8 步参数
         self.marker_file_path = data.get("marker_file_path")  # marker_expr 的文件路径
+        self.sample_groups = data.get("sample_groups", {})  # 样本分组信息
 
 
 class PipelineResponse:
@@ -103,6 +104,11 @@ async def create_pipeline(
         project_id = data.get("project_id")
         params = data.get("params", {})
         marker_file_path = data.get("marker_file_path")
+        sample_groups = data.get("sample_groups", {})
+
+        # 将样本分组信息存入 params，供 executor 读取
+        if sample_groups and isinstance(sample_groups, dict):
+            params["sample_groups"] = sample_groups
 
         if not project_id or not isinstance(params, dict):
             raise HTTPException(status_code=400, detail="Missing project_id or params")

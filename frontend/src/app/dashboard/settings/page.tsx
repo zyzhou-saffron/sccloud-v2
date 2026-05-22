@@ -5,6 +5,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import AuthModal from "../../components/AuthModal";
 import { healthCheck } from "../../lib/api";
 
 
@@ -23,10 +24,18 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
+  const [guest, setGuest] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
 
   const username = typeof window !== "undefined" ? localStorage.getItem("username") : "";
 
   useEffect(() => {
+    const token = localStorage.getItem("access_token");
+    const isGuestUser = !token || token.startsWith("guest_") || (username || "").startsWith("guest_");
+    setGuest(isGuestUser);
+    if (isGuestUser) {
+      setAuthOpen(true);
+    }
     healthCheck().then(setHealth).catch(() => setHealth(null));
   }, []);
 
@@ -61,6 +70,9 @@ export default function SettingsPage() {
 
   return (
     <div className="animate-fade-in max-w-2xl mx-auto space-y-6">
+      {guest && authOpen && (
+        <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} defaultTab="login" />
+      )}
       <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-serif)", color: "var(--clr-dark-deep)" }}>设置</h1>
 
       {/* Account Info */}
