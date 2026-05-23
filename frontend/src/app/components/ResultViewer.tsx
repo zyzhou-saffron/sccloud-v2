@@ -13,6 +13,7 @@
 import React, { Component, type ComponentType, type ReactNode, useEffect, useMemo, useState } from "react";
 import { type Task, submitTask, getTask, apiFetch, tryRefresh } from "../lib/api";
 import ProgressTracker from "./ProgressTracker";
+
 import QCResultTabs from "./QCResultTabs";
 import MultiSelectDropdown from "./MultiSelectDropdown";
 import GeneAutocomplete from "./GeneAutocomplete";
@@ -324,8 +325,8 @@ export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCa
             {stepId === "enrich"    && <EnrichResult data={resultData} taskId={task.id} />}
             {stepId === "annotate" && <AnnotateResult data={resultData} task={task} token={getToken()} />}
             {stepId === "marker_expr" && <MarkerExprResult data={resultData} taskId={task.id} task={task} />}
-            {!["qc","normalize","reduce","cluster","markers","enrich","annotate","marker_expr","wgcna"].includes(stepId) && (
-              <GenericStepResult data={resultData} stepId={stepId} taskId={task.id} />
+            {!["qc","normalize","reduce","cluster","markers","enrich","annotate","marker_expr"].includes(stepId) && (
+              <GenericStepResult data={resultData} stepId={stepId} taskId={task.id} projectId={task.project_id} />
             )}
           </>
         )}
@@ -1281,11 +1282,8 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
              <div className="bg-stone-50 p-4 rounded border flex flex-col items-center space-y-4" style={{ borderColor: 'var(--clr-border)' }}>
                {/* 第一行：聚类选择 */}
                <div className="w-full max-w-2xl">
-                 <label className="text-xs font-medium flex items-baseline gap-1.5 mb-1.5" style={{ color: 'var(--clr-text-muted)' }}>
-                   <span className="shrink-0">选择{groupPrefix ? "聚类群" : "细胞类型"}</span>
-                   {tab3Selected.length > 0 && (
-                     <span>{tab3Selected.map(c => `${groupPrefix}${c}`).join(', ')}</span>
-                   )}
+                 <label className="text-xs font-medium mb-1.5 block" style={{ color: "var(--clr-text-muted)" }}>
+                   选择{groupPrefix ? "聚类群" : "细胞类型"}
                  </label>
                  <MultiSelectDropdown
                    options={analyzedClusters}
