@@ -51,6 +51,7 @@ services:
       PROJECTS_ROOT: "/data/projects"
       ENVIRONMENT: "production"
     volumes:
+      - ./backend:/app
       - projects_data:/data/projects
       - ./r-engine/data:/app/r-engine-data
 
@@ -62,14 +63,15 @@ services:
     environment:
       REDIS_URL: "redis://127.0.0.1:6380/0"
     volumes:
+      - ./backend:/app
       - projects_data:/data/projects
       - ./r-engine/data:/app/data
       - ./r-engine/plumber.R:/app/plumber.R:ro
       - ./r-engine/R:/app/R:ro
-    deploy:
-      resources:
-        limits:
-          memory: 64G
+    # deploy:
+      # resources:
+        # limits:
+    mem_limit: 64g
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8787/health"]
       interval: 30s
