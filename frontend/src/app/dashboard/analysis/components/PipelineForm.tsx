@@ -39,11 +39,12 @@ const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
   cluster: { method: "harmony", resolution: 0.5, n_dims: 30, group_by: "Sample" },
   markers: { cluster: "All", min_pct: 0.1, logfc_threshold: 0.25, p_val_adj: 0.05, test_use: "wilcox", only_pos: true, ntop: 5 },
   annotate: { anno_type: "自动注释", group_by: "Sample", species: "Human", tissue: "Blood" },
+  wgcna: { interest_type: "", min_fraction: 0.05, sft_threshold: 0.8, module_score: "Seurat", k: 25, max_shared: 10, min_cells: 100, n_hubs: 10, n_genes_score: 25 },
 };
 
 const STEP_LABELS: Record<string, string> = {
   qc: "数据预处理", normalize: "数据标准化", reduce: "降维与聚类",
-  cluster: "降维与聚类", markers: "差异基因", annotate: "细胞注释",
+  cluster: "降维与聚类", markers: "差异基因", annotate: "细胞注释", wgcna: "WGCNA",
 };
 
 const STATUS_MAP: Record<string, { dot: string; text: string }> = {
@@ -652,6 +653,31 @@ export default function PipelineForm({ projectId, token, onSubmit, uploadedFiles
               </div>
             </div>
           </div>
+        {/* Step 5: WGCNA */}
+        <div className="card p-4" style={{ borderColor: "var(--clr-border)" }}>
+          <div className="text-xs font-semibold mb-3" style={{ color: "var(--clr-amber-dark)" }}>
+            WGCNA 分析参数 (可选)
+          </div>
+          <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-4">
+            <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
+              目标细胞类型
+            </div>
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={params.wgcna.interest_type as string}
+                onChange={(e) => updateStepParam("wgcna", "interest_type", e.target.value)}
+                placeholder="输入细胞类型名称，如: CD4_T_cell"
+                className="w-full px-3 py-2 bg-white border rounded text-sm"
+                style={{ borderColor: "var(--clr-border)", color: "var(--clr-text)" }}
+              />
+              <p className="text-[10px]" style={{ color: "var(--clr-text-faint)" }}>
+                留空则不执行 WGCNA 分析
+              </p>
+            </div>
+          </div>
+        </div>
+
         </div>
 
         {/* 提示 */}

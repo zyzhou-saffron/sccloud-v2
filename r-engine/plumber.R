@@ -2251,3 +2251,88 @@ function(req) {
     )
   )
 }
+
+
+#* WGCNA 加权基因共表达网络分析
+#* @post /wgcna
+function(req) {
+  body <- jsonlite::fromJSON(req$postBody)
+  project_path <- body$project_path
+  params <- body$params
+  task_id <- params$task_id
+  report <- create_progress_reporter(task_id)
+
+  report(3, "加载数据...")
+
+  input_path <- file.path(project_path, "seurat_annotated.rds")
+  if (!file.exists(input_path)) stop("请先运行细胞注释步骤")
+  pro <- readRDS(input_path)
+  pro <- sync_celltype_from_json(pro, project_path)
+
+  interestType <- params$interest_type %||% NULL
+  if (is.null(interestType) || nchar(trimws(interestType)) == 0) {
+    stop("请指定目标细胞类型 (interest_type)")
+  }
+
+  minFraction <- params$min_fraction %||% 0.05
+  sft_threshold <- params$sft_threshold %||% 0.8
+  ModuleScore <- params$module_score %||% "Seurat"
+  k <- params$k %||% 25
+  max_shared <- params$max_shared %||% 10
+  min_cells <- params$min_cells %||% 100
+  n_hubs <- params$n_hubs %||% 10
+  n_genes_score <- params$n_genes_score %||% 25
+
+  outdir <- file.path(project_path, paste0("wgcna_output_", format(Sys.time(), "%Y%m%d%H%M%S")))
+  dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
+
+  progress_cb <- function(pct, msg) report(pct, msg)
+
+  result <- RunWGCNA(
+    seurat_obj = pro, outdir = outdir,
+    interestType = interestType,
+    minFraction = minFraction,
+    sft_threshold = sft_threshold,
+    ModuleScore = ModuleScore,
+    k = k, max_shared = max_shared,
+    min_cells = min_cells,
+    n_hubs = n_hubs,
+    n_genes_score = n_genes_score,
+    progress_callback = progress_cb
+  )
+
+  report(95, "收集结果...")
+
+  output_files <- list.files(outdir, full.names = TRUE)
+  plot_paths <- list()
+  data_paths <- list()
+
+  for (f in output_files) {
+    fname <- basename(f)
+    if (grepl("\.png$", fname)) {
+      plot_paths[[fname]] <- f
+    } else if (grepl("\.(csv|rds)$", fname)) {
+      data_paths[[fname]] <- f
+    }
+  }
+
+  obj_name <- make_output_name(project_path, "12", "wgcna", interestType, "rds")
+  obj_path <- file.path(project_path, obj_name)
+  saveRDS(result$seurat_obj_scored, obj_path)
+  data_paths$wgcna_obj <- obj_path
+
+  report(100, "WGCNA 分析完成")
+
+  list(
+    status = "success",
+    outdir = outdir,
+    plot_paths = plot_paths,
+    data_paths = data_paths,
+    stats = list(
+      cell_type = interestType,
+      soft_power = result$soft_power,
+      n_modules = length(setdiff(colnames(result$hMEs), "grey")),
+      n_hub_genes = nrow(result$hub_genes)
+    )
+  )
+}

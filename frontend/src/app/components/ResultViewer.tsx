@@ -324,7 +324,7 @@ export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCa
             {stepId === "enrich"    && <EnrichResult data={resultData} taskId={task.id} />}
             {stepId === "annotate" && <AnnotateResult data={resultData} task={task} token={getToken()} />}
             {stepId === "marker_expr" && <MarkerExprResult data={resultData} taskId={task.id} task={task} />}
-            {!["qc","normalize","reduce","cluster","markers","enrich","annotate","marker_expr"].includes(stepId) && (
+            {!["qc","normalize","reduce","cluster","markers","enrich","annotate","marker_expr","wgcna"].includes(stepId) && (
               <GenericStepResult data={resultData} stepId={stepId} taskId={task.id} />
             )}
           </>
@@ -1868,6 +1868,7 @@ function GenericStepResult({ data, stepId, taskId }: { data: Record<string, unkn
   const outdir = unwrapStr(data.outdir);
 
   const stepLabels: Record<string, string> = {
+    wgcna: "WGCNA 分析",
     monocle: "拟时序分析",
     cellchat: "细胞通讯分析",
     infercnv: "拷贝数变异分析",
