@@ -1317,7 +1317,7 @@ function(req) {
     n_col <- max(1, min(n_markers, 4))
     n_rows <- ceiling(n_markers / n_col)       # 每种图的行数
     calc_width  <- n_col * 400 + 100           # 每列 400px + 图例空间
-    calc_height <- max(800, n_rows * 2 * 400)  # FeaturePlot + VlnPlot 各占 400px/行
+    calc_height <- if (n_markers == 0) 300 else max(800, n_rows * 2 * 400)  # FeaturePlot + VlnPlot 各占 400px/行
 
     report(50, paste0("找到 ", n_markers, " 个有效 marker 基因，绘图中..."))
 

@@ -752,8 +752,10 @@ my_distPlot11 <- function(pro,mkfs,cellType) {
     return(p / p2)
   }else{
     # 返回一个简单的文本图
-    plot(0, 0, type = "n", xlab = "", ylab = "", axes = FALSE)
-    text(0, 0, "Warning: No marker genes in dataset!", col = "red", cex = 1.5)
+    par(mar = c(0, 0, 0, 0))
+    plot(0, 0, type = "n", xlab = "", ylab = "", axes = FALSE, xlim = c(-1, 1), ylim = c(-1, 1))
+    text(0, 0, paste0("No marker genes", "
+", "in dataset!"), col = "red", cex = 1.2, font = 2)
   }
 
 }
