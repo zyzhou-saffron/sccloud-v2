@@ -69,7 +69,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 16G
+          memory: 64G
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8787/health"]
       interval: 30s

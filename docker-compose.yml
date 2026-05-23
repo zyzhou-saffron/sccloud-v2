@@ -44,7 +44,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 16G
+          memory: 64G
 
   # ---- 数据库 (MariaDB) ----
   db:

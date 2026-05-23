@@ -323,7 +323,8 @@ export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCa
             {stepId === "markers"   && <MarkersResult data={resultData} task={task} taskCache={taskCache} clusterLevels={clusterLevels} />}
             {stepId === "enrich"    && <EnrichResult data={resultData} taskId={task.id} />}
             {stepId === "annotate" && <AnnotateResult data={resultData} task={task} token={getToken()} />}
-            {!["qc","normalize","reduce","cluster","markers","enrich","annotate"].includes(stepId) && (
+            {stepId === "marker_expr" && <MarkerExprResult data={resultData} taskId={task.id} task={task} />}
+            {!["qc","normalize","reduce","cluster","markers","enrich","annotate","marker_expr"].includes(stepId) && (
               <GenericStepResult data={resultData} stepId={stepId} taskId={task.id} />
             )}
           </>
