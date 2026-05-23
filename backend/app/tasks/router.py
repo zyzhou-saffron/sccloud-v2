@@ -25,7 +25,7 @@ class TaskSubmit(BaseModel):
     project_id: int
     step: str = Field(
         ...,
-        pattern=r"^(qc|normalize|reduce|cluster|markers|enrich|annotate|convert|markers_pairwise|plot_markers|subset_cluster|marker_expr|merge_celltypes|monocle|cellchat|infercnv)$",
+        pattern=r"^(qc|normalize|reduce|cluster|markers|enrich|annotate|convert|markers_pairwise|plot_markers|subset_cluster|marker_expr|merge_celltypes|monocle|cellchat|infercnv|wgcna)$",
     )
     params: dict = Field(default_factory=dict)
 
@@ -115,20 +115,38 @@ async def submit_task(
         raise HTTPException(status_code=404, detail="项目不存在")
 
     # 检查是否有同步骤的进行中任务
-    existing = (
-        db.query(Task)
-        .filter(
-            Task.project_id == req.project_id,
-            Task.step == req.step,
-            Task.status.in_(["pending", "running"]),
+    # plot_markers 是只读可视化，允许多参数并发；其他步骤保持互斥
+    if req.step == "plot_markers":
+        existing = (
+            db.query(Task)
+            .filter(
+                Task.project_id == req.project_id,
+                Task.step == req.step,
+                Task.status.in_(["pending", "running"]),
+                Task.params == req.params,
+            )
+            .first()
         )
-        .first()
-    )
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"该步骤已有任务在运行中 (ID: {existing.id})",
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=f"相同参数的 plot_markers 任务已在运行中 (ID: {existing.id})",
+            )
+    else:
+        existing = (
+            db.query(Task)
+            .filter(
+                Task.project_id == req.project_id,
+                Task.step == req.step,
+                Task.status.in_(["pending", "running"]),
+            )
+            .first()
         )
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=f"该步骤已有任务在运行中 (ID: {existing.id})",
+            )
 
     # 创建任务记录
     task = create_task(

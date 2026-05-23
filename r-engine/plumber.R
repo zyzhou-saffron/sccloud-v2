@@ -21,6 +21,7 @@
 
 library(plumber)
 library(jsonlite)
+library(hdWGCNA)
 
 # 全局 JSON 序列化：auto_unbox = TRUE 避免单值被包装为数组
 # R jsonlite 默认将单个字符串/数字包装为 ["value"]，前端需要的是 "value"
@@ -1969,6 +1970,9 @@ function(req) {
   qvalue1 <- params$qvalue1 %||% 1e-5
   reverse <- params$reverse %||% FALSE
 
+  old_wd <- getwd()
+  setwd(outdir)
+
   progress_cb <- function(pct, msg) report(pct, msg)
 
   result <- RunMonocle(pro, group_beam = group_beam, group_traj = group_traj,
@@ -2070,6 +2074,9 @@ function(req) {
   species <- params$species %||% "Human"
   db_use <- params$db_use %||% "Secreted"
   thresh <- params$thresh %||% 0.05
+
+  old_wd <- getwd()
+  setwd(outdir)
 
   progress_cb <- function(pct, msg) report(pct, msg)
 
@@ -2209,6 +2216,9 @@ function(req) {
   outdir <- file.path(project_path, paste0("infercnv_output_", format(Sys.time(), "%Y%m%d%H%M%S")))
   dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 
+  old_wd <- getwd()
+  setwd(outdir)
+
   progress_cb <- function(pct, msg) report(pct, msg)
 
   result <- RunInfercnv(pro, inferDf = inferDf, cutoff_gene = cutoff_gene,
@@ -2286,6 +2296,9 @@ function(req) {
   outdir <- file.path(project_path, paste0("wgcna_output_", format(Sys.time(), "%Y%m%d%H%M%S")))
   dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 
+  old_wd <- getwd()
+  setwd(outdir)
+
   progress_cb <- function(pct, msg) report(pct, msg)
 
   result <- RunWGCNA(
@@ -2301,6 +2314,8 @@ function(req) {
     progress_callback = progress_cb
   )
 
+  setwd(old_wd)
+
   report(95, "收集结果...")
 
   output_files <- list.files(outdir, full.names = TRUE)
@@ -2309,9 +2324,9 @@ function(req) {
 
   for (f in output_files) {
     fname <- basename(f)
-    if (grepl("\.png$", fname)) {
+    if (grepl("\\.png$", fname)) {
       plot_paths[[fname]] <- f
-    } else if (grepl("\.(csv|rds)$", fname)) {
+    } else if (grepl("\\.(csv|rds)$", fname)) {
       data_paths[[fname]] <- f
     }
   }
@@ -2323,8 +2338,25 @@ function(req) {
 
   report(100, "WGCNA 分析完成")
 
+  # 保存结果 JSON 到项目根目录（供后端读取）
+  result_json <- file.path(project_path, "wgcna_result.json")
+  result_data <- list(
+    status = "success",
+    outdir = outdir,
+    plot_paths = plot_paths,
+    data_paths = data_paths,
+    stats = list(
+      cell_type = interestType,
+      soft_power = result$soft_power,
+      n_modules = length(setdiff(colnames(result$hMEs), "grey")),
+      n_hub_genes = nrow(result$hub_genes)
+    )
+  )
+  jsonlite::write_json(result_data, result_json, auto_unbox = TRUE, pretty = TRUE)
+
   list(
     status = "success",
+    result_path = result_json,
     outdir = outdir,
     plot_paths = plot_paths,
     data_paths = data_paths,
