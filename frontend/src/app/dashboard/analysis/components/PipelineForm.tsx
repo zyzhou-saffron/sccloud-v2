@@ -56,11 +56,22 @@ const STEP_INDEX: Record<string, number> = {
 };
 
 /** 计算 Pipeline 总步骤数（Phase1 合并后 3 步 + Phase2 步数） */
+// Phase1 固定 4 个执行步骤: qc, normalize, reduce, annotate
+const PHASE1_COUNT = 4;
+const PHASE1_ORDER: Record<string, number> = {
+  qc: 1, normalize: 2, reduce: 3, annotate: 4,
+};
+
 function getTotalSteps(params?: Record<string, unknown>): number {
-  const phase1 = 3;
   const enabled = (params?.enabled_steps as string[] | undefined) || [];
-  const phase2 = enabled.length > 0 ? enabled.length : 1;
-  return phase1 + phase2;
+  return PHASE1_COUNT + enabled.length;
+}
+
+function getStepIndex(step: string, params?: Record<string, unknown>): number {
+  if (PHASE1_ORDER[step] !== undefined) return PHASE1_ORDER[step];
+  const enabled = (params?.enabled_steps as string[] | undefined) || [];
+  const pos = enabled.indexOf(step);
+  return pos >= 0 ? PHASE1_COUNT + pos + 1 : 0;
 }
 
 const STATUS_MAP: Record<string, { dot: string; text: string }> = {
@@ -285,7 +296,7 @@ export default function PipelineForm({ projectId, token, onSubmit, uploadedFiles
                         </div>
                       </div>
                       <span className={`text-[10px] font-mono shrink-0 ${style.text}`}>
-                        {p.status === "completed" ? "✓" : p.status === "failed" ? "✗" : p.status === "running" ? `${p.current_step ? STEP_INDEX[p.current_step] || 0 : 0}/${getTotalSteps(p.params)}` : "—"}
+                        {p.status === "completed" ? "✓" : p.status === "failed" ? "✗" : p.status === "running" ? `${p.current_step ? getStepIndex(p.current_step, p.params) : 0}/${getTotalSteps(p.params)}` : "—"}
                       </span>
                     </button>
                   );
