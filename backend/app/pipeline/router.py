@@ -65,6 +65,7 @@ class PipelineResponse:
             "user_id": self.user_id,
             "status": self.status,
             "current_step": self.current_step,
+            "params": self.params,
             "error_step": self.error_step,
             "error_msg": self.error_msg,
             "created_at": self.created_at,
