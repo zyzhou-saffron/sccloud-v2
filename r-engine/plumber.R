@@ -1971,7 +1971,7 @@ function(req) {
   reverse <- params$reverse %||% FALSE
 
   old_wd <- getwd()
-  setwd(outdir)
+  setwd(project_path)
 
   progress_cb <- function(pct, msg) report(pct, msg)
 
@@ -2076,7 +2076,7 @@ function(req) {
   thresh <- params$thresh %||% 0.05
 
   old_wd <- getwd()
-  setwd(outdir)
+  setwd(project_path)
 
   progress_cb <- function(pct, msg) report(pct, msg)
 
