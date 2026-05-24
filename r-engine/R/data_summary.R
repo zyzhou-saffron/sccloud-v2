@@ -24,7 +24,7 @@ suppressMessages({
 
 # [替换] 旧系统使用 this.path::this.path() 定位脚本目录
 # 容器环境下数据存放在 /app/data/
-script_dir <- "data/ref"
+script_dir <- "/app/data/ref"
 
 # 加载 SingleR 参考数据：优先读本地 .rds，没有则用 celldex 自动下载
 loadRefData <- function(rds_name, celldex_fn) {
