@@ -563,7 +563,7 @@ function AnalysisPageContent() {
               <TaskHistory
                 projectId={project.id}
                 onSelect={handleSelectHistory}
-                excludeSteps={["wgcna", "enrich", "monocle", "cellchat", "infercnv"]}
+                
               />
             </div>
           )}
