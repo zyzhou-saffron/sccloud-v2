@@ -601,7 +601,7 @@ RunInfercnv <- function(pro, inferDf, cutoff_gene = 0.1, outdir, numThreads = 1,
   send_msg(5, "准备参考文件...")
   options(scipen = 100)
   bedFileName <- if (species == "Mouse") "gene_name_pos_mouse.bed" else "gene_name_pos_human.bed"
-  bedFile <- file.path("data/ref", bedFileName)
+  bedFile <- file.path("/app/data/ref", bedFileName)
   if (!file.exists(bedFile)) {
     stop("gene_name_pos.bed not found at: ", bedFile)
   }
