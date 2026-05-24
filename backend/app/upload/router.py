@@ -401,7 +401,7 @@ async def _call_r_engine_inspect(file_path: str, filename: str) -> dict:
     settings = get_settings()
     r_engine_url = settings.r_engine_url
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=600.0) as client:
         resp = await client.post(
             f"{r_engine_url}/inspect",
             json={"file_path": file_path, "filename": filename},

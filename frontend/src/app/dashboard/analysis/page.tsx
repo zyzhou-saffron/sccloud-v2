@@ -560,7 +560,11 @@ function AnalysisPageContent() {
 
           {project && (
             <div className="mt-6 pt-4" style={{ borderTop: "1px solid var(--clr-border)" }}>
-              <TaskHistory projectId={project.id} onSelect={handleSelectHistory} />
+              <TaskHistory
+                projectId={project.id}
+                onSelect={handleSelectHistory}
+                excludeSteps={["wgcna", "enrich", "monocle", "cellchat", "infercnv"]}
+              />
             </div>
           )}
         </div>

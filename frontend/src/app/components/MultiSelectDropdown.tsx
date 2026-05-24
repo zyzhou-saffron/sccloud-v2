@@ -58,7 +58,7 @@ export default function MultiSelectDropdown({
 
   return (
     <div ref={ref} className="relative" style={{ minWidth: 140 }}>
-      {/* 触发按钮 — 始终显示 placeholder，已选内容由外部渲染 */}
+      {/* 触发按钮 — 有选中时显示已选项，否则显示 placeholder */}
       <button
         type="button"
         disabled={disabled}
@@ -67,10 +67,12 @@ export default function MultiSelectDropdown({
         style={{
           borderColor: open ? "var(--clr-amber)" : "var(--clr-border)",
           background: "#fff",
-          color: "var(--clr-text-faint)",
+          color: selected.length > 0 ? "var(--clr-text)" : "var(--clr-text-faint)",
         }}
       >
-        <span className="truncate">{placeholder}</span>
+        <span className="truncate">
+          {selected.length > 0 ? selected.map(renderLabel).join(", ") : placeholder}
+        </span>
         <svg
           width="12"
           height="12"

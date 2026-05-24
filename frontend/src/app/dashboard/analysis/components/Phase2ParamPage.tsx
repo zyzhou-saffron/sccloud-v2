@@ -7,6 +7,8 @@
 
 import React, { useEffect, useState } from "react";
 import { resumePipeline, type Pipeline } from "../../../lib/pipeline-api";
+import GeneExpressionPopup from "../../../components/GeneExpressionPopup";
+import { createPortal } from "react-dom";
 import { IconTestTube, IconPathway, IconBranch, IconNetwork, IconDNA } from "../../../components/Icons";
 import { apiFetch } from "../../../lib/api";
 
@@ -23,11 +25,13 @@ const DEFAULT_PARAMS = {
   monocle: { group_beam: "CellType", group_traj: "CellType", min_expr_threshold: 0.5, min_cells_pct: 0.01, mean_expr: 0.3, qvalue1: 1e-5, reverse: false },
   cellchat: { db_use: "Secreted", thresh: 0.05 },
   infercnv: { cutoff_gene: 0.1, num_threads: 4, species: "Human", infer_df: [] as { cellType: string; refType: string }[] },
+  wgcna: { interest_type: "", min_fraction: 0.05, sft_threshold: 0.8, module_score: "Seurat", k: 25, max_shared: 10, min_cells: 100, n_hubs: 10, n_genes_score: 25 },
 };
 
 export default function Phase2ParamPage({ pipeline, token, onComplete, species = "Human" }: Phase2ParamPageProps) {
   const [enabled, setEnabled] = useState<Record<string, boolean>>({
     markers: true,
+    wgcna: false,
     enrich: false,
     monocle: false,
     cellchat: false,
@@ -36,6 +40,10 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
   const [params, setParams] = useState(DEFAULT_PARAMS);
   const [showAdvanced, setShowAdvanced] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
+  // ── WGCNA 基因表达查询 ──
+  const [wgcnaGeneInput, setWgcnaGeneInput] = useState("");
+  const [wgcnaActiveGene, setWgcnaActiveGene] = useState<string | null>(null);
+  const [wgcnaGenePos, setWgcnaGenePos] = useState<{ x: number; y: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [allCellTypes, setAllCellTypes] = useState<string[]>([]);
 
@@ -136,6 +144,12 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
       label: "差异基因分析",
       desc: "FindMarkers — 基于 CellType 分组的差异表达基因",
       Icon: IconTestTube,
+    },
+    {
+      key: "wgcna",
+      label: "WGCNA 分析",
+      desc: "加权基因共表达网络 — 识别基因模块与细胞类型关联",
+      Icon: IconNetwork,
     },
     {
       key: "enrich",
@@ -383,6 +397,43 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                   </div>
                 )}
 
+                {/* WGCNA 参数 */}
+                {mod.key === "wgcna" && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>目标细胞类型</label>
+                      <select
+                        value={params.wgcna.interest_type}
+                        onChange={(e) => updateParam("wgcna", "interest_type", e.target.value)}
+                        className={inputCls}
+                        style={inputStyle}
+                      >
+                        <option value="">留空则不执行 WGCNA</option>
+                        {allCellTypes.map((ct) => (
+                          <option key={ct} value={ct}>{ct}</option>
+                        ))}
+                      </select>
+                      <p className="text-[10px] mt-1" style={{ color: "var(--clr-text-faint)" }}>
+                        选择要分析的目标细胞类型
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>最小细胞比例</label>
+                        <input type="number" value={params.wgcna.min_fraction} onChange={(e) => updateParam("wgcna", "min_fraction", Number(e.target.value))} min={0} max={1} step={0.01} className={numberCls} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>软阈值</label>
+                        <input type="number" value={params.wgcna.sft_threshold} onChange={(e) => updateParam("wgcna", "sft_threshold", Number(e.target.value))} min={0} max={1} step={0.05} className={numberCls} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>最近邻 K</label>
+                        <input type="number" value={params.wgcna.k} onChange={(e) => updateParam("wgcna", "k", Number(e.target.value))} min={1} max={100} className={numberCls} style={inputStyle} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* inferCNV 参数 */}
                 {mod.key === "infercnv" && (
                   <div className="space-y-4">
@@ -465,6 +516,18 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
           `开始分析 (${Object.entries(enabled).filter(([, v]) => v).length} 个步骤)`
         )}
       </button>
+
+      {/* WGCNA 基因表达弹窗 */}
+      {wgcnaActiveGene && wgcnaGenePos && typeof window !== undefined && pipeline.project_id && createPortal(
+        <GeneExpressionPopup
+          gene={wgcnaActiveGene}
+          projectId={pipeline.project_id}
+          mousePos={wgcnaGenePos}
+          onMouseLeave={() => { setWgcnaActiveGene(null); setWgcnaGenePos(null); }}
+          token={token}
+        />,
+        document.body
+      )}
     </div>
   );
 }

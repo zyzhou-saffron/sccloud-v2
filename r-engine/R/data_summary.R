@@ -740,7 +740,7 @@ RunWGCNA <- function(seurat_obj, outdir, minFraction = 0.05, interestType,
 
   send_msg(50, paste0("构建网络 (软阈值=", select_soft_power, ")..."))
   seurat_obj <- ConstructNetwork(seurat_obj, soft_power = select_soft_power,
-                                   setDatExpr = FALSE, tom_name = interestType,
+                                   setDatExpr = FALSE, tom_name = interestType, tom_outdir = file.path(outdir, "TOM"),
                                    overwrite_tom = TRUE)
   png(file.path(outdir, paste0(interestType, "_Dendrogram.png")),
       width = 900, height = 600, res = 100)

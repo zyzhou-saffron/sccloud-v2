@@ -139,7 +139,7 @@ class Task(Base):
             "markers", "enrich", "annotate", "convert",
             "markers_pairwise", "plot_markers",
             "subset_cluster", "marker_expr", "merge_celltypes",
-            "monocle", "cellchat", "infercnv",
+            "monocle", "cellchat", "infercnv", "wgcna",
             name="task_step",
         ),
         nullable=False,

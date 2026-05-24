@@ -323,9 +323,10 @@ export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCa
             {stepId === "cluster"   && <ClusterResult data={resultData} task={task} />}
             {stepId === "markers"   && <MarkersResult data={resultData} task={task} taskCache={taskCache} clusterLevels={clusterLevels} />}
             {stepId === "enrich"    && <EnrichResult data={resultData} taskId={task.id} />}
+            {stepId === "wgcna"     && <WGCNAResult data={resultData} taskId={task.id} />}
             {stepId === "annotate" && <AnnotateResult data={resultData} task={task} token={getToken()} />}
             {stepId === "marker_expr" && <MarkerExprResult data={resultData} taskId={task.id} task={task} />}
-            {!["qc","normalize","reduce","cluster","markers","enrich","annotate","marker_expr"].includes(stepId) && (
+            {!["qc","normalize","reduce","cluster","markers","enrich","wgcna","annotate","marker_expr"].includes(stepId) && (
               <GenericStepResult data={resultData} stepId={stepId} taskId={task.id} projectId={task.project_id} />
             )}
           </>
@@ -1832,6 +1833,158 @@ function MarkerExprResult({ data, taskId, task }: { data: Record<string, unknown
 /* ===================================================
    通用步骤结果组件（Monocle / CellChat / inferCNV）
 =================================================== */
+
+/** WGCNA 结果组件 */
+function WGCNAResult({ data, taskId }: { data: Record<string, unknown> | null; taskId?: string }) {
+  if (!data) {
+    return (
+      <div className="text-center py-8" style={{ color: "var(--clr-text-faint)" }}>
+        <p className="text-xs">结果数据为空</p>
+      </div>
+    );
+  }
+
+  const rawPlotPaths = data.plot_paths as Record<string, unknown> | undefined;
+  const rawDataPaths = data.data_paths as Record<string, unknown> | undefined;
+  const stats = data.stats as { cell_type?: string; soft_power?: number; n_modules?: number; n_hub_genes?: number } | undefined;
+
+  const plotPaths = rawPlotPaths
+    ? Object.fromEntries(Object.entries(rawPlotPaths).map(([k, v]) => [k, Array.isArray(v) ? String(v[0]) : String(v ?? '')]).filter(([, v]) => !!v))
+    : undefined;
+  const dataPaths = rawDataPaths
+    ? Object.fromEntries(Object.entries(rawDataPaths).map(([k, v]) => [k, Array.isArray(v) ? String(v[0]) : String(v ?? '')]).filter(([, v]) => !!v))
+    : undefined;
+
+  const getFileName = (path: string) => path.split('/').pop() || path;
+  const getDownloadUrl = (filePath: string) => {
+    const fileName = getFileName(filePath);
+    return `/api/tasks/${taskId}/plot?name=${encodeURIComponent(fileName)}`;
+  };
+
+  // 图表友好名称映射
+  const formatPlotLabel = (filename: string) => {
+    const base = filename.replace(/^[^_]*_/, '').replace(/\.[^.]+$/, '');
+    const labels: Record<string, string> = {
+      'SoftPower': '软阈值选择',
+      'Dendrogram': '模块树状图',
+      'modules_kME': '模块 kME 排名',
+      'modules_hMEs': '模块特征图 (hMEs)',
+      'modules_hMEs_DotPlot': '模块表达点图',
+      'modules_cor': '模块相关性热图',
+    };
+    return labels[base] || base.replace(/_/g, ' ');
+  };
+
+  const plotEntries = plotPaths ? Object.entries(plotPaths) : [];
+  const dataEntries = dataPaths ? Object.entries(dataPaths) : [];
+
+  const [activeTab, setActiveTab] = React.useState<'plots' | 'data'>('plots');
+
+  const moduleCount = stats?.n_modules ?? 0;
+  const hubGeneCount = stats?.n_hub_genes ?? 0;
+  const cellType = stats?.cell_type ?? '—';
+  const softPower = stats?.soft_power ?? '—';
+
+  return (
+    <div className="space-y-4">
+      {/* 统计摘要卡片 */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: '目标细胞类型', value: cellType },
+          { label: '软阈值 (Soft Power)', value: softPower },
+          { label: '基因模块数', value: moduleCount },
+          { label: 'Hub 基因数', value: hubGeneCount },
+        ].map((item) => (
+          <div key={item.label} className="px-3 py-2.5 rounded-lg border" style={{ borderColor: 'var(--clr-border)', background: 'var(--clr-bg-alt)' }}>
+            <div className="text-[10px] font-medium mb-0.5" style={{ color: 'var(--clr-text-faint)' }}>{item.label}</div>
+            <div className="text-base font-bold" style={{ color: 'var(--clr-amber-dark)' }}>{item.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tab 切换 */}
+      <div className="flex gap-1 p-0.5 rounded" style={{ background: 'var(--clr-bg-alt)' }}>
+        {(['plots', 'data'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className="flex-1 px-3 py-1.5 rounded text-xs font-medium transition-all"
+            style={activeTab === tab
+              ? { background: 'var(--clr-bg-card)', color: 'var(--clr-amber-dark)', fontWeight: 600, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }
+              : { color: 'var(--clr-text-muted)', cursor: 'pointer' }
+            }
+          >
+            {tab === 'plots' ? `图表 (${plotEntries.length})` : `数据文件 (${dataEntries.length})`}
+          </button>
+        ))}
+      </div>
+
+      {/* 图表 Tab */}
+      {activeTab === 'plots' && plotEntries.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {plotEntries.map(([name, path]) => (
+            <div key={name} className="rounded-lg border overflow-hidden bg-white" style={{ borderColor: 'var(--clr-border)' }}>
+              <div className="px-3 py-2 flex items-center justify-between" style={{ background: 'var(--clr-bg-alt)', borderBottom: '1px solid var(--clr-border)' }}>
+                <span className="text-xs font-semibold" style={{ color: 'var(--clr-text)' }}>{formatPlotLabel(name)}</span>
+                <AuthDownloadLink
+                  url={getDownloadUrl(path)}
+                  filename={getFileName(path)}
+                  className="inline-flex items-center justify-center w-7 h-7 rounded transition-all hover:scale-110"
+                  style={{ color: 'var(--clr-amber)' }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </AuthDownloadLink>
+              </div>
+              <AuthImg
+                src={getDownloadUrl(path)}
+                alt={name}
+                className="w-full h-auto"
+                style={{ maxHeight: 450, objectFit: 'contain', background: 'white' }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeTab === 'plots' && plotEntries.length === 0 && (
+        <div className="text-center py-8" style={{ color: 'var(--clr-text-faint)' }}>
+          <p className="text-xs">暂无图表输出</p>
+          <p className="text-[10px] mt-1">请确认 WGCNA 分析是否成功完成</p>
+        </div>
+      )}
+
+      {/* 数据文件 Tab */}
+      {activeTab === 'data' && dataEntries.length > 0 && (
+        <div className="space-y-2">
+          {dataEntries.map(([name, path]) => (
+            <div key={name} className="flex items-center justify-between px-3 py-2.5 rounded-lg border" style={{ borderColor: 'var(--clr-border)', background: 'var(--clr-bg-alt)' }}>
+              <div className="flex items-center gap-2 min-w-0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--clr-text-faint)', flexShrink: 0 }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span className="text-xs truncate" style={{ color: 'var(--clr-text)' }}>{getFileName(name)}</span>
+                <span className="text-[10px] shrink-0" style={{ color: 'var(--clr-text-faint)' }}>{name.endsWith('.rds') ? 'RDS' : name.endsWith('.csv') ? 'CSV' : ''}</span>
+              </div>
+              <AuthDownloadLink
+                url={getDownloadUrl(path)}
+                filename={getFileName(path)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium transition-all hover:scale-105 shrink-0"
+                style={{ color: 'var(--clr-amber)', border: '1px solid var(--clr-border)' }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                下载
+              </AuthDownloadLink>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeTab === 'data' && dataEntries.length === 0 && (
+        <div className="text-center py-8" style={{ color: 'var(--clr-text-faint)' }}>
+          <p className="text-xs">暂无数据文件</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function GenericStepResult({ data, stepId, taskId }: { data: Record<string, unknown> | null; stepId: string; taskId?: string }) {
   if (!data) {

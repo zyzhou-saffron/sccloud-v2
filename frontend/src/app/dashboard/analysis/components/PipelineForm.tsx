@@ -43,9 +43,25 @@ const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
 };
 
 const STEP_LABELS: Record<string, string> = {
-  qc: "数据预处理", normalize: "数据标准化", reduce: "降维与聚类",
-  cluster: "降维与聚类", markers: "差异基因", annotate: "细胞注释", wgcna: "WGCNA",
+  qc: "数据预处理与标准化", normalize: "数据预处理与标准化", reduce: "降维与聚类",
+  cluster: "降维与聚类", markers: "差异基因", annotate: "细胞注释",
+  enrich: "通路富集", monocle: "拟时序分析", cellchat: "细胞通讯",
+  infercnv: "拷贝数变异", wgcna: "WGCNA",
 };
+
+/** 合并后的步骤序号映射 */
+const STEP_INDEX: Record<string, number> = {
+  qc: 1, normalize: 1, reduce: 2, cluster: 2, annotate: 3,
+  markers: 4, enrich: 5, monocle: 6, cellchat: 7, infercnv: 8, wgcna: 9,
+};
+
+/** 计算 Pipeline 总步骤数（Phase1 合并后 3 步 + Phase2 步数） */
+function getTotalSteps(params?: Record<string, unknown>): number {
+  const phase1 = 3;
+  const enabled = (params?.enabled_steps as string[] | undefined) || [];
+  const phase2 = enabled.length > 0 ? enabled.length : 1;
+  return phase1 + phase2;
+}
 
 const STATUS_MAP: Record<string, { dot: string; text: string }> = {
   pending:   { dot: "bg-[#999]", text: "text-[#999]" },
@@ -269,7 +285,7 @@ export default function PipelineForm({ projectId, token, onSubmit, uploadedFiles
                         </div>
                       </div>
                       <span className={`text-[10px] font-mono shrink-0 ${style.text}`}>
-                        {p.status === "completed" ? "✓" : p.status === "failed" ? "✗" : p.status === "running" ? `${p.tasks?.filter(t => t.status === "completed").length}/6` : "—"}
+                        {p.status === "completed" ? "✓" : p.status === "failed" ? "✗" : p.status === "running" ? `${p.current_step ? STEP_INDEX[p.current_step] || 0 : 0}/${getTotalSteps(p.params)}` : "—"}
                       </span>
                     </button>
                   );
@@ -653,31 +669,6 @@ export default function PipelineForm({ projectId, token, onSubmit, uploadedFiles
               </div>
             </div>
           </div>
-        {/* Step 5: WGCNA */}
-        <div className="card p-4" style={{ borderColor: "var(--clr-border)" }}>
-          <div className="text-xs font-semibold mb-3" style={{ color: "var(--clr-amber-dark)" }}>
-            WGCNA 分析参数 (可选)
-          </div>
-          <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-4">
-            <div className="text-xs font-semibold pt-1 whitespace-nowrap" style={{ color: "var(--clr-text-muted)" }}>
-              目标细胞类型
-            </div>
-            <div className="space-y-2">
-              <input
-                type="text"
-                value={params.wgcna.interest_type as string}
-                onChange={(e) => updateStepParam("wgcna", "interest_type", e.target.value)}
-                placeholder="输入细胞类型名称，如: CD4_T_cell"
-                className="w-full px-3 py-2 bg-white border rounded text-sm"
-                style={{ borderColor: "var(--clr-border)", color: "var(--clr-text)" }}
-              />
-              <p className="text-[10px]" style={{ color: "var(--clr-text-faint)" }}>
-                留空则不执行 WGCNA 分析
-              </p>
-            </div>
-          </div>
-        </div>
-
         </div>
 
         {/* 提示 */}
