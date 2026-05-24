@@ -43,7 +43,7 @@ export default function DashboardLayout({
     }
     setUsername(name || "用户");
     setGuest(isGuest());
-    const role = localStorage.getItem(role) || user;
+    const role = localStorage.getItem("role") || "user";
     setNavItems(role === "admin" ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS);
     if (pathname === "/dashboard") {
       router.replace("/dashboard/analysis");
