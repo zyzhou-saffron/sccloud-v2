@@ -61,15 +61,17 @@ const PHASE1_COUNT = 4;
 const PHASE1_ORDER: Record<string, number> = {
   qc: 1, normalize: 2, reduce: 3, annotate: 4,
 };
+const PHASE2_STEPS = ["markers", "wgcna", "enrich", "monocle", "cellchat", "infercnv"];
 
 function getTotalSteps(params?: Record<string, unknown>): number {
   const enabled = (params?.enabled_steps as string[] | undefined) || [];
-  return PHASE1_COUNT + enabled.length;
+  return enabled.length > 0 ? PHASE1_COUNT + enabled.length : PHASE1_COUNT;
 }
 
 function getStepIndex(step: string, params?: Record<string, unknown>): number {
   if (PHASE1_ORDER[step] !== undefined) return PHASE1_ORDER[step];
   const enabled = (params?.enabled_steps as string[] | undefined) || [];
+  if (enabled.length === 0) return PHASE2_STEPS.indexOf(step) + PHASE1_COUNT + 1;
   const pos = enabled.indexOf(step);
   return pos >= 0 ? PHASE1_COUNT + pos + 1 : 0;
 }
