@@ -78,6 +78,9 @@ class User(Base):
         default="user",
     )
     max_projects = Column(Integer, default=5)
+    total_quota = Column(Integer, default=10)
+    used_quota = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

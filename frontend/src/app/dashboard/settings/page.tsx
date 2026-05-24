@@ -21,6 +21,8 @@ export default function SettingsPage() {
   const [oldPwd, setOldPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
   const [confirmPwd, setConfirmPwd] = useState("");
+  const [userRole, setUserRole] = useState("user");
+  const [maxProjects, setMaxProjects] = useState(5);
   const [saving, setSaving] = useState(false);
   const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
@@ -85,11 +87,11 @@ export default function SettingsPage() {
           </div>
           <div className="flex justify-between py-2" style={{ borderBottom: "1px solid var(--clr-border)" }}>
             <span style={{ color: "var(--clr-text-muted)" }}>角色</span>
-            <span className="badge">user</span>
+            <span className="badge">{userRole}</span>
           </div>
           <div className="flex justify-between py-2">
             <span style={{ color: "var(--clr-text-muted)" }}>项目上限</span>
-            <span style={{ color: "var(--clr-dark)" }}>5</span>
+            <span style={{ color: "var(--clr-dark)" }}>{maxProjects}</span>
           </div>
         </div>
       </div>

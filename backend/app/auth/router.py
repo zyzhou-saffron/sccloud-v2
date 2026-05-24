@@ -30,6 +30,7 @@ class RegisterRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
+    role: str = "user"
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
@@ -46,6 +47,9 @@ class UserInfo(BaseModel):
     email: str | None
     role: str
     max_projects: int
+    total_quota: int = 0
+    used_quota: int = 0
+    is_active: bool = True
 
 
 # ===== 路由 =====
@@ -75,9 +79,10 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.refresh(user)
 
     # 生成 token
-    token_data = {"sub": user.username}
+    token_data = {"sub": user.username, "role": user.role}
     return TokenResponse(
         access_token=create_access_token(token_data),
+        role=user.role,
         refresh_token=create_refresh_token(token_data),
         username=user.username,
     )
@@ -96,9 +101,10 @@ async def login(
             detail="用户名或密码错误",
         )
 
-    token_data = {"sub": user.username}
+    token_data = {"sub": user.username, "role": user.role}
     return TokenResponse(
         access_token=create_access_token(token_data),
+        role=user.role,
         refresh_token=create_refresh_token(token_data),
         username=user.username,
     )
@@ -122,9 +128,10 @@ async def refresh_token(req: RefreshRequest, db: Session = Depends(get_db)):
             detail="用户不存在",
         )
 
-    token_data = {"sub": user.username}
+    token_data = {"sub": user.username, "role": user.role}
     return TokenResponse(
         access_token=create_access_token(token_data),
+        role=user.role,
         refresh_token=create_refresh_token(token_data),
         username=user.username,
     )
@@ -139,6 +146,9 @@ async def get_me(current_user: User = Depends(get_current_user)):
         email=current_user.email,
         role=current_user.role,
         max_projects=current_user.max_projects,
+        total_quota=current_user.total_quota,
+        used_quota=current_user.used_quota,
+        is_active=current_user.is_active,
     )
 
 
@@ -192,9 +202,10 @@ async def guest_login(db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
-    token_data = {"sub": user.username}
+    token_data = {"sub": user.username, "role": user.role}
     return TokenResponse(
         access_token=create_access_token(token_data),
+        role=user.role,
         refresh_token=create_refresh_token(token_data),
         username=user.username,
     )
@@ -240,9 +251,10 @@ async def upgrade_guest(
     db.refresh(current_user)
 
     # 重新签发 token（用户名已变）
-    token_data = {"sub": current_user.username}
+    token_data = {"sub": current_user.username, "role": current_user.role}
     return TokenResponse(
         access_token=create_access_token(token_data),
+        role=user.role,
         refresh_token=create_refresh_token(token_data),
         username=current_user.username,
     )

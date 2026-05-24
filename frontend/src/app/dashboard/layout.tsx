@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { IconBeaker, IconConvert, IconGear } from "../components/Icons";
+import { IconBeaker, IconConvert, IconGear, IconUsers } from "../components/Icons";
 import { isGuest } from "../lib/api";
 import AuthModal from "../components/AuthModal";
 
@@ -19,6 +19,8 @@ const NAV_ITEMS = [
   { href: "/dashboard/settings", label: "设置", Icon: IconGear },
 ];
 
+const ADMIN_NAV_ITEM = { href: "/dashboard/admin", label: "用户管理", Icon: IconUsers };
+
 export default function DashboardLayout({
   children,
 }: {
@@ -30,6 +32,7 @@ export default function DashboardLayout({
   const [guest, setGuest] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [navItems, setNavItems] = useState(NAV_ITEMS);
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -38,8 +41,10 @@ export default function DashboardLayout({
       router.push("/");
       return;
     }
-    setUsername(name || "用户");
+    setUsername(name || 用户);
     setGuest(isGuest());
+    const role = localStorage.getItem(role) || user;
+    setNavItems(role === admin ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS);
     if (pathname === "/dashboard") {
       router.replace("/dashboard/analysis");
     }
@@ -79,7 +84,7 @@ export default function DashboardLayout({
 
           {/* Nav */}
           <nav className="hidden md:flex items-center gap-1">
-            {NAV_ITEMS.map((item) => {
+            {navItems.map((item) => {
               const active = pathname === item.href || pathname?.startsWith(item.href);
               const isSettings = item.href === "/dashboard/settings";
               const handleClick = (e: React.MouseEvent) => {

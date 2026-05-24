@@ -47,6 +47,7 @@ async function doRefreshToken(): Promise<string | null> {
     }
     if (data.username) {
       localStorage.setItem("username", data.username);
+  localStorage.setItem("role", data.role || "user");
     }
     return data.access_token as string;
   } catch {
@@ -85,6 +86,7 @@ async function guestLoginFallback(): Promise<string | null> {
     localStorage.setItem("access_token", data.access_token);
     if (data.refresh_token) localStorage.setItem("refresh_token", data.refresh_token);
     if (data.username) localStorage.setItem("username", data.username);
+  localStorage.setItem("role", data.role || "user");
     return data.access_token as string;
   } catch {
     return null;
@@ -176,6 +178,7 @@ export async function apiFetch<T>(
 /* ===== Auth ===== */
 
 interface AuthResponse {
+  role?: string;
   access_token: string;
   refresh_token: string;
   token_type: string;
@@ -234,6 +237,7 @@ export function saveAuthData(data: AuthResponse, guest = false): void {
   localStorage.setItem("access_token", data.access_token);
   localStorage.setItem("refresh_token", data.refresh_token);
   localStorage.setItem("username", data.username);
+  localStorage.setItem("role", data.role || "user");
   localStorage.setItem("is_guest", guest ? "true" : "false");
 }
 
@@ -523,3 +527,54 @@ export async function inspectFileByPath(filePath: string): Promise<InspectResult
   });
 }
 
+
+// ===== 管理员 API =====
+
+export interface AdminUser {
+  id: number;
+  username: string;
+  email: string | null;
+  role: string;
+  is_guest: boolean;
+  max_projects: number;
+  total_quota: number;
+  used_quota: number;
+  is_active: boolean;
+  created_at: string | null;
+}
+
+export interface AdminUserListResponse {
+  users: AdminUser[];
+  total: number;
+}
+
+export async function listUsers(
+  page = 1,
+  pageSize = 20,
+  search = ""
+): Promise<AdminUserListResponse> {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  if (search) params.set("search", search);
+  return apiFetch<AdminUserListResponse>("/api/admin/users?" + params.toString());
+}
+
+export async function getUser(userId: number): Promise<AdminUser> {
+  return apiFetch<AdminUser>("/api/admin/users/" + userId);
+}
+
+export async function updateUser(
+  userId: number,
+  data: Partial<Pick<AdminUser, "role" | "max_projects" | "total_quota" | "used_quota" | "is_active">>
+): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>("/api/admin/users/" + userId, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteUser(userId: number): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>("/api/admin/users/" + userId, {
+    method: "DELETE",
+  });
+}
