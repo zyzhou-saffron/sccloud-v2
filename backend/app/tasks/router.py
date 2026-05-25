@@ -379,6 +379,7 @@ async def update_task_result(
 
     # 注释结果被修改后，自动重新运行已完成的 Phase 2 步骤
     if task.step == "annotate" and task.pipeline_id:
+        from app.db.models import Pipeline
         from app.pipeline.executor import PIPELINE_PHASE2_ALL, resume_pipeline
         phase2_completed = (
             db.query(Task)
@@ -394,6 +395,9 @@ async def update_task_result(
             for t in phase2_completed:
                 t.status = "pending"
                 t.result_path = None
+            pipeline = db.query(Pipeline).filter(Pipeline.id == task.pipeline_id).first()
+            if pipeline:
+                pipeline.status = "running"
             db.commit()
             background_tasks.add_task(resume_pipeline, task.pipeline_id, enabled_steps)
 
