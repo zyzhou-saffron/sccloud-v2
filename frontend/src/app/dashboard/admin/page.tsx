@@ -42,10 +42,11 @@ export default function AdminPage() {
   };
 
   const toggleSelectAll = () => {
-    if (selected.size === users.length) {
+    const selectable = users.filter(u => u.username !== 'Linli');
+    if (selected.size === selectable.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(users.map(u => u.id)));
+      setSelected(new Set(selectable.map(u => u.id)));
     }
   };
 
@@ -224,6 +225,8 @@ export default function AdminPage() {
                       type="checkbox"
                       checked={selected.has(u.id)}
                       onChange={() => toggleSelect(u.id)}
+                      disabled={u.username === "Linli"}
+                      style={u.username === "Linli" ? { opacity: 0.3, cursor: "not-allowed" } : undefined}
                     />
                   </td>
                   <td className="px-3 py-2 font-mono" style={{ color: "var(--clr-text-faint)" }}>{u.id}</td>
@@ -269,8 +272,9 @@ export default function AdminPage() {
                     </button>
                     <button
                       onClick={() => handleDelete(u)}
+                      disabled={u.username === "Linli"}
                       className="px-2 py-1 rounded text-[10px] font-medium transition-all hover:opacity-80"
-                      style={{ background: "var(--clr-danger)", color: "#fff" }}
+                      style={u.username === "Linli" ? { background: "#ccc", color: "#999", cursor: "not-allowed" } : { background: "var(--clr-danger)", color: "#fff" }}
                     >
                       删除
                     </button>
