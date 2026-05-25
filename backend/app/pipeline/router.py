@@ -257,6 +257,16 @@ async def resume_pipeline_endpoint(
         )
 
     from app.pipeline.executor import resume_pipeline
+    from app.db.models import Task
+
+    # 清除旧的 Phase 2 任务结果（修改参数后重新运行）
+    phase2_steps = data.get("enabled_steps", []) if data else []
+    if phase2_steps:
+        db.query(Task).filter(
+            Task.pipeline_id == pipeline_id,
+            Task.step.in_(phase2_steps),
+        ).delete(synchronize_session=False)
+        db.commit()
 
     # 更新 Phase 2 参数
     if data:
