@@ -25,7 +25,7 @@ const DEFAULT_PARAMS = {
   monocle: { group_beam: "CellType", group_traj: "CellType", min_expr_threshold: 0.5, min_cells_pct: 0.01, mean_expr: 0.3, qvalue1: 1e-5, reverse: false },
   cellchat: { db_use: "Secreted", thresh: 0.05 },
   infercnv: { cutoff_gene: 0.1, num_threads: 4, species: "Human", infer_df: [] as { cellType: string; refType: string }[] },
-  wgcna: { interest_type: "", min_fraction: 0.05, sft_threshold: 0.8, module_score: "Seurat", k: 25, max_shared: 10, min_cells: 100, n_hubs: 10, n_genes_score: 25 },
+  wgcna: { interest_types: [] as string[], min_fraction: 0.05, sft_threshold: 0.8, module_score: "Seurat", k: 25, max_shared: 10, min_cells: 100, n_hubs: 10, n_genes_score: 25 },
 };
 
 export default function Phase2ParamPage({ pipeline, token, onComplete, species = "Human" }: Phase2ParamPageProps) {
@@ -44,6 +44,7 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
   const [wgcnaGeneInput, setWgcnaGeneInput] = useState("");
   const [wgcnaActiveGene, setWgcnaActiveGene] = useState<string | null>(null);
   const [wgcnaGenePos, setWgcnaGenePos] = useState<{ x: number; y: number } | null>(null);
+  const [wgcnaDropdownOpen, setWgcnaDropdownOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [allCellTypes, setAllCellTypes] = useState<string[]>([]);
 
@@ -400,21 +401,60 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                 {/* WGCNA 参数 */}
                 {mod.key === "wgcna" && (
                   <div className="space-y-3">
-                    <div>
+                    <div className="relative">
                       <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>目标细胞类型</label>
-                      <select
-                        value={params.wgcna.interest_type}
-                        onChange={(e) => updateParam("wgcna", "interest_type", e.target.value)}
-                        className={inputCls}
-                        style={inputStyle}
+                      <button
+                        type="button"
+                        onClick={() => setWgcnaDropdownOpen(!wgcnaDropdownOpen)}
+                        className="w-full px-3 py-2 rounded border text-xs text-left flex items-center justify-between"
+                        style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-card)", color: "var(--clr-text)" }}
                       >
-                        <option value="">-- 选择细胞类型 --</option>
-                        {allCellTypes.map((ct) => (
-                          <option key={ct} value={ct}>{ct}</option>
-                        ))}
-                      </select>
+                        <span className="truncate">
+                          {params.wgcna.interest_types.length === 0
+                            ? "-- 选择细胞类型 --"
+                            : params.wgcna.interest_types.length === allCellTypes.length
+                            ? "全部 (" + allCellTypes.length + " 种)"
+                            : params.wgcna.interest_types.join(", ")
+                          }
+                        </span>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9" /></svg>
+                      </button>
+                      {wgcnaDropdownOpen && (
+                        <div className="absolute z-10 mt-1 w-full rounded-lg border shadow-xl max-h-60 overflow-y-auto py-1" style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-card)" }}>
+                          <label className="flex items-center gap-2 px-3 py-1.5 hover:bg-black/5 cursor-pointer text-xs font-medium" style={{ color: "var(--clr-text)" }}>
+                            <input
+                              type="checkbox"
+                              checked={params.wgcna.interest_types.length === allCellTypes.length}
+                              onChange={() => {
+                                if (params.wgcna.interest_types.length === allCellTypes.length) {
+                                  updateParam("wgcna", "interest_types", []);
+                                } else {
+                                  updateParam("wgcna", "interest_types", [...allCellTypes]);
+                                }
+                              }}
+                            />
+                            ALL（全选）
+                          </label>
+                          <div className="mx-3 border-t" style={{ borderColor: "var(--clr-border)" }} />
+                          {allCellTypes.map((ct) => (
+                            <label key={ct} className="flex items-center gap-2 px-3 py-1.5 hover:bg-black/5 cursor-pointer text-xs" style={{ color: "var(--clr-text)" }}>
+                              <input
+                                type="checkbox"
+                                checked={params.wgcna.interest_types.includes(ct)}
+                                onChange={() => {
+                                  const next = params.wgcna.interest_types.includes(ct)
+                                    ? params.wgcna.interest_types.filter((t: string) => t !== ct)
+                                    : [...params.wgcna.interest_types, ct];
+                                  updateParam("wgcna", "interest_types", next);
+                                }}
+                              />
+                              {ct}
+                            </label>
+                          ))}
+                        </div>
+                      )}
                       <p className="text-[10px] mt-1" style={{ color: "var(--clr-text-faint)" }}>
-                        选择要分析的目标细胞类型
+                        选择要分析的目标细胞类型，支持多选
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-x-4 gap-y-2">
