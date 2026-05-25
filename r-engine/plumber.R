@@ -2300,78 +2300,86 @@ function(req) {
   n_hubs <- params$n_hubs %||% 10
   n_genes_score <- params$n_genes_score %||% 25
 
-  outdir <- file.path(project_path, paste0("wgcna_output_", format(Sys.time(), "%Y%m%d%H%M%S")))
-  dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
+  base_outdir <- file.path(project_path, paste0("wgcna_output_", format(Sys.time(), "%Y%m%d%H%M%S")))
+  dir.create(base_outdir, showWarnings = FALSE, recursive = TRUE)
+
+  all_plot_paths <- list()
+  all_data_paths <- list()
+  all_stats <- list()
+  n_types <- length(interestTypes)
 
   old_wd <- getwd()
-  setwd(outdir)
-
   progress_cb <- function(pct, msg) report(pct, msg)
 
-  result <- RunWGCNA(
-    seurat_obj = pro, outdir = outdir,
-    interestType = interestType,
-    minFraction = minFraction,
-    sft_threshold = sft_threshold,
-    ModuleScore = ModuleScore,
-    k = k, max_shared = max_shared,
-    min_cells = min_cells,
-    n_hubs = n_hubs,
-    n_genes_score = n_genes_score,
-    progress_callback = progress_cb
-  )
+  for (idx in seq_along(interestTypes)) {
+    ct <- interestTypes[[idx]]
+    report(0, paste0("WGCNA: [", idx, "/", n_types, "] ", ct))
 
-  setwd(old_wd)
+    outdir <- file.path(base_outdir, gsub("[^a-zA-Z0-9_-]", "_", ct))
+    dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
+    setwd(outdir)
 
-  report(95, "收集结果...")
+    result <- tryCatch({
+      RunWGCNA(
+        seurat_obj = pro, outdir = outdir,
+        interestType = ct,
+        minFraction = minFraction,
+        sft_threshold = sft_threshold,
+        ModuleScore = ModuleScore,
+        k = k, max_shared = max_shared,
+        min_cells = min_cells,
+        n_hubs = n_hubs,
+        n_genes_score = n_genes_score,
+        progress_callback = function(pct, msg) {
+          report(round(idx/n_types * 100), paste0("[", ct, "] ", msg))
+        }
+      )
+    }, error = function(e) {
+      report(round(idx/n_types * 100), paste0("[", ct, "] FAILED: ", conditionMessage(e)))
+      return(NULL)
+    })
 
-  output_files <- list.files(outdir, full.names = TRUE)
-  plot_paths <- list()
-  data_paths <- list()
-
-  for (f in output_files) {
-    fname <- basename(f)
-    if (grepl("\\.png$", fname)) {
-      plot_paths[[fname]] <- f
-    } else if (grepl("\\.(csv|rds)$", fname)) {
-      data_paths[[fname]] <- f
+    if (!is.null(result)) {
+      output_files <- list.files(outdir, full.names = TRUE)
+      for (f in output_files) {
+        fname <- paste0(ct, "_", basename(f))
+        if (grepl("\\.png$", fname)) {
+          all_plot_paths[[fname]] <- f
+        } else if (grepl("\\.(csv|rds)$", fname)) {
+          all_data_paths[[fname]] <- f
+        }
+      }
+      all_stats[[ct]] <- list(
+        soft_power = result$soft_power,
+        n_modules = length(setdiff(colnames(result$hMEs), "grey")),
+        n_hub_genes = nrow(result$hub_genes)
+      )
+      obj_name <- make_output_name(project_path, "12", "wgcna", ct, "rds")
+      obj_path <- file.path(project_path, obj_name)
+      tryCatch(saveRDS(result$seurat_obj_scored, obj_path), error = function(e) NULL)
+      all_data_paths[[paste0(ct, "_obj")]] <- obj_path
     }
   }
 
-  obj_name <- make_output_name(project_path, "12", "wgcna", interestType, "rds")
-  obj_path <- file.path(project_path, obj_name)
-  saveRDS(result$seurat_obj_scored, obj_path)
-  data_paths$wgcna_obj <- obj_path
+  setwd(old_wd)
+  report(100, paste0("WGCNA 完成: ", sum(sapply(all_stats, function(x) !is.null(x))), "/", n_types))
 
-  report(100, "WGCNA 分析完成")
-
-  # 保存结果 JSON 到项目根目录（供后端读取）
   result_json <- file.path(project_path, "wgcna_result.json")
   result_data <- list(
     status = "success",
-    outdir = outdir,
-    plot_paths = plot_paths,
-    data_paths = data_paths,
-    stats = list(
-      cell_type = interestType,
-      soft_power = result$soft_power,
-      n_modules = length(setdiff(colnames(result$hMEs), "grey")),
-      n_hub_genes = nrow(result$hub_genes)
-    )
+    outdir = base_outdir,
+    plot_paths = all_plot_paths,
+    data_paths = all_data_paths,
+    stats = all_stats
   )
   jsonlite::write_json(result_data, result_json, auto_unbox = TRUE, pretty = TRUE)
 
   list(
     status = "success",
     result_path = result_json,
-    outdir = outdir,
-    plot_paths = plot_paths,
-    data_paths = data_paths,
-    stats = list(
-      cell_type = interestType,
-      soft_power = result$soft_power,
-      n_modules = length(setdiff(colnames(result$hMEs), "grey")),
-      n_hub_genes = nrow(result$hub_genes)
-    )
+    outdir = base_outdir,
+    plot_paths = all_plot_paths,
+    data_paths = all_data_paths,
+    stats = all_stats
   )
 }
