@@ -62,6 +62,7 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
         if (freqTable && freqTable.length > 0) {
           const types = [...new Set(freqTable.map(r => r.CellType))].sort();
           setAllCellTypes(types);
+          setParams(prev => ({ ...prev, wgcna: { ...prev.wgcna, interest_types: [...types] } }));
           // 自动填充 infer_df：所有细胞类型默认为 query，用户手动标记 reference
           setParams(prev => {
             if (prev.infercnv.infer_df.length > 0) return prev; // 已有配置则不覆盖
@@ -442,6 +443,7 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                               borderColor: "var(--clr-border)",
                               background: "var(--clr-bg-card)",
                             }}
+                            onWheel={(e) => e.stopPropagation()}
                           >
                             <label className="flex items-center gap-2 px-3 py-1.5 hover:bg-black/5 cursor-pointer text-xs font-medium" style={{ color: "var(--clr-text)" }}>
                               <input
