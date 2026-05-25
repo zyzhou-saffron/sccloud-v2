@@ -136,6 +136,11 @@ async def create_project(
     db.add(project)
     db.commit()
     db.refresh(project)
+
+    # 递增项目创建计数（删除项目不减少，防止绕过限制）
+    current_user.projects_created = (current_user.projects_created or 0) + 1
+    db.commit()
+
     return project
 
 
