@@ -419,39 +419,46 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                         </span>
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9" /></svg>
                       </button>
-                      {wgcnaDropdownOpen && (
-                        <div className="absolute z-50 mt-1 w-full rounded-lg border shadow-xl max-h-96 overflow-y-auto py-1" style={{ maxHeight: "400px", overflowY: "auto" }} style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-card)" }}>
-                          <label className="flex items-center gap-2 px-3 py-1.5 hover:bg-black/5 cursor-pointer text-xs font-medium" style={{ color: "var(--clr-text)" }}>
-                            <input
-                              type="checkbox"
-                              checked={params.wgcna.interest_types.length === allCellTypes.length}
-                              onChange={() => {
-                                if (params.wgcna.interest_types.length === allCellTypes.length) {
-                                  updateParam("wgcna", "interest_types", []);
-                                } else {
-                                  updateParam("wgcna", "interest_types", [...allCellTypes]);
-                                }
-                              }}
-                            />
-                            ALL（全选）
-                          </label>
-                          <div className="mx-3 border-t" style={{ borderColor: "var(--clr-border)" }} />
-                          {allCellTypes.map((ct) => (
-                            <label key={ct} className="flex items-center gap-2 px-3 py-1.5 hover:bg-black/5 cursor-pointer text-xs" style={{ color: "var(--clr-text)" }}>
+                      {wgcnaDropdownOpen && createPortal(
+                        <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setWgcnaDropdownOpen(false)} style={{ background: "rgba(0,0,0,0.3)" }}>
+                          <div className="rounded-xl border shadow-2xl" style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-card)", maxHeight: "70vh", width: "320px", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+                            <div className="px-4 py-3 border-b text-sm font-bold sticky top-0" style={{ borderColor: "var(--clr-border)", color: "var(--clr-text)", background: "var(--clr-bg-card)" }}>选择细胞类型</div>
+                            <label className="flex items-center gap-2 px-4 py-2.5 hover:bg-black/5 cursor-pointer text-sm font-medium" style={{ color: "var(--clr-text)" }}>
                               <input
                                 type="checkbox"
-                                checked={params.wgcna.interest_types.includes(ct)}
+                                checked={params.wgcna.interest_types.length === allCellTypes.length}
                                 onChange={() => {
-                                  const next = params.wgcna.interest_types.includes(ct)
-                                    ? params.wgcna.interest_types.filter((t: string) => t !== ct)
-                                    : [...params.wgcna.interest_types, ct];
-                                  updateParam("wgcna", "interest_types", next);
+                                  if (params.wgcna.interest_types.length === allCellTypes.length) {
+                                    updateParam("wgcna", "interest_types", []);
+                                  } else {
+                                    updateParam("wgcna", "interest_types", [...allCellTypes]);
+                                  }
                                 }}
                               />
-                              {ct}
+                              ALL（全选）
                             </label>
-                          ))}
-                        </div>
+                            <div className="mx-4 border-t" style={{ borderColor: "var(--clr-border)" }} />
+                            {allCellTypes.map((ct) => (
+                              <label key={ct} className="flex items-center gap-2 px-4 py-2.5 hover:bg-black/5 cursor-pointer text-sm" style={{ color: "var(--clr-text)" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={params.wgcna.interest_types.includes(ct)}
+                                  onChange={() => {
+                                    const next = params.wgcna.interest_types.includes(ct)
+                                      ? params.wgcna.interest_types.filter((t: string) => t !== ct)
+                                      : [...params.wgcna.interest_types, ct];
+                                    updateParam("wgcna", "interest_types", next);
+                                  }}
+                                />
+                                {ct}
+                              </label>
+                            ))}
+                            <div className="px-4 py-2.5 border-t sticky bottom-0" style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-card)" }}>
+                              <button onClick={() => setWgcnaDropdownOpen(false)} className="w-full py-2 rounded text-sm font-medium text-white" style={{ background: "var(--clr-amber)" }}>确定</button>
+                            </div>
+                          </div>
+                        </div>,
+                        document.body
                       )}
                       <p className="text-[10px] mt-1" style={{ color: "var(--clr-text-faint)" }}>
                         选择要分析的目标细胞类型，支持多选
