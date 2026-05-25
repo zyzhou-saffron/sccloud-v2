@@ -78,6 +78,7 @@ class User(Base):
         default="user",
     )
     max_projects = Column(Integer, default=5)
+    projects_created = Column(Integer, default=0)
     total_quota = Column(Integer, default=10)
     used_quota = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)

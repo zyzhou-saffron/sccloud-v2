@@ -94,16 +94,11 @@ async def create_project(
     """
     settings = get_settings()
 
-    # 检查项目数量限制
-    project_count = (
-        db.query(Project)
-        .filter(Project.user_id == current_user.id)
-        .count()
-    )
-    if project_count >= current_user.max_projects:
+    # 检查项目数量限制（使用计数器，删除项目不会减少，防止绕过限制）
+    if current_user.projects_created >= current_user.max_projects:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"已达项目上限 ({current_user.max_projects})",
+            detail=f"已达项目上限 ({current_user.max_projects})，已创建 {current_user.projects_created} 个项目",
         )
 
     # 检查同名项目
