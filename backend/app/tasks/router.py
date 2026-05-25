@@ -376,6 +376,28 @@ async def update_task_result(
     with open(result_file, "w") as f:
         json.dump(existing, f, ensure_ascii=False)
 
+    # 注释结果被修改后，自动重新运行已完成的 Phase 2 步骤
+    if task.step == "annotate" and task.pipeline_id:
+        from app.pipeline.executor import PIPELINE_PHASE2_ALL, resume_pipeline
+        phase2_completed = (
+            db.query(Task)
+            .filter(
+                Task.pipeline_id == task.pipeline_id,
+                Task.step.in_(PIPELINE_PHASE2_ALL),
+                Task.status == "completed",
+            )
+            .all()
+        )
+        if phase2_completed:
+            from fastapi import BackgroundTasks
+            enabled_steps = list(set(t.step for t in phase2_completed))
+            for t in phase2_completed:
+                t.status = "pending"
+                t.result_path = None
+            db.commit()
+            import asyncio
+            asyncio.create_task(resume_pipeline(task.pipeline_id, enabled_steps))
+
     return {"status": "success"}
 
 
