@@ -163,7 +163,7 @@ export default function AuthModal({
               <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--clr-text)" }}>
                 {isLogin ? "用户名或邮箱" : "用户名"}
               </label>
-              <div className="flex items-center bg-white border rounded-lg overflow-hidden focus-within:ring-2 transition-colors" style={{ borderColor: "var(--clr-border)" }}>
+              <div className="flex items-center bg-white border rounded-lg overflow-hidden transition-colors" style={{ borderColor: "var(--clr-border)" }}>
                 <span className="pl-3 shrink-0" style={{ color: "var(--clr-text-faint)" }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <rect x="2" y="4" width="20" height="16" rx="2" />
@@ -182,7 +182,7 @@ export default function AuthModal({
             {/* Password */}
             <div>
               <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--clr-text)" }}>密码</label>
-              <div className="flex items-center bg-white border rounded-lg overflow-hidden focus-within:ring-2 transition-colors" style={{ borderColor: "var(--clr-border)" }}>
+              <div className="flex items-center bg-white border rounded-lg overflow-hidden transition-colors" style={{ borderColor: "var(--clr-border)" }}>
                 <span className="pl-3 shrink-0" style={{ color: "var(--clr-text-faint)" }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
@@ -202,7 +202,7 @@ export default function AuthModal({
             {!isLogin && (
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--clr-text)" }}>确认密码</label>
-                <div className="flex items-center bg-white border rounded-lg overflow-hidden focus-within:ring-2 transition-colors" style={{ borderColor: "var(--clr-border)" }}>
+                <div className="flex items-center bg-white border rounded-lg overflow-hidden transition-colors" style={{ borderColor: "var(--clr-border)" }}>
                   <span className="pl-3 shrink-0" style={{ color: "var(--clr-text-faint)" }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
@@ -232,7 +232,7 @@ export default function AuthModal({
               className="w-full py-2.5 text-white font-semibold rounded-full text-sm transition-all duration-300 shadow-md disabled:opacity-50"
               style={{ background: loading ? "var(--clr-dark-light)" : "var(--clr-amber)" }}
             >
-              {loading ? (isLogin ? "登录中..." : "注册中...") : (isLogin ? "继续" : upgradeMode ? "注册并保留数据" : "注册")}
+              {loading ? (isLogin ? "登录中..." : "注册中...") : (isLogin ? "登录" : upgradeMode ? "注册并保留数据" : "注册")}
             </button>
           </form>
 
