@@ -342,6 +342,7 @@ async def get_task_result(
 async def update_task_result(
     task_id: str,
     body: dict,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -389,14 +390,12 @@ async def update_task_result(
             .all()
         )
         if phase2_completed:
-            from fastapi import BackgroundTasks
             enabled_steps = list(set(t.step for t in phase2_completed))
             for t in phase2_completed:
                 t.status = "pending"
                 t.result_path = None
             db.commit()
-            import asyncio
-            asyncio.create_task(resume_pipeline(task.pipeline_id, enabled_steps))
+            background_tasks.add_task(resume_pipeline, task.pipeline_id, enabled_steps)
 
     return {"status": "success"}
 
