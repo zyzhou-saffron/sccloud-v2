@@ -13,15 +13,11 @@ export default function AdminPage() {
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [batchLoading, setBatchLoading] = useState(false);
-  const [allSelected, setAllSelected] = useState(false);
-  const [allUserIds, setAllUserIds] = useState<number[]>([]);
   const pageSize = 20;
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
     setError(null);
-    setAllSelected(false);
-    setAllUserIds([]);
     try {
       const data = await listUsers(page, pageSize, search);
       setUsers(data.users);
@@ -45,23 +41,12 @@ export default function AdminPage() {
     });
   };
 
-  const toggleSelectAll = async () => {
-    if (allSelected || selected.size > 0) {
+  const toggleSelectAll = () => {
+    const selectable = users.filter(u => u.username !== 'Linli');
+    if (selected.size === selectable.length) {
       setSelected(new Set());
-      setAllSelected(false);
-      return;
-    }
-    setBatchLoading(true);
-    try {
-      const data = await listUsers(1, 9999, search);
-      const ids = data.users.filter(u => u.username !== 'Linli').map(u => u.id);
-      setAllUserIds(ids);
-      setSelected(new Set(ids));
-      setAllSelected(true);
-    } catch {
-      alert("加载用户列表失败，请重试");
-    } finally {
-      setBatchLoading(false);
+    } else {
+      setSelected(new Set(selectable.map(u => u.id)));
     }
   };
 
@@ -77,7 +62,7 @@ export default function AdminPage() {
     setBatchLoading(false);
     setSelected(new Set());
     if (fail > 0) alert(`已删除 ${ok} 个，${fail} 个失败（可能包含受保护账户）`);
-    setAllSelected(false); setAllUserIds([]); loadUsers();
+  loadUsers();
   };
 
   const batchSetRole = async (role: string) => {
@@ -91,7 +76,7 @@ export default function AdminPage() {
     setBatchLoading(false);
     setSelected(new Set());
     if (fail > 0) alert(`已更新 ${ok} 个，${fail} 个失败`);
-    setAllSelected(false); setAllUserIds([]); loadUsers();
+  loadUsers();
   };
 
   const handleEdit = (user: AdminUser) => {
@@ -175,10 +160,10 @@ export default function AdminPage() {
             borderColor: "var(--clr-border)",
           }}
         >
-          {batchLoading ? "加载中..." : allSelected || selected.size > 0 ? "取消全选" : "全选（所有页）"}
+          {selected.size > 0 ? "取消全选" : "全选"}
         </button>
         <span className="text-[10px]" style={{ color: "var(--clr-text-faint)" }}>
-          {allSelected ? `已选全部 ${selected.size} 个（管理员除外）` : `已选 ${selected.size} 个（管理员除外）`}
+          {`已选 ${selected.size} 个`}
         </span>
       </div>
 
@@ -220,7 +205,7 @@ export default function AdminPage() {
                 <input
                   type="checkbox"
                   checked={selected.size === users.length && users.length > 0}
-                  onChange={toggleSelectAll}
+                  onChange={() => toggleSelectAll()}
                 />
               </th>
               <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>ID</th>
