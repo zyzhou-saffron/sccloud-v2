@@ -192,10 +192,9 @@ export default function AdminPage() {
               </th>
               <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>ID</th>
               <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>用户名</th>
-              <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>角色</th>
+              <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>用户类型</th>
               <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>操作配额</th>
-              <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>项目数</th>
-              <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>访客</th>
+              <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>项目上限</th>
               <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>状态</th>
               <th className="px-3 py-2 text-right font-medium" style={{ color: "var(--clr-text-muted)" }}>操作</th>
             </tr>
@@ -203,13 +202,13 @@ export default function AdminPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center" style={{ color: "var(--clr-text-faint)" }}>
+                <td colSpan={7} className="px-3 py-8 text-center" style={{ color: "var(--clr-text-faint)" }}>
                   加载中...
                 </td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center" style={{ color: "var(--clr-text-faint)" }}>
+                <td colSpan={7} className="px-3 py-8 text-center" style={{ color: "var(--clr-text-faint)" }}>
                   暂无用户
                 </td>
               </tr>
@@ -238,18 +237,17 @@ export default function AdminPage() {
                     <span
                       className="px-1.5 py-0.5 rounded text-[10px] font-medium"
                       style={{
-                        background: u.role === "admin" ? "var(--clr-amber)" : "var(--clr-bg-alt)",
+                        background: u.role === "admin" ? "var(--clr-amber)" : u.is_guest ? "var(--clr-bg-alt)" : "var(--clr-bg-alt)",
                         color: u.role === "admin" ? "#fff" : "var(--clr-text-muted)",
                       }}
                     >
-                      {u.role}
+                      {u.role === "admin" ? "admin" : u.is_guest ? "guest" : "user"}
                     </span>
                   </td>
                   <td className="px-3 py-2 font-mono" style={{ color: "var(--clr-text-muted)" }}>
                     {u.used_quota}/{u.total_quota}
                   </td>
                   <td className="px-3 py-2 font-mono" style={{ color: "var(--clr-text-muted)" }}>{u.max_projects}</td>
-                  <td className="px-3 py-2" style={{ color: "var(--clr-text-faint)" }}>{u.is_guest ? "是" : "—"}</td>
                   <td className="px-3 py-2">
                     <span
                       className="px-1.5 py-0.5 rounded text-[10px] font-medium"
