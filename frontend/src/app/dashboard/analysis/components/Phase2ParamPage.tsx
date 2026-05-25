@@ -407,7 +407,14 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                       <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>目标细胞类型</label>
                       <button
                         type="button"
-                        onClick={() => setWgcnaDropdownOpen(!wgcnaDropdownOpen)}
+                        ref={wgcnaBtnRef}
+                        onClick={() => {
+                          if (wgcnaBtnRef.current) {
+                            const rect = wgcnaBtnRef.current.getBoundingClientRect();
+                            setWgcnaDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+                          }
+                          setWgcnaDropdownOpen(!wgcnaDropdownOpen);
+                        }}
                         className="w-full px-3 py-2 rounded border text-xs text-left flex items-center justify-between"
                         style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-card)", color: "var(--clr-text)" }}
                       >
@@ -422,10 +429,21 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9" /></svg>
                       </button>
                       {wgcnaDropdownOpen && createPortal(
-                        <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setWgcnaDropdownOpen(false)} style={{ background: "rgba(0,0,0,0.3)" }}>
-                          <div className="rounded-xl border shadow-2xl" style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-card)", maxHeight: "70vh", width: "320px", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
-                            <div className="px-4 py-3 border-b text-sm font-bold sticky top-0" style={{ borderColor: "var(--clr-border)", color: "var(--clr-text)", background: "var(--clr-bg-card)" }}>选择细胞类型</div>
-                            <label className="flex items-center gap-2 px-4 py-2.5 hover:bg-black/5 cursor-pointer text-sm font-medium" style={{ color: "var(--clr-text)" }}>
+                        <>
+                          <div className="fixed inset-0 z-[9998]" onClick={() => setWgcnaDropdownOpen(false)} />
+                          <div
+                            className="fixed z-[9999] rounded-lg border shadow-xl py-1"
+                            style={{
+                              top: wgcnaDropdownPos.top,
+                              left: wgcnaDropdownPos.left,
+                              width: wgcnaDropdownPos.width,
+                              maxHeight: "300px",
+                              overflowY: "auto",
+                              borderColor: "var(--clr-border)",
+                              background: "var(--clr-bg-card)",
+                            }}
+                          >
+                            <label className="flex items-center gap-2 px-3 py-1.5 hover:bg-black/5 cursor-pointer text-xs font-medium" style={{ color: "var(--clr-text)" }}>
                               <input
                                 type="checkbox"
                                 checked={params.wgcna.interest_types.length === allCellTypes.length}
@@ -439,9 +457,9 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                               />
                               ALL（全选）
                             </label>
-                            <div className="mx-4 border-t" style={{ borderColor: "var(--clr-border)" }} />
+                            <div className="mx-3 border-t" style={{ borderColor: "var(--clr-border)" }} />
                             {allCellTypes.map((ct) => (
-                              <label key={ct} className="flex items-center gap-2 px-4 py-2.5 hover:bg-black/5 cursor-pointer text-sm" style={{ color: "var(--clr-text)" }}>
+                              <label key={ct} className="flex items-center gap-2 px-3 py-1.5 hover:bg-black/5 cursor-pointer text-xs" style={{ color: "var(--clr-text)" }}>
                                 <input
                                   type="checkbox"
                                   checked={params.wgcna.interest_types.includes(ct)}
@@ -455,11 +473,8 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                                 {ct}
                               </label>
                             ))}
-                            <div className="px-4 py-2.5 border-t sticky bottom-0" style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-card)" }}>
-                              <button onClick={() => setWgcnaDropdownOpen(false)} className="w-full py-2 rounded text-sm font-medium text-white" style={{ background: "var(--clr-amber)" }}>确定</button>
-                            </div>
                           </div>
-                        </div>,
+                        </>,
                         document.body
                       )}
                       <p className="text-[10px] mt-1" style={{ color: "var(--clr-text-faint)" }}>
