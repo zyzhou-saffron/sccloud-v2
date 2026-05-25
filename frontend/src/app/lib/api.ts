@@ -166,7 +166,7 @@ export async function apiFetch<T>(
     }
 
     let text = await res.text(); try { const j = JSON.parse(text); if (j.detail) text = j.detail; } catch {}
-    throw new Error(`API ${res.status}: ${text}`);
+    throw new Error(text);
   }
 
   // 204 No Content — 无响应体，直接返回 undefined
