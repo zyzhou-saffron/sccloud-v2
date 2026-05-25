@@ -71,7 +71,7 @@ export default function AuthModal({
       saveAuthData(data, false);
       resetForm();
       onClose();
-      router.push("/dashboard/analysis");
+      window.location.href = "/dashboard/analysis";
     } catch (err) {
       setError(err instanceof Error ? err.message : "登录失败");
     } finally {
@@ -105,6 +105,9 @@ export default function AuthModal({
         });
         if (!res.ok) {
           const errData = await res.json();
+          if (res.status === 409) {
+            throw new Error("用户名已存在，请更换其他用户名");
+          }
           throw new Error(errData.detail || "注册失败");
         }
         data = await res.json();
@@ -112,7 +115,7 @@ export default function AuthModal({
       saveAuthData(data, false);
       resetForm();
       onClose();
-      router.push("/dashboard/analysis");
+      window.location.href = "/dashboard/analysis";
     } catch (err) {
       setError(err instanceof Error ? err.message : "注册失败");
     } finally {
