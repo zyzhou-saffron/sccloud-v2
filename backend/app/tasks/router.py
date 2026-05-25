@@ -434,15 +434,18 @@ async def get_task_plot(
 
     file_path = os.path.join(project.storage_path, name)
     if not os.path.exists(file_path):
-        # inferCNV 等步骤输出到子目录，在项目下递归查找（只搜索一级子目录，防止遍历过深）
-        for entry in os.listdir(project.storage_path):
-            subdir = os.path.join(project.storage_path, entry)
-            if os.path.isdir(subdir):
-                candidate = os.path.join(subdir, name)
-                if os.path.exists(candidate):
-                    file_path = candidate
-                    break
-        else:
+        # 递归查找（最多3层子目录），支持 WGCNA 多细胞类型嵌套目录
+        found = False
+        for root, dirs, files in os.walk(project.storage_path):
+            depth = root.replace(project.storage_path, '').count(os.sep)
+            if depth > 3:
+                dirs.clear()
+                continue
+            if name in files:
+                file_path = os.path.join(root, name)
+                found = True
+                break
+        if not found:
             raise HTTPException(status_code=404, detail=f"文件 {name} 不存在")
 
     if ext == ".png": media_type = "image/png"

@@ -1863,16 +1863,27 @@ function WGCNAResult({ data, taskId }: { data: Record<string, unknown> | null; t
 
   // 图表友好名称映射
   const formatPlotLabel = (filename: string) => {
-    const base = filename.replace(/^[^_]*_/, '').replace(/\.[^.]+$/, '');
+    // 提取细胞类型前缀（如 "B-cells_B-cells_SoftPower.png" → cellType="B-cells", rest="B-cells_SoftPower"）
+    const parts = filename.split('_');
+    const firstTwo = parts.slice(0, 2).join('_');
+    const rest = parts.slice(1).join('_').replace(/\.[^.]+$/, '');
     const labels: Record<string, string> = {
       'SoftPower': '软阈值选择',
       'Dendrogram': '模块树状图',
       'modules_kME': '模块 kME 排名',
-      'modules_hMEs': '模块特征图 (hMEs)',
+      'modules_hMEs': '模块特征图',
       'modules_hMEs_DotPlot': '模块表达点图',
       'modules_cor': '模块相关性热图',
     };
-    return labels[base] || base.replace(/_/g, ' ');
+    for (const [key, label] of Object.entries(labels)) {
+      if (rest.includes(key)) {
+        const ct = filename.replace(new RegExp('_' + rest.replace(key, '').replace(/_$/, '') + '_' + key + '.*$'), '').replace(/_$/, '');
+        return ct + ' — ' + label;
+      }
+    }
+    // Fallback: remove first cell type prefix
+    const cleaned = filename.replace(/^[^_]*_/, '').replace(/\.[^.]+$/, '').replace(/_/g, ' ');
+    return cleaned;
   };
 
   const plotEntries = plotPaths ? Object.entries(plotPaths) : [];
@@ -1880,27 +1891,33 @@ function WGCNAResult({ data, taskId }: { data: Record<string, unknown> | null; t
 
   const [activeTab, setActiveTab] = React.useState<'plots' | 'data'>('plots');
 
-  const moduleCount = stats?.n_modules ?? 0;
-  const hubGeneCount = stats?.n_hub_genes ?? 0;
-  const cellType = stats?.cell_type ?? '—';
-  const softPower = stats?.soft_power ?? '—';
+  // 解析多细胞类型 stats
+  const isMultiCell = stats && typeof Object.values(stats)[0] === 'object';
+  const statEntries: { ct: string; soft_power: number; n_modules: number; n_hub_genes: number }[] = isMultiCell
+    ? Object.entries(stats).map(([ct, s]) => ({ ct, ...(s as any) }))
+    : [{ ct: (stats as any)?.cell_type || '—', soft_power: (stats as any)?.soft_power ?? 0, n_modules: (stats as any)?.n_modules ?? 0, n_hub_genes: (stats as any)?.n_hub_genes ?? 0 }];
 
   return (
     <div className="space-y-4">
-      {/* 统计摘要卡片 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: '目标细胞类型', value: cellType },
-          { label: '软阈值 (Soft Power)', value: softPower },
-          { label: '基因模块数', value: moduleCount },
-          { label: 'Hub 基因数', value: hubGeneCount },
-        ].map((item) => (
-          <div key={item.label} className="px-3 py-2.5 rounded-lg border" style={{ borderColor: 'var(--clr-border)', background: 'var(--clr-bg-alt)' }}>
-            <div className="text-[10px] font-medium mb-0.5" style={{ color: 'var(--clr-text-faint)' }}>{item.label}</div>
-            <div className="text-base font-bold" style={{ color: 'var(--clr-amber-dark)' }}>{item.value}</div>
+      {/* 统计摘要卡片 — 每个细胞类型一组 */}
+      {statEntries.map((s) => (
+        <div key={s.ct}>
+          <div className="text-xs font-bold mb-2 px-1" style={{ color: 'var(--clr-amber-dark)' }}>{s.ct}</div>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: '软阈值', value: s.soft_power },
+              { label: '基因模块数', value: s.n_modules },
+              { label: 'Hub 基因数', value: s.n_hub_genes },
+            ].map((item) => (
+              <div key={item.label} className="px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--clr-border)', background: 'var(--clr-bg-alt)' }}>
+                <div className="text-[10px] font-medium mb-0.5" style={{ color: 'var(--clr-text-faint)' }}>{item.label}</div>
+                <div className="text-sm font-bold" style={{ color: 'var(--clr-amber-dark)' }}>{item.value}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
+      {statEntries.length > 1 && <div className="border-t" style={{ borderColor: 'var(--clr-border)' }} />}
 
       {/* Tab 切换 */}
       <div className="flex gap-1 p-0.5 rounded" style={{ background: 'var(--clr-bg-alt)' }}>
