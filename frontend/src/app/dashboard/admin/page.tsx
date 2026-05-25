@@ -150,6 +150,23 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* 工具栏 */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={toggleSelectAll}
+          className="px-3 py-1.5 rounded text-xs font-medium transition-all border"
+          style={{
+            color: "var(--clr-text-muted)",
+            borderColor: "var(--clr-border)",
+          }}
+        >
+          {selected.size > 0 ? "取消全选" : "全选"}
+        </button>
+        <span className="text-[10px]" style={{ color: "var(--clr-text-faint)" }}>
+          已选 {selected.size} 个（管理员除外）
+        </span>
+      </div>
+
       {/* 批量操作栏 */}
       {selected.size > 0 && (
         <div className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ background: "var(--clr-amber)", color: "#fff" }}>
