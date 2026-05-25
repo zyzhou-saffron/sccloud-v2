@@ -45,6 +45,8 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
   const [wgcnaActiveGene, setWgcnaActiveGene] = useState<string | null>(null);
   const [wgcnaGenePos, setWgcnaGenePos] = useState<{ x: number; y: number } | null>(null);
   const [wgcnaDropdownOpen, setWgcnaDropdownOpen] = useState(false);
+  const [wgcnaDropdownPos, setWgcnaDropdownPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
+  const wgcnaBtnRef = React.useRef<HTMLButtonElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [allCellTypes, setAllCellTypes] = useState<string[]>([]);
 
