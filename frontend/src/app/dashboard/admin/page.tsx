@@ -11,6 +11,8 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [batchLoading, setBatchLoading] = useState(false);
   const pageSize = 20;
 
   const loadUsers = useCallback(async () => {
@@ -30,6 +32,51 @@ export default function AdminPage() {
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
+
+  const toggleSelect = (id: number) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selected.size === users.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(users.map(u => u.id)));
+    }
+  };
+
+  const batchDelete = async () => {
+    if (selected.size === 0) return;
+    if (!confirm(`确定要删除选中的 ${selected.size} 个用户吗？此操作不可撤销。`)) return;
+    setBatchLoading(true);
+    let ok = 0, fail = 0;
+    for (const id of selected) {
+      try { await deleteUser(id); ok++; }
+      catch { fail++; }
+    }
+    setBatchLoading(false);
+    setSelected(new Set());
+    if (fail > 0) alert(`已删除 ${ok} 个，${fail} 个失败（可能包含受保护账户）`);
+    loadUsers();
+  };
+
+  const batchSetRole = async (role: string) => {
+    if (selected.size === 0) return;
+    setBatchLoading(true);
+    let ok = 0, fail = 0;
+    for (const id of selected) {
+      try { await updateUser(id, { role }); ok++; }
+      catch { fail++; }
+    }
+    setBatchLoading(false);
+    setSelected(new Set());
+    if (fail > 0) alert(`已更新 ${ok} 个，${fail} 个失败`);
+    loadUsers();
+  };
 
   const handleEdit = (user: AdminUser) => {
     setEditUser({ ...user });
@@ -102,16 +149,52 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* 批量操作栏 */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ background: "var(--clr-amber)", color: "#fff" }}>
+          <span className="text-xs font-medium">已选 {selected.size} 个用户</span>
+          <button
+            onClick={() => batchSetRole("user")}
+            disabled={batchLoading}
+            className="px-2.5 py-1 rounded text-[11px] font-medium bg-white/20 hover:bg-white/30 transition-all"
+          >
+            批量设为普通用户
+          </button>
+          <button
+            onClick={() => batchSetRole("admin")}
+            disabled={batchLoading}
+            className="px-2.5 py-1 rounded text-[11px] font-medium bg-white/20 hover:bg-white/30 transition-all"
+          >
+            批量设为管理员
+          </button>
+          <button
+            onClick={batchDelete}
+            disabled={batchLoading}
+            className="px-2.5 py-1 rounded text-[11px] font-medium ml-auto"
+            style={{ background: "rgba(255,255,255,0.25)", color: "#fff" }}
+          >
+            {batchLoading ? "处理中..." : "批量删除"}
+          </button>
+        </div>
+      )}
+
       {/* 用户表格 */}
       <div className="overflow-x-auto rounded-lg border" style={{ borderColor: "var(--clr-border)" }}>
         <table className="w-full text-xs">
           <thead>
             <tr style={{ background: "var(--clr-bg-alt)" }}>
+              <th className="px-3 py-2 w-8">
+                <input
+                  type="checkbox"
+                  checked={selected.size === users.length && users.length > 0}
+                  onChange={toggleSelectAll}
+                />
+              </th>
               <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>ID</th>
               <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>用户名</th>
               <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>角色</th>
-              <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>配额</th>
-              <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>项目</th>
+              <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>操作配额</th>
+              <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>项目数</th>
               <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>访客</th>
               <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--clr-text-muted)" }}>状态</th>
               <th className="px-3 py-2 text-right font-medium" style={{ color: "var(--clr-text-muted)" }}>操作</th>
@@ -120,13 +203,13 @@ export default function AdminPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center" style={{ color: "var(--clr-text-faint)" }}>
+                <td colSpan={9} className="px-3 py-8 text-center" style={{ color: "var(--clr-text-faint)" }}>
                   加载中...
                 </td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center" style={{ color: "var(--clr-text-faint)" }}>
+                <td colSpan={9} className="px-3 py-8 text-center" style={{ color: "var(--clr-text-faint)" }}>
                   暂无用户
                 </td>
               </tr>
@@ -135,10 +218,22 @@ export default function AdminPage() {
                 <tr
                   key={u.id}
                   className="border-t transition-colors hover:bg-opacity-50"
-                  style={{ borderColor: "var(--clr-border)" }}
+                  style={{ borderColor: "var(--clr-border)", background: selected.has(u.id) ? "rgba(200,96,25,0.06)" : undefined }}
                 >
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(u.id)}
+                      onChange={() => toggleSelect(u.id)}
+                    />
+                  </td>
                   <td className="px-3 py-2 font-mono" style={{ color: "var(--clr-text-faint)" }}>{u.id}</td>
-                  <td className="px-3 py-2 font-medium" style={{ color: "var(--clr-text)" }}>{u.username}</td>
+                  <td className="px-3 py-2 font-medium" style={{ color: "var(--clr-text)" }}>
+                    {u.username}
+                    {u.username === "Linli" && (
+                      <span className="ml-1.5 px-1 py-0.5 rounded text-[9px] font-bold" style={{ background: "var(--clr-amber)", color: "#fff" }}>主管理员</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     <span
                       className="px-1.5 py-0.5 rounded text-[10px] font-medium"
