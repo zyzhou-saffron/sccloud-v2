@@ -160,8 +160,8 @@ export default function AuthModal({
               <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--clr-text)" }}>
                 {isLogin ? "用户名或邮箱" : "用户名"}
               </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--clr-text-faint)" }}>
+              <div className="flex items-center bg-white border rounded-lg overflow-hidden focus-within:ring-2 transition-colors" style={{ borderColor: "var(--clr-border)" }}>
+                <span className="pl-3 shrink-0" style={{ color: "var(--clr-text-faint)" }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <rect x="2" y="4" width="20" height="16" rx="2" />
                     <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
@@ -170,8 +170,8 @@ export default function AuthModal({
                 <input
                   type="text" value={username} onChange={(e) => setUsername(e.target.value)}
                   placeholder={isLogin ? "请输入您的用户名或邮箱地址" : "字母、数字、下划线"} required
-                  className="w-full pl-10 pr-4 py-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 transition-colors"
-                  style={{ borderColor: "var(--clr-border)", color: "var(--clr-text)" }}
+                  className="w-full px-3 py-2.5 bg-white text-sm focus:outline-none"
+                  style={{ color: "var(--clr-text)" }}
                 />
               </div>
             </div>
@@ -179,8 +179,8 @@ export default function AuthModal({
             {/* Password */}
             <div>
               <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--clr-text)" }}>密码</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--clr-text-faint)" }}>
+              <div className="flex items-center bg-white border rounded-lg overflow-hidden focus-within:ring-2 transition-colors" style={{ borderColor: "var(--clr-border)" }}>
+                <span className="pl-3 shrink-0" style={{ color: "var(--clr-text-faint)" }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                     <path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -189,8 +189,8 @@ export default function AuthModal({
                 <input
                   type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                   placeholder={isLogin ? "请输入您的密码" : "至少 6 位"} required
-                  className="w-full pl-10 pr-4 py-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 transition-colors"
-                  style={{ borderColor: "var(--clr-border)", color: "var(--clr-text)" }}
+                  className="w-full px-3 py-2.5 bg-white text-sm focus:outline-none"
+                  style={{ color: "var(--clr-text)" }}
                 />
               </div>
             </div>
@@ -199,8 +199,8 @@ export default function AuthModal({
             {!isLogin && (
               <div>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--clr-text)" }}>确认密码</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--clr-text-faint)" }}>
+                <div className="flex items-center bg-white border rounded-lg overflow-hidden focus-within:ring-2 transition-colors" style={{ borderColor: "var(--clr-border)" }}>
+                  <span className="pl-3 shrink-0" style={{ color: "var(--clr-text-faint)" }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -209,8 +209,8 @@ export default function AuthModal({
                   <input
                     type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="再次输入密码" required
-                    className="w-full pl-10 pr-4 py-2.5 bg-white border rounded-lg text-sm focus:outline-none focus:ring-2 transition-colors"
-                    style={{ borderColor: "var(--clr-border)", color: "var(--clr-text)" }}
+                    className="w-full px-3 py-2.5 bg-white text-sm focus:outline-none"
+                    style={{ color: "var(--clr-text)" }}
                   />
                 </div>
               </div>

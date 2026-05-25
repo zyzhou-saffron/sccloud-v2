@@ -45,24 +45,24 @@ export default function AdminPage() {
     });
   };
 
-  const loadAllUserIds = async (): Promise<number[]> => {
-    try {
-      const data = await listUsers(1, 9999, search);
-      const ids = data.users.filter(u => u.username !== 'Linli').map(u => u.id);
-      setAllUserIds(ids);
-      return ids;
-    } catch { return []; }
-  };
-
   const toggleSelectAll = async () => {
     if (allSelected || selected.size > 0) {
       setSelected(new Set());
       setAllSelected(false);
       return;
     }
-    const ids = allUserIds.length > 0 ? allUserIds : await loadAllUserIds();
-    setSelected(new Set(ids));
-    setAllSelected(true);
+    setBatchLoading(true);
+    try {
+      const data = await listUsers(1, 9999, search);
+      const ids = data.users.filter(u => u.username !== 'Linli').map(u => u.id);
+      setAllUserIds(ids);
+      setSelected(new Set(ids));
+      setAllSelected(true);
+    } catch {
+      alert("加载用户列表失败，请重试");
+    } finally {
+      setBatchLoading(false);
+    }
   };
 
   const batchDelete = async () => {
@@ -175,7 +175,7 @@ export default function AdminPage() {
             borderColor: "var(--clr-border)",
           }}
         >
-          {allSelected || selected.size > 0 ? "取消全选" : "全选（所有页）"}
+          {batchLoading ? "加载中..." : allSelected || selected.size > 0 ? "取消全选" : "全选（所有页）"}
         </button>
         <span className="text-[10px]" style={{ color: "var(--clr-text-faint)" }}>
           {allSelected ? `已选全部 ${selected.size} 个（管理员除外）` : `已选 ${selected.size} 个（管理员除外）`}
