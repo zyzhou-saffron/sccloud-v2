@@ -623,7 +623,7 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
 
             {/* 错误信息 */}
             <div
-              className="mb-5 px-3 py-2.5 rounded-lg text-sm"
+              className="mb-5 px-3 py-2.5 rounded-lg text-sm break-all"
               style={{
                 background: "rgba(220, 53, 69, 0.05)",
                 border: "1px solid rgba(220, 53, 69, 0.15)",
