@@ -408,7 +408,7 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                         className={inputCls}
                         style={inputStyle}
                       >
-                        <option value="">留空则不执行 WGCNA</option>
+                        <option value="">-- 选择细胞类型 --</option>
                         {allCellTypes.map((ct) => (
                           <option key={ct} value={ct}>{ct}</option>
                         ))}
