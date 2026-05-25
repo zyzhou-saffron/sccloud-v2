@@ -45,21 +45,23 @@ export default function AdminPage() {
     });
   };
 
-  const loadAllUserIds = async () => {
+  const loadAllUserIds = async (): Promise<number[]> => {
     try {
       const data = await listUsers(1, 9999, search);
-      setAllUserIds(data.users.filter(u => u.username !== 'Linli').map(u => u.id));
-    } catch { setAllUserIds([]); }
+      const ids = data.users.filter(u => u.username !== 'Linli').map(u => u.id);
+      setAllUserIds(ids);
+      return ids;
+    } catch { return []; }
   };
 
   const toggleSelectAll = async () => {
-    if (allSelected) {
+    if (allSelected || selected.size > 0) {
       setSelected(new Set());
       setAllSelected(false);
       return;
     }
-    if (allUserIds.length === 0) await loadAllUserIds();
-    setSelected(new Set(allUserIds));
+    const ids = allUserIds.length > 0 ? allUserIds : await loadAllUserIds();
+    setSelected(new Set(ids));
     setAllSelected(true);
   };
 
