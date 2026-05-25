@@ -53,6 +53,12 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
   // 从 annotate 结果中获取 CellType 列表
   const annotateTask = pipeline.tasks.find(t => t.step === "annotate");
   useEffect(() => {
+    const handleScroll = () => setWgcnaDropdownOpen(false);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => window.removeEventListener("scroll", handleScroll, true);
+  }, []);
+
+  useEffect(() => {
     if (!annotateTask?.id) return;
     apiFetch<Record<string, unknown>>(`/api/tasks/${annotateTask.id}/result`)
       .then((data) => {
@@ -62,7 +68,7 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
         if (freqTable && freqTable.length > 0) {
           const types = [...new Set(freqTable.map(r => r.CellType))].sort();
           setAllCellTypes(types);
-          setParams(prev => ({ ...prev, wgcna: { ...prev.wgcna, interest_types: [...types] } }));
+          if (types.length > 0) setParams(prev => ({ ...prev, wgcna: { ...prev.wgcna, interest_types: [types[0]] } }));
           // 自动填充 infer_df：所有细胞类型默认为 query，用户手动标记 reference
           setParams(prev => {
             if (prev.infercnv.infer_df.length > 0) return prev; // 已有配置则不覆盖
@@ -413,6 +419,10 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                           if (wgcnaBtnRef.current) {
                             const rect = wgcnaBtnRef.current.getBoundingClientRect();
                             setWgcnaDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+                          }
+                          if (wgcnaBtnRef.current) {
+                            const rect = wgcnaBtnRef.current.getBoundingClientRect();
+                            setWgcnaDropdownPos({ top: rect.bottom + 4, left: rect.left, width: window.innerWidth > 640 ? 320 : rect.width });
                           }
                           setWgcnaDropdownOpen(!wgcnaDropdownOpen);
                         }}
