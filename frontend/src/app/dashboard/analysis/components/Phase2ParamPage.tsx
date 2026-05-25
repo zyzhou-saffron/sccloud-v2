@@ -420,7 +420,7 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9" /></svg>
                       </button>
                       {wgcnaDropdownOpen && (
-                        <div className="absolute z-10 mt-1 w-full rounded-lg border shadow-xl max-h-60 overflow-y-auto py-1" style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-card)" }}>
+                        <div className="absolute z-50 mt-1 w-full rounded-lg border shadow-xl max-h-80 overflow-y-auto py-1" style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-card)" }}>
                           <label className="flex items-center gap-2 px-3 py-1.5 hover:bg-black/5 cursor-pointer text-xs font-medium" style={{ color: "var(--clr-text)" }}>
                             <input
                               type="checkbox"
