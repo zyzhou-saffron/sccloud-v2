@@ -165,7 +165,7 @@ export async function apiFetch<T>(
       forceLogout();
     }
 
-    const text = await res.text();
+    let text = await res.text(); try { const j = JSON.parse(text); if (j.detail) text = j.detail; } catch {}
     throw new Error(`API ${res.status}: ${text}`);
   }
 
