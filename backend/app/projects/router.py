@@ -98,7 +98,7 @@ async def create_project(
     if current_user.projects_created >= current_user.max_projects:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"已达项目上限 ({current_user.max_projects})，已创建 {current_user.projects_created} 个项目",
+            detail=f"试用已结束，项目数量已达上限",
         )
 
     # 检查同名项目
