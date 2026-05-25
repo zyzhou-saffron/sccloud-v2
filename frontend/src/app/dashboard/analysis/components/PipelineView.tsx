@@ -64,9 +64,12 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
   useEffect(() => {
     window.addEventListener("mousemove", doResize);
     window.addEventListener("mouseup", stopResize);
+    const handleAnnotationUpdate = () => { getPipeline(token, pipelineId).then(setPipeline).catch(() => {}); };
+    window.addEventListener("annotation-updated", handleAnnotationUpdate as any);
     return () => {
       window.removeEventListener("mousemove", doResize);
       window.removeEventListener("mouseup", stopResize);
+    window.removeEventListener("annotation-updated", handleAnnotationUpdate as any);
     };
   }, []);
   // 降维与聚类步骤内的子 tab：默认显示聚类结果
