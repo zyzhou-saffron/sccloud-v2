@@ -2279,10 +2279,17 @@ function(req) {
   pro <- readRDS(input_path)
   pro <- sync_celltype_from_json(pro, project_path)
 
-  interestType <- params$interest_type %||% NULL
-  if (is.null(interestType) || nchar(trimws(interestType)) == 0) {
-    stop("请指定目标细胞类型 (interest_type)")
+  # 支持单个或批量细胞类型（前端多选传 interest_types 数组）
+  interestTypes <- params$interest_types
+  if (is.null(interestTypes) || length(interestTypes) == 0) {
+    # 兼容旧版单个 interest_type
+    interestType <- params$interest_type %||% NULL
+    if (is.null(interestType) || nchar(trimws(interestType)) == 0) {
+      stop("请指定目标细胞类型")
+    }
+    interestTypes <- list(interestType)
   }
+  interestType <- interestTypes[[1]]  # 取第一个执行（后续可扩展循环批量）
 
   minFraction <- params$min_fraction %||% 0.05
   sft_threshold <- params$sft_threshold %||% 0.8
