@@ -381,20 +381,21 @@ async def update_task_result(
     if task.step == "annotate" and task.pipeline_id:
         from app.db.models import Pipeline
         from app.pipeline.executor import PIPELINE_PHASE2_ALL, resume_pipeline
-        phase2_completed = (
+        phase2_tasks = (
             db.query(Task)
             .filter(
                 Task.pipeline_id == task.pipeline_id,
                 Task.step.in_(PIPELINE_PHASE2_ALL),
-                Task.status == "completed",
+                Task.status.in_(["completed", "pending", "failed"]),
             )
             .all()
         )
-        if phase2_completed:
-            enabled_steps = list(set(t.step for t in phase2_completed))
-            for t in phase2_completed:
+        if phase2_tasks:
+            enabled_steps = list(set(t.step for t in phase2_tasks))
+            for t in phase2_tasks:
                 t.status = "pending"
                 t.result_path = None
+                t.error_msg = None
             pipeline = db.query(Pipeline).filter(Pipeline.id == task.pipeline_id).first()
             if pipeline:
                 pipeline.status = "running"
