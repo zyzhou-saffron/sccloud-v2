@@ -264,12 +264,18 @@ async def mtx_merge(
 
     result = response.json()
 
+    # R jsonlite 将单值包装为数组，需要解包
+    def _r(v, default=None):
+        if isinstance(v, list) and len(v) == 1:
+            return v[0]
+        return v if v is not None else default
+
     return MtxMergeResponse(
-        status=result.get("status", "success"),
-        n_samples=result.get("n_samples", len(files)),
-        cells=result.get("cells"),
-        genes=result.get("genes"),
-        file_size_mb=result.get("file_size_mb"),
+        status=_r(result.get("status"), "success"),
+        n_samples=_r(result.get("n_samples"), len(files)),
+        cells=_r(result.get("cells")),
+        genes=_r(result.get("genes")),
+        file_size_mb=_r(result.get("file_size_mb")),
         output_path=output_path,
         download_url=f"/api/convert/download?path={output_path}",
     )
