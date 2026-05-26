@@ -7,6 +7,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { apiFetch } from "../../lib/api";
 
 /* ===== 接口类型 ===== */
 interface MergeResult {
