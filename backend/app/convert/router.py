@@ -207,6 +207,7 @@ async def mtx_merge(
         f"mtx_merge_{uuid.uuid4().hex[:8]}",
     )
     os.makedirs(merge_dir, exist_ok=True)
+    os.chmod(merge_dir, 0o777)
 
     sample_dirs = []
     for i, (name, f) in enumerate(zip(sample_names, files)):
@@ -219,6 +220,7 @@ async def mtx_merge(
         # 解压
         sample_dir = os.path.join(merge_dir, name)
         os.makedirs(sample_dir, exist_ok=True)
+        os.chmod(sample_dir, 0o777)
 
         with zipfile.ZipFile(zip_path, "r") as zf:
             zf.extractall(sample_dir)
