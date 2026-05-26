@@ -878,6 +878,9 @@ function(req) {
   cluster_label <- if (length(cluster) == 1 && cluster == "All") "All" else paste(cluster, collapse = ", ")
   report(30, paste0("运行差异分析 (", cluster_label, ")..."))
 
+  # PrepSCTFindMarkers 修复多模型 library size 不一致
+  pro <- PrepSCTFindMarkers(pro)
+
   # 调用原始函数 — data_summary.R::my_diffTable()
   diffTable <- my_diffTable(pro, cluster, min_pct, logfc, test_use, only_pos)
 
@@ -1423,6 +1426,9 @@ function(req) {
   g1_label <- paste(group1, collapse = "+")
   g2_label <- paste(group2, collapse = "+")
   report(30, paste0("运行分组差异分析: ", g1_label, " vs ", g2_label, "..."))
+
+  # PrepSCTFindMarkers 修复多模型 library size 不一致
+  pro <- PrepSCTFindMarkers(pro)
 
   # 调用更新后的 my_diffTable2()，传入两组聚类向量
   diffTable <- my_diffTable2(pro, min_pct, logfc, test_use, only_pos, group1, group2)
