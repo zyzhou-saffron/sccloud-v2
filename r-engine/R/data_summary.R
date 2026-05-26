@@ -368,7 +368,13 @@ RunMonocle <- function(pro, group_beam = "CellType", group_traj = "CellType",
 
   # 5. 降维 + 排序
   send_msg(40, "DDRTree 降维...")
-  cd <- reduceDimension(cd, max_components = 2, reduction_method = "DDRTree")
+  tryCatch({
+    cd <- reduceDimension(cd, max_components = 2, reduction_method = "DDRTree")
+  }, error = function(e) {
+    # DDRTree 失败时降级到 ICA
+    message("DDRTree failed, falling back to ICA: ", e$message)
+    cd <<- reduceDimension(cd, max_components = 2, reduction_method = "ICA")
+  })
   send_msg(55, "细胞排序...")
   cd <- orderCells(cd, reverse = reverse)
   MonocleResult$data3 <- cd
