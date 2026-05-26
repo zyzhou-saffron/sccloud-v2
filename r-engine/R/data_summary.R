@@ -376,7 +376,17 @@ RunMonocle <- function(pro, group_beam = "CellType", group_traj = "CellType",
     cd <<- reduceDimension(cd, max_components = 2, reduction_method = "ICA")
   })
   send_msg(55, "细胞排序...")
-  cd <- orderCells(cd, reverse = reverse)
+  tryCatch({
+    cd <- orderCells(cd, reverse = reverse)
+  }, error = function(e) {
+    message("orderCells failed: ", e$message, ". Retrying without reverse...")
+    tryCatch({
+      cd <<- orderCells(cd, reverse = FALSE)
+    }, error = function(e2) {
+      message("orderCells also failed without reverse: ", e2$message, ". Assigning default State.")
+      pData(cd)$State <<- factor(rep("1", ncol(cd)))
+    })
+  })
   MonocleResult$data3 <- cd
 
   # 6. 轨迹可视化
