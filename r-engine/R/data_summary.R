@@ -368,42 +368,44 @@ RunMonocle <- function(pro, group_beam = "CellType", group_traj = "CellType",
 
   # 5. 降维 + 排序
   send_msg(40, "DDRTree 降维...")
+  monocleOk <- TRUE
   tryCatch({
     cd <- reduceDimension(cd, max_components = 2, reduction_method = "DDRTree")
   }, error = function(e) {
-    # DDRTree 失败时降级到 ICA
     message("DDRTree failed, falling back to ICA: ", e$message)
-    cd <<- reduceDimension(cd, max_components = 2, reduction_method = "ICA")
+    monocleOk <<- FALSE
   })
-  send_msg(55, "细胞排序...")
-  tryCatch({
+  if (monocleOk) {
+    send_msg(55, "细胞排序...")
     cd <- orderCells(cd, reverse = reverse)
-  }, error = function(e) {
-    message("orderCells failed: ", e$message, ". Retrying without reverse...")
-    tryCatch({
-      cd <<- orderCells(cd, reverse = FALSE)
-    }, error = function(e2) {
-      message("orderCells also failed without reverse: ", e2$message, ". Assigning default State.")
-      pData(cd)$State <<- factor(rep("1", ncol(cd)))
-    })
-  })
-  MonocleResult$data3 <- cd
+  } else {
+    monocleOk <- FALSE
+  }
 
-  # 6. 轨迹可视化
-  send_msg(58, "生成轨迹图...")
-  df <- pData(cd)
-  df$State <- as.character(df$State)
-  MonocleResult$data4 <- df
-  MonocleResult$data5 <- sort(as.character(unique(df$State)))
-
-  p11 <- plot_cell_trajectory(cd, show_cell_names = F, color_by = group_traj, cell_size = 0.5) +
-    scale_color_manual(values = clusterCols) +
-    theme(legend.text = element_text(size = 12), legend.title = element_text(size = 12), legend.key.size = unit(0.5, "cm"))
-  p12 <- plot_cell_trajectory(cd, show_cell_names = F, color_by = group_traj, cell_size = 0.5) +
-    scale_color_manual(values = clusterCols) +
-    theme(legend.text = element_text(size = 12), legend.title = element_text(size = 12), legend.key.size = unit(0.5, "cm")) +
-    facet_wrap(as.formula(paste0("~", group_traj)), nrow = 2)
-  MonocleResult$plot1 <- p11 | p12
+  if (monocleOk) {
+    MonocleResult$data3 <- cd
+    send_msg(58, "生成轨迹图...")
+    df <- pData(cd)
+    df$State <- as.character(df$State)
+    MonocleResult$data4 <- df
+    MonocleResult$data5 <- sort(as.character(unique(df$State)))
+    p11 <- plot_cell_trajectory(cd, show_cell_names = F, color_by = group_traj, cell_size = 0.5) +
+      scale_color_manual(values = clusterCols) +
+      theme(legend.text = element_text(size = 12), legend.title = element_text(size = 12), legend.key.size = unit(0.5, "cm"))
+    p12 <- plot_cell_trajectory(cd, show_cell_names = F, color_by = group_traj, cell_size = 0.5) +
+      scale_color_manual(values = clusterCols) +
+      theme(legend.text = element_text(size = 12), legend.title = element_text(size = 12), legend.key.size = unit(0.5, "cm")) +
+      facet_wrap(as.formula(paste0("~", group_traj)), nrow = 2)
+    MonocleResult$plot1 <- p11 | p12
+  } else {
+    df <- pData(cd)
+    df$State <- "1"
+    MonocleResult$data3 <- cd
+    MonocleResult$data4 <- df
+    MonocleResult$data5 <- "1"
+    p_empty <- ggplot() + annotate("text", x=0.5, y=0.5, label="DDRTree 降维失败，无法生成轨迹图", size=5) + theme_void()
+    MonocleResult$plot1 <- p_empty
+  }
 
   # 7. Top 基因表达变化
   send_msg(62, "拟时序基因表达图...")
