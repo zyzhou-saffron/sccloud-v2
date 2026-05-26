@@ -13,6 +13,7 @@
 import React, { Component, type ComponentType, type ReactNode, useEffect, useMemo, useState } from "react";
 import { type Task, submitTask, getTask, apiFetch, tryRefresh } from "../lib/api";
 import ProgressTracker from "./ProgressTracker";
+
 import QCResultTabs from "./QCResultTabs";
 import MultiSelectDropdown from "./MultiSelectDropdown";
 import GeneAutocomplete from "./GeneAutocomplete";
@@ -322,10 +323,11 @@ export default function ResultViewer({ task, stepId, stepLabel, StepIcon, taskCa
             {stepId === "cluster"   && <ClusterResult data={resultData} task={task} />}
             {stepId === "markers"   && <MarkersResult data={resultData} task={task} taskCache={taskCache} clusterLevels={clusterLevels} />}
             {stepId === "enrich"    && <EnrichResult data={resultData} taskId={task.id} />}
+            {stepId === "wgcna"     && <WGCNAResult data={resultData} taskId={task.id} />}
             {stepId === "annotate" && <AnnotateResult data={resultData} task={task} token={getToken()} />}
             {stepId === "marker_expr" && <MarkerExprResult data={resultData} taskId={task.id} task={task} />}
-            {!["qc","normalize","reduce","cluster","markers","enrich","annotate","marker_expr"].includes(stepId) && (
-              <GenericStepResult data={resultData} stepId={stepId} taskId={task.id} />
+            {!["qc","normalize","reduce","cluster","markers","enrich","wgcna","annotate","marker_expr"].includes(stepId) && (
+              <GenericStepResult data={resultData} stepId={stepId} taskId={task.id} projectId={task.project_id} />
             )}
           </>
         )}
@@ -1281,11 +1283,8 @@ function MarkersResult({ task, data, taskCache, clusterLevels: parentClusterLeve
              <div className="bg-stone-50 p-4 rounded border flex flex-col items-center space-y-4" style={{ borderColor: 'var(--clr-border)' }}>
                {/* 第一行：聚类选择 */}
                <div className="w-full max-w-2xl">
-                 <label className="text-xs font-medium flex items-baseline gap-1.5 mb-1.5" style={{ color: 'var(--clr-text-muted)' }}>
-                   <span className="shrink-0">选择{groupPrefix ? "聚类群" : "细胞类型"}</span>
-                   {tab3Selected.length > 0 && (
-                     <span>{tab3Selected.map(c => `${groupPrefix}${c}`).join(', ')}</span>
-                   )}
+                 <label className="text-xs font-medium mb-1.5 block" style={{ color: "var(--clr-text-muted)" }}>
+                   选择{groupPrefix ? "聚类群" : "细胞类型"}
                  </label>
                  <MultiSelectDropdown
                    options={analyzedClusters}
@@ -1835,6 +1834,175 @@ function MarkerExprResult({ data, taskId, task }: { data: Record<string, unknown
    通用步骤结果组件（Monocle / CellChat / inferCNV）
 =================================================== */
 
+/** WGCNA 结果组件 */
+function WGCNAResult({ data, taskId }: { data: Record<string, unknown> | null; taskId?: string }) {
+  if (!data) {
+    return (
+      <div className="text-center py-8" style={{ color: "var(--clr-text-faint)" }}>
+        <p className="text-xs">结果数据为空</p>
+      </div>
+    );
+  }
+
+  const rawPlotPaths = data.plot_paths as Record<string, unknown> | undefined;
+  const rawDataPaths = data.data_paths as Record<string, unknown> | undefined;
+  const stats = data.stats as { cell_type?: string; soft_power?: number; n_modules?: number; n_hub_genes?: number } | undefined;
+
+  const plotPaths = rawPlotPaths
+    ? Object.fromEntries(Object.entries(rawPlotPaths).map(([k, v]) => [k, Array.isArray(v) ? String(v[0]) : String(v ?? '')]).filter(([, v]) => !!v))
+    : undefined;
+  const dataPaths = rawDataPaths
+    ? Object.fromEntries(Object.entries(rawDataPaths).map(([k, v]) => [k, Array.isArray(v) ? String(v[0]) : String(v ?? '')]).filter(([, v]) => !!v))
+    : undefined;
+
+  const getFileName = (path: string) => path.split('/').pop() || path;
+  const getDownloadUrl = (filePath: string) => {
+    const fileName = getFileName(filePath);
+    return `/api/tasks/${taskId}/plot?name=${encodeURIComponent(fileName)}`;
+  };
+
+  // 图表友好名称映射
+  const formatPlotLabel = (filename: string) => {
+    // 提取细胞类型前缀（如 "B-cells_B-cells_SoftPower.png" → cellType="B-cells", rest="B-cells_SoftPower"）
+    const parts = filename.split('_');
+    const firstTwo = parts.slice(0, 2).join('_');
+    const rest = parts.slice(1).join('_').replace(/\.[^.]+$/, '');
+    const labels: Record<string, string> = {
+      'SoftPower': '软阈值选择',
+      'Dendrogram': '模块树状图',
+      'modules_kME': '模块 kME 排名',
+      'modules_hMEs': '模块特征图',
+      'modules_hMEs_DotPlot': '模块表达点图',
+      'modules_cor': '模块相关性热图',
+    };
+    for (const [key, label] of Object.entries(labels)) {
+      if (rest.includes(key)) {
+        const ct = filename.replace(new RegExp('_' + rest.replace(key, '').replace(/_$/, '') + '_' + key + '.*$'), '').replace(/_$/, '');
+        return ct + ' — ' + label;
+      }
+    }
+    // Fallback: remove first cell type prefix
+    const cleaned = filename.replace(/^[^_]*_/, '').replace(/\.[^.]+$/, '').replace(/_/g, ' ');
+    return cleaned;
+  };
+
+  const plotEntries = plotPaths ? Object.entries(plotPaths) : [];
+  const dataEntries = dataPaths ? Object.entries(dataPaths) : [];
+
+  const [activeTab, setActiveTab] = React.useState<'plots' | 'data'>('plots');
+
+  // 解析多细胞类型 stats
+  const isMultiCell = stats && typeof Object.values(stats)[0] === 'object';
+  const statEntries: { ct: string; soft_power: number; n_modules: number; n_hub_genes: number }[] = isMultiCell
+    ? Object.entries(stats).map(([ct, s]) => ({ ct, ...(s as any) }))
+    : [{ ct: (stats as any)?.cell_type || '—', soft_power: (stats as any)?.soft_power ?? 0, n_modules: (stats as any)?.n_modules ?? 0, n_hub_genes: (stats as any)?.n_hub_genes ?? 0 }];
+
+  return (
+    <div className="space-y-4">
+      {/* 统计摘要卡片 — 每个细胞类型一组 */}
+      {statEntries.map((s) => (
+        <div key={s.ct}>
+          <div className="text-xs font-bold mb-2 px-1" style={{ color: 'var(--clr-amber-dark)' }}>{s.ct}</div>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: '软阈值', value: s.soft_power },
+              { label: '基因模块数', value: s.n_modules },
+              { label: 'Hub 基因数', value: s.n_hub_genes },
+            ].map((item) => (
+              <div key={item.label} className="px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--clr-border)', background: 'var(--clr-bg-alt)' }}>
+                <div className="text-[10px] font-medium mb-0.5" style={{ color: 'var(--clr-text-faint)' }}>{item.label}</div>
+                <div className="text-sm font-bold" style={{ color: 'var(--clr-amber-dark)' }}>{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      {statEntries.length > 1 && <div className="border-t" style={{ borderColor: 'var(--clr-border)' }} />}
+
+      {/* Tab 切换 */}
+      <div className="flex gap-1 p-0.5 rounded" style={{ background: 'var(--clr-bg-alt)' }}>
+        {(['plots', 'data'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className="flex-1 px-3 py-1.5 rounded text-xs font-medium transition-all"
+            style={activeTab === tab
+              ? { background: 'var(--clr-bg-card)', color: 'var(--clr-amber-dark)', fontWeight: 600, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }
+              : { color: 'var(--clr-text-muted)', cursor: 'pointer' }
+            }
+          >
+            {tab === 'plots' ? `图表 (${plotEntries.length})` : `数据文件 (${dataEntries.length})`}
+          </button>
+        ))}
+      </div>
+
+      {/* 图表 Tab */}
+      {activeTab === 'plots' && plotEntries.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {plotEntries.map(([name, path]) => (
+            <div key={name} className="rounded-lg border overflow-hidden bg-white" style={{ borderColor: 'var(--clr-border)' }}>
+              <div className="px-3 py-2 flex items-center justify-between" style={{ background: 'var(--clr-bg-alt)', borderBottom: '1px solid var(--clr-border)' }}>
+                <span className="text-xs font-semibold" style={{ color: 'var(--clr-text)' }}>{formatPlotLabel(name)}</span>
+                <AuthDownloadLink
+                  url={getDownloadUrl(path)}
+                  filename={getFileName(path)}
+                  className="inline-flex items-center justify-center w-7 h-7 rounded transition-all hover:scale-110"
+                  style={{ color: 'var(--clr-amber)' }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </AuthDownloadLink>
+              </div>
+              <AuthImg
+                src={getDownloadUrl(path)}
+                alt={name}
+                className="w-full h-auto"
+                style={{ maxHeight: 450, objectFit: 'contain', background: 'white' }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeTab === 'plots' && plotEntries.length === 0 && (
+        <div className="text-center py-8" style={{ color: 'var(--clr-text-faint)' }}>
+          <p className="text-xs">暂无图表输出</p>
+          <p className="text-[10px] mt-1">请确认 WGCNA 分析是否成功完成</p>
+        </div>
+      )}
+
+      {/* 数据文件 Tab */}
+      {activeTab === 'data' && dataEntries.length > 0 && (
+        <div className="space-y-2">
+          {dataEntries.map(([name, path]) => (
+            <div key={name} className="flex items-center justify-between px-3 py-2.5 rounded-lg border" style={{ borderColor: 'var(--clr-border)', background: 'var(--clr-bg-alt)' }}>
+              <div className="flex items-center gap-2 min-w-0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--clr-text-faint)', flexShrink: 0 }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span className="text-xs truncate" style={{ color: 'var(--clr-text)' }}>{getFileName(name)}</span>
+                <span className="text-[10px] shrink-0" style={{ color: 'var(--clr-text-faint)' }}>{name.endsWith('.rds') ? 'RDS' : name.endsWith('.csv') ? 'CSV' : ''}</span>
+              </div>
+              <AuthDownloadLink
+                url={getDownloadUrl(path)}
+                filename={getFileName(path)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium transition-all hover:scale-105 shrink-0"
+                style={{ color: 'var(--clr-amber)', border: '1px solid var(--clr-border)' }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                下载
+              </AuthDownloadLink>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeTab === 'data' && dataEntries.length === 0 && (
+        <div className="text-center py-8" style={{ color: 'var(--clr-text-faint)' }}>
+          <p className="text-xs">暂无数据文件</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GenericStepResult({ data, stepId, taskId }: { data: Record<string, unknown> | null; stepId: string; taskId?: string }) {
   if (!data) {
     return (
@@ -1868,6 +2036,7 @@ function GenericStepResult({ data, stepId, taskId }: { data: Record<string, unkn
   const outdir = unwrapStr(data.outdir);
 
   const stepLabels: Record<string, string> = {
+    wgcna: "WGCNA 分析",
     monocle: "拟时序分析",
     cellchat: "细胞通讯分析",
     infercnv: "拷贝数变异分析",

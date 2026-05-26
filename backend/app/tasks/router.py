@@ -25,7 +25,7 @@ class TaskSubmit(BaseModel):
     project_id: int
     step: str = Field(
         ...,
-        pattern=r"^(qc|normalize|reduce|cluster|markers|enrich|annotate|convert|markers_pairwise|plot_markers|subset_cluster|marker_expr|merge_celltypes|monocle|cellchat|infercnv)$",
+        pattern=r"^(qc|normalize|reduce|cluster|markers|enrich|annotate|convert|markers_pairwise|plot_markers|subset_cluster|marker_expr|merge_celltypes|monocle|cellchat|infercnv|wgcna)$",
     )
     params: dict = Field(default_factory=dict)
 
@@ -115,20 +115,38 @@ async def submit_task(
         raise HTTPException(status_code=404, detail="项目不存在")
 
     # 检查是否有同步骤的进行中任务
-    existing = (
-        db.query(Task)
-        .filter(
-            Task.project_id == req.project_id,
-            Task.step == req.step,
-            Task.status.in_(["pending", "running"]),
+    # plot_markers 是只读可视化，允许多参数并发；其他步骤保持互斥
+    if req.step == "plot_markers":
+        existing = (
+            db.query(Task)
+            .filter(
+                Task.project_id == req.project_id,
+                Task.step == req.step,
+                Task.status.in_(["pending", "running"]),
+                Task.params == req.params,
+            )
+            .first()
         )
-        .first()
-    )
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"该步骤已有任务在运行中 (ID: {existing.id})",
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=f"相同参数的 plot_markers 任务已在运行中 (ID: {existing.id})",
+            )
+    else:
+        existing = (
+            db.query(Task)
+            .filter(
+                Task.project_id == req.project_id,
+                Task.step == req.step,
+                Task.status.in_(["pending", "running"]),
+            )
+            .first()
         )
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=f"该步骤已有任务在运行中 (ID: {existing.id})",
+            )
 
     # 创建任务记录
     task = create_task(
@@ -324,6 +342,7 @@ async def get_task_result(
 async def update_task_result(
     task_id: str,
     body: dict,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -357,6 +376,31 @@ async def update_task_result(
 
     with open(result_file, "w") as f:
         json.dump(existing, f, ensure_ascii=False)
+
+    # 注释结果被修改后，自动重新运行已完成的 Phase 2 步骤
+    if task.step == "annotate" and task.pipeline_id:
+        from app.db.models import Pipeline
+        from app.pipeline.executor import PIPELINE_PHASE2_ALL, resume_pipeline
+        phase2_tasks = (
+            db.query(Task)
+            .filter(
+                Task.pipeline_id == task.pipeline_id,
+                Task.step.in_(PIPELINE_PHASE2_ALL),
+                Task.status.in_(["completed", "pending", "failed"]),
+            )
+            .all()
+        )
+        if phase2_tasks:
+            enabled_steps = list(set(t.step for t in phase2_tasks))
+            for t in phase2_tasks:
+                t.status = "pending"
+                t.result_path = None
+                t.error_msg = None
+            pipeline = db.query(Pipeline).filter(Pipeline.id == task.pipeline_id).first()
+            if pipeline:
+                pipeline.status = "running"
+            db.commit()
+            background_tasks.add_task(resume_pipeline, task.pipeline_id, enabled_steps)
 
     return {"status": "success"}
 
@@ -395,15 +439,18 @@ async def get_task_plot(
 
     file_path = os.path.join(project.storage_path, name)
     if not os.path.exists(file_path):
-        # inferCNV 等步骤输出到子目录，在项目下递归查找（只搜索一级子目录，防止遍历过深）
-        for entry in os.listdir(project.storage_path):
-            subdir = os.path.join(project.storage_path, entry)
-            if os.path.isdir(subdir):
-                candidate = os.path.join(subdir, name)
-                if os.path.exists(candidate):
-                    file_path = candidate
-                    break
-        else:
+        # 递归查找（最多3层子目录），支持 WGCNA 多细胞类型嵌套目录
+        found = False
+        for root, dirs, files in os.walk(project.storage_path):
+            depth = root.replace(project.storage_path, '').count(os.sep)
+            if depth > 3:
+                dirs.clear()
+                continue
+            if name in files:
+                file_path = os.path.join(root, name)
+                found = True
+                break
+        if not found:
             raise HTTPException(status_code=404, detail=f"文件 {name} 不存在")
 
     if ext == ".png": media_type = "image/png"

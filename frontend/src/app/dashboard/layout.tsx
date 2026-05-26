@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { IconBeaker, IconConvert, IconGear } from "../components/Icons";
+import { IconBeaker, IconConvert, IconGear, IconUsers } from "../components/Icons";
 import { isGuest } from "../lib/api";
 import AuthModal from "../components/AuthModal";
 
@@ -19,6 +19,8 @@ const NAV_ITEMS = [
   { href: "/dashboard/settings", label: "设置", Icon: IconGear },
 ];
 
+const ADMIN_NAV_ITEM = { href: "/dashboard/admin", label: "用户管理", Icon: IconUsers };
+
 export default function DashboardLayout({
   children,
 }: {
@@ -30,6 +32,8 @@ export default function DashboardLayout({
   const [guest, setGuest] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [navItems, setNavItems] = useState(NAV_ITEMS);
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -40,9 +44,18 @@ export default function DashboardLayout({
     }
     setUsername(name || "用户");
     setGuest(isGuest());
+    const role = localStorage.getItem("role") || "user";
+    setNavItems(role === "admin" ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS);
     if (pathname === "/dashboard") {
       router.replace("/dashboard/analysis");
     }
+    // Close dropdown on outside click
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".user-dropdown")) setUserDropdownOpen(false);
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
   }, [router, pathname]);
 
   const handleLogout = () => {
@@ -50,6 +63,7 @@ export default function DashboardLayout({
     localStorage.removeItem("refresh_token");
     localStorage.removeItem("username");
     localStorage.removeItem("is_guest");
+    window.location.href = "/";
     router.push("/");
   };
 
@@ -79,7 +93,7 @@ export default function DashboardLayout({
 
           {/* Nav */}
           <nav className="hidden md:flex items-center gap-1">
-            {NAV_ITEMS.map((item) => {
+            {navItems.map((item) => {
               const active = pathname === item.href || pathname?.startsWith(item.href);
               const isSettings = item.href === "/dashboard/settings";
               const handleClick = (e: React.MouseEvent) => {
@@ -137,14 +151,49 @@ export default function DashboardLayout({
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-3 pl-2" style={{ borderLeft: "1px solid rgba(255,255,255,0.15)" }}>
-                <span className="text-sm font-medium text-white/90">{username}</span>
+              <div className="flex items-center gap-3 pl-2 user-dropdown" style={{ borderLeft: "1px solid rgba(255,255,255,0.15)", position: "relative" }}>
                 <button
-                  onClick={handleLogout}
-                  className="text-xs px-2.5 py-1 rounded border border-white/20 text-white/60 hover:text-red-300 hover:border-red-400/50 transition-colors"
+                  onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                  className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
                 >
-                  退出
+                  <span className="text-sm font-medium text-white/90">{username}</span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{ color: "rgba(255,255,255,0.5)" }}>
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
                 </button>
+                {userDropdownOpen && (
+                  <div
+                    className="absolute right-0 top-full mt-2 w-48 rounded-lg shadow-xl z-50 py-1"
+                    style={{ background: "var(--clr-bg-card)", border: "1px solid var(--clr-border)" }}
+                  >
+                    <div className="px-3 py-2 border-b" style={{ borderColor: "var(--clr-border)" }}>
+                      <p className="text-sm font-medium" style={{ color: "var(--clr-text)" }}>{username}</p>
+                      <p className="text-[10px] mt-0.5" style={{ color: "var(--clr-text-faint)" }}>
+                        {localStorage.getItem("role") === "admin" ? "管理员" : "普通用户"}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => { setUserDropdownOpen(false); router.push("/dashboard/settings"); }}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-black/5 transition-colors flex items-center gap-2"
+                      style={{ color: "var(--clr-text)" }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <circle cx="12" cy="12" r="3" /><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+                      </svg>
+                      修改密码
+                    </button>
+                    <button
+                      onClick={() => { setUserDropdownOpen(false); handleLogout(); }}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-black/5 transition-colors flex items-center gap-2"
+                      style={{ color: "var(--clr-danger)" }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+                      </svg>
+                      退出登录
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

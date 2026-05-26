@@ -7,6 +7,8 @@
 
 import React, { useEffect, useState } from "react";
 import { resumePipeline, type Pipeline } from "../../../lib/pipeline-api";
+import GeneExpressionPopup from "../../../components/GeneExpressionPopup";
+import { createPortal } from "react-dom";
 import { IconTestTube, IconPathway, IconBranch, IconNetwork, IconDNA } from "../../../components/Icons";
 import { apiFetch } from "../../../lib/api";
 
@@ -23,11 +25,13 @@ const DEFAULT_PARAMS = {
   monocle: { group_beam: "CellType", group_traj: "CellType", min_expr_threshold: 0.5, min_cells_pct: 0.01, mean_expr: 0.3, qvalue1: 1e-5, reverse: false },
   cellchat: { db_use: "Secreted", thresh: 0.05 },
   infercnv: { cutoff_gene: 0.1, num_threads: 4, species: "Human", infer_df: [] as { cellType: string; refType: string }[] },
+  wgcna: { interest_types: [] as string[], min_fraction: 0.05, sft_threshold: 0.8, module_score: "Seurat", k: 25, max_shared: 10, min_cells: 100, n_hubs: 10, n_genes_score: 25 },
 };
 
 export default function Phase2ParamPage({ pipeline, token, onComplete, species = "Human" }: Phase2ParamPageProps) {
   const [enabled, setEnabled] = useState<Record<string, boolean>>({
     markers: true,
+    wgcna: false,
     enrich: false,
     monocle: false,
     cellchat: false,
@@ -36,11 +40,24 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
   const [params, setParams] = useState(DEFAULT_PARAMS);
   const [showAdvanced, setShowAdvanced] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
+  // ── WGCNA 基因表达查询 ──
+  const [wgcnaGeneInput, setWgcnaGeneInput] = useState("");
+  const [wgcnaActiveGene, setWgcnaActiveGene] = useState<string | null>(null);
+  const [wgcnaGenePos, setWgcnaGenePos] = useState<{ x: number; y: number } | null>(null);
+  const [wgcnaDropdownOpen, setWgcnaDropdownOpen] = useState(false);
+  const [wgcnaDropdownPos, setWgcnaDropdownPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
+  const wgcnaBtnRef = React.useRef<HTMLButtonElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [allCellTypes, setAllCellTypes] = useState<string[]>([]);
 
   // 从 annotate 结果中获取 CellType 列表
   const annotateTask = pipeline.tasks.find(t => t.step === "annotate");
+  useEffect(() => {
+    const handleScroll = () => setWgcnaDropdownOpen(false);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => window.removeEventListener("scroll", handleScroll, true);
+  }, []);
+
   useEffect(() => {
     if (!annotateTask?.id) return;
     apiFetch<Record<string, unknown>>(`/api/tasks/${annotateTask.id}/result`)
@@ -51,6 +68,7 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
         if (freqTable && freqTable.length > 0) {
           const types = [...new Set(freqTable.map(r => r.CellType))].sort();
           setAllCellTypes(types);
+          if (types.length > 0) setParams(prev => ({ ...prev, wgcna: { ...prev.wgcna, interest_types: [types[0]] } }));
           // 自动填充 infer_df：所有细胞类型默认为 query，用户手动标记 reference
           setParams(prev => {
             if (prev.infercnv.infer_df.length > 0) return prev; // 已有配置则不覆盖
@@ -136,6 +154,12 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
       label: "差异基因分析",
       desc: "FindMarkers — 基于 CellType 分组的差异表达基因",
       Icon: IconTestTube,
+    },
+    {
+      key: "wgcna",
+      label: "WGCNA 分析",
+      desc: "加权基因共表达网络 — 识别基因模块与细胞类型关联",
+      Icon: IconNetwork,
     },
     {
       key: "enrich",
@@ -383,6 +407,109 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
                   </div>
                 )}
 
+                {/* WGCNA 参数 */}
+                {mod.key === "wgcna" && (
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>目标细胞类型</label>
+                      <button
+                        type="button"
+                        ref={wgcnaBtnRef}
+                        onClick={() => {
+                          if (wgcnaBtnRef.current) {
+                            const rect = wgcnaBtnRef.current.getBoundingClientRect();
+                            setWgcnaDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+                          }
+                          if (wgcnaBtnRef.current) {
+                            const rect = wgcnaBtnRef.current.getBoundingClientRect();
+                            setWgcnaDropdownPos({ top: rect.bottom + 4, left: rect.left, width: window.innerWidth > 640 ? 320 : rect.width });
+                          }
+                          setWgcnaDropdownOpen(!wgcnaDropdownOpen);
+                        }}
+                        className="w-full px-3 py-2 rounded border text-xs text-left flex items-center justify-between"
+                        style={{ borderColor: "var(--clr-border)", background: "var(--clr-bg-card)", color: "var(--clr-text)" }}
+                      >
+                        <span className="truncate">
+                          {params.wgcna.interest_types.length === 0
+                            ? "-- 选择细胞类型 --"
+                            : params.wgcna.interest_types.length === allCellTypes.length
+                            ? "全部 (" + allCellTypes.length + " 种)"
+                            : params.wgcna.interest_types.join(", ")
+                          }
+                        </span>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="6 9 12 15 18 9" /></svg>
+                      </button>
+                      {wgcnaDropdownOpen && createPortal(
+                        <>
+                          <div className="fixed inset-0 z-[9998]" onClick={() => setWgcnaDropdownOpen(false)} />
+                          <div
+                            className="fixed z-[9999] rounded-lg border shadow-xl py-1"
+                            style={{
+                              top: wgcnaDropdownPos.top,
+                              left: wgcnaDropdownPos.left,
+                              width: wgcnaDropdownPos.width,
+                              maxHeight: "300px",
+                              overflowY: "auto",
+                              borderColor: "var(--clr-border)",
+                              background: "var(--clr-bg-card)",
+                            }}
+                            onWheel={(e) => e.stopPropagation()}
+                          >
+                            <label className="flex items-center gap-2 px-3 py-1.5 hover:bg-black/5 cursor-pointer text-xs font-medium" style={{ color: "var(--clr-text)" }}>
+                              <input
+                                type="checkbox"
+                                checked={params.wgcna.interest_types.length === allCellTypes.length}
+                                onChange={() => {
+                                  if (params.wgcna.interest_types.length === allCellTypes.length) {
+                                    updateParam("wgcna", "interest_types", []);
+                                  } else {
+                                    updateParam("wgcna", "interest_types", [...allCellTypes]);
+                                  }
+                                }}
+                              />
+                              ALL（全选）
+                            </label>
+                            <div className="mx-3 border-t" style={{ borderColor: "var(--clr-border)" }} />
+                            {allCellTypes.map((ct) => (
+                              <label key={ct} className="flex items-center gap-2 px-3 py-1.5 hover:bg-black/5 cursor-pointer text-xs" style={{ color: "var(--clr-text)" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={params.wgcna.interest_types.includes(ct)}
+                                  onChange={() => {
+                                    const next = params.wgcna.interest_types.includes(ct)
+                                      ? params.wgcna.interest_types.filter((t: string) => t !== ct)
+                                      : [...params.wgcna.interest_types, ct];
+                                    updateParam("wgcna", "interest_types", next);
+                                  }}
+                                />
+                                {ct}
+                              </label>
+                            ))}
+                          </div>
+                        </>,
+                        document.body
+                      )}
+                      <p className="text-[10px] mt-1" style={{ color: "var(--clr-text-faint)" }}>
+                        选择要分析的目标细胞类型，支持多选
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>最小细胞比例</label>
+                        <input type="number" value={params.wgcna.min_fraction} onChange={(e) => updateParam("wgcna", "min_fraction", Number(e.target.value))} min={0} max={1} step={0.01} className={numberCls} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>软阈值</label>
+                        <input type="number" value={params.wgcna.sft_threshold} onChange={(e) => updateParam("wgcna", "sft_threshold", Number(e.target.value))} min={0} max={1} step={0.05} className={numberCls} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--clr-text-muted)" }}>最近邻 K</label>
+                        <input type="number" value={params.wgcna.k} onChange={(e) => updateParam("wgcna", "k", Number(e.target.value))} min={1} max={100} className={numberCls} style={inputStyle} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* inferCNV 参数 */}
                 {mod.key === "infercnv" && (
                   <div className="space-y-4">
@@ -465,6 +592,18 @@ export default function Phase2ParamPage({ pipeline, token, onComplete, species =
           `开始分析 (${Object.entries(enabled).filter(([, v]) => v).length} 个步骤)`
         )}
       </button>
+
+      {/* WGCNA 基因表达弹窗 */}
+      {wgcnaActiveGene && wgcnaGenePos && typeof window !== undefined && pipeline.project_id && createPortal(
+        <GeneExpressionPopup
+          gene={wgcnaActiveGene}
+          projectId={pipeline.project_id}
+          mousePos={wgcnaGenePos}
+          onMouseLeave={() => { setWgcnaActiveGene(null); setWgcnaGenePos(null); }}
+          token={token}
+        />,
+        document.body
+      )}
     </div>
   );
 }

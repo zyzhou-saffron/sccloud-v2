@@ -24,7 +24,7 @@ suppressMessages({
 
 # [替换] 旧系统使用 this.path::this.path() 定位脚本目录
 # 容器环境下数据存放在 /app/data/
-script_dir <- "data/ref"
+script_dir <- "/app/data/ref"
 
 # 加载 SingleR 参考数据：优先读本地 .rds，没有则用 celldex 自动下载
 loadRefData <- function(rds_name, celldex_fn) {
@@ -601,7 +601,7 @@ RunInfercnv <- function(pro, inferDf, cutoff_gene = 0.1, outdir, numThreads = 1,
   send_msg(5, "准备参考文件...")
   options(scipen = 100)
   bedFileName <- if (species == "Mouse") "gene_name_pos_mouse.bed" else "gene_name_pos_human.bed"
-  bedFile <- file.path("data/ref", bedFileName)
+  bedFile <- file.path("/app/data/ref", bedFileName)
   if (!file.exists(bedFile)) {
     stop("gene_name_pos.bed not found at: ", bedFile)
   }
@@ -641,4 +641,181 @@ RunInfercnv <- function(pro, inferDf, cutoff_gene = 0.1, outdir, numThreads = 1,
 
   send_msg(100, "inferCNV 分析完成")
   return(list(infercnv_obj = infercnv_obj, outdir = outdir))
+}
+
+
+# =====================================================================
+# WGCNA (加权基因共表达网络分析) - 从旧版迁移
+# =====================================================================
+
+# 辅助函数：查找匹配的列名
+find_matching_columns <- function(seurat_obj, target_names, max_dist = 3) {
+  all_cols <- colnames(seurat_obj@meta.data)
+  result <- list()
+  for(target in target_names) {
+    if(target %in% all_cols) {
+      result[[target]] <- target
+      next
+    }
+    case_insensitive <- all_cols[tolower(all_cols) == tolower(target)]
+    if(length(case_insensitive) == 1) {
+      result[[target]] <- case_insensitive
+      next
+    }
+    fuzzy_match <- agrep(target, all_cols, ignore.case = TRUE, value = TRUE, max.distance = 0.2)
+    if(length(fuzzy_match) > 0) {
+      result[[target]] <- fuzzy_match[1]
+      next
+    }
+    pattern <- paste0("(?i)", target)
+    grep_match <- grep(pattern, all_cols, value = TRUE, perl = TRUE)
+    if(length(grep_match) > 0) {
+      result[[target]] <- grep_match[1]
+      next
+    }
+    result[[target]] <- NA
+  }
+  return(result)
+}
+
+# 辅助函数：智能选择软阈值
+select_soft_power_threshold <- function(power_table, sft_threshold = 0.8) {
+  valid <- power_table[power_table$SFT.R.sq >= sft_threshold, ]
+  if(nrow(valid) > 0) {
+    selected <- min(valid$Power)
+  } else {
+    selected <- power_table$Power[which.max(power_table$SFT.R.sq)]
+  }
+  return(selected)
+}
+
+RunWGCNA <- function(seurat_obj, outdir, minFraction = 0.05, interestType,
+                    sft_threshold = 0.8, ModuleScore = "Seurat", k = 25,
+                    max_shared = 10, min_cells = 100, n_hubs = 10,
+                    n_genes_score = 25, progress_callback = NULL) {
+  send_msg <- function(pct, msg) {
+    if (!is.null(progress_callback)) progress_callback(pct, msg)
+    else message(sprintf("[%d%%] %s", pct, msg))
+  }
+  if(!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+  Result <- list()
+
+  send_msg(5, "数据预处理...")
+  matched_cols <- find_matching_columns(seurat_obj, c("CellType", "Sample"))
+  if(is.na(matched_cols[["CellType"]])) stop("未找到 CellType 列")
+  if(is.na(matched_cols[["Sample"]])) stop("未找到 Sample 列")
+  seurat_obj@meta.data$CellType <- as.character(seurat_obj@meta.data[[matched_cols[["CellType"]]]])
+  seurat_obj@meta.data$Sample <- as.character(seurat_obj@meta.data[[matched_cols[["Sample"]]]])
+
+  send_msg(10, "设置 WGCNA...")
+  seurat_obj <- SetupForWGCNA(seurat_obj, gene_select = "fraction",
+                               fraction = minFraction, wgcna_name = interestType)
+
+  send_msg(20, "构建元细胞...")
+  seurat_obj <- MetacellsByGroups(seurat_obj, group.by = "CellType", k = k,
+                                   max_shared = max_shared, min_cells = min_cells,
+                                   reduction = "umap", ident.group = "CellType")
+  seurat_obj <- NormalizeMetacells(seurat_obj)
+
+  send_msg(35, "共表达网络分析...")
+  tryCatch({
+    seurat_obj <- SetDatExpr(seurat_obj, group_name = interestType,
+                               group.by = "CellType", assay = "SCT",
+                               use_metacells = TRUE)
+  }, error = function(e) {
+    seurat_obj <- SetDatExpr(seurat_obj, group_name = interestType,
+                               group.by = "CellType", assay = "SCT",
+                               use_metacells = FALSE)
+  })
+
+  seurat_obj <- TestSoftPowers(seurat_obj, networkType = "signed")
+  plot_list <- PlotSoftPowers(seurat_obj)
+  png(file.path(outdir, paste0(interestType, "_SoftPower.png")),
+      width = 900, height = 700, res = 100)
+  print(wrap_plots(plot_list, ncol = 2))
+  dev.off()
+
+  power_table <- GetPowerTable(seurat_obj)
+  select_soft_power <- select_soft_power_threshold(power_table, sft_threshold)
+
+  send_msg(50, paste0("构建网络 (软阈值=", select_soft_power, ")..."))
+  seurat_obj <- ConstructNetwork(seurat_obj, soft_power = select_soft_power,
+                                   setDatExpr = FALSE, tom_name = interestType, tom_outdir = file.path(outdir, "TOM"),
+                                   overwrite_tom = TRUE)
+  png(file.path(outdir, paste0(interestType, "_Dendrogram.png")),
+      width = 900, height = 600, res = 100)
+  PlotDendrogram(seurat_obj, main = paste0(interestType, " Dendrogram"))
+  dev.off()
+  Result$modules <- seurat_obj@misc[[interestType]]$wgcna_modules
+
+  send_msg(65, "计算模块特征基因...")
+  seurat_obj <- ScaleData(seurat_obj, features = VariableFeatures(seurat_obj))
+  seurat_obj <- ModuleEigengenes(seurat_obj, group.by.vars = "Sample")
+  hMEs <- GetMEs(seurat_obj, harmonized = TRUE)
+  MEs <- GetMEs(seurat_obj, harmonized = FALSE)
+  Result$hMEs <- hMEs
+  Result$MEs <- MEs
+
+  send_msg(75, "计算模块连通性...")
+  seurat_obj <- ModuleConnectivity(seurat_obj, group.by = "CellType",
+                                     group_name = interestType)
+  seurat_obj <- ResetModuleNames(seurat_obj, new_name = paste0(interestType, "-M"))
+  p <- PlotKMEs(seurat_obj, ncol = 4)
+  png(file.path(outdir, paste0(interestType, "_modules_kME.png")),
+      width = 1500, height = 800, res = 100)
+  print(p)
+  dev.off()
+  modules <- GetModules(seurat_obj)
+  Result$module_assignment <- modules
+  hub_df <- GetHubGenes(seurat_obj, n_hubs = n_hubs)
+  Result$hub_genes <- hub_df
+
+  send_msg(85, "模块评分...")
+  seurat_obj <- ModuleExprScore(seurat_obj, n_genes = n_genes_score,
+                                   method = ModuleScore)
+  Result$seurat_obj_scored <- seurat_obj
+
+  send_msg(90, "生成可视化...")
+  plot_list <- ModuleFeaturePlot(seurat_obj, features = "hMEs", order = TRUE)
+  if(length(plot_list) > 0) {
+    png(file.path(outdir, paste0(interestType, "_modules_hMEs.png")),
+        width = 1200, height = 800, res = 100)
+    print(wrap_plots(plot_list, ncol = 4))
+    dev.off()
+  }
+  png(file.path(outdir, paste0(interestType, "_modules_cor.png")),
+      width = 1200, height = 1200, res = 100)
+  ModuleCorrelogram(seurat_obj)
+  dev.off()
+
+  mods <- colnames(hMEs)
+  mods <- mods[mods != "grey"]
+  seurat_obj@meta.data <- cbind(seurat_obj@meta.data, hMEs)
+  if(length(mods) > 0) {
+    p1 <- DotPlot(seurat_obj, features = mods, group.by = "CellType")
+    p1 <- p1 + coord_flip() + RotatedAxis() +
+           scale_color_gradient2(high = "red", mid = "grey95", low = "blue")
+    ggsave(file.path(outdir, paste0(interestType, "_modules_hMEs_DotPlot.png")),
+           plot = p1, width = 9, height = max(6, length(mods) * 0.3),
+           units = "in", dpi = 300)
+  }
+
+  send_msg(95, "保存结果...")
+  saveRDS(hMEs, file.path(outdir, paste0(interestType, "_modules_hMEs.rds")))
+  saveRDS(MEs, file.path(outdir, paste0(interestType, "_modules_MEs.rds")))
+  saveRDS(seurat_obj, file.path(outdir, paste0(interestType, "_complete.rds")))
+  write.csv(power_table, file.path(outdir, paste0(interestType, "_SoftPower.csv")), row.names = FALSE)
+  write.csv(modules, file.path(outdir, paste0(interestType, "_modules.csv")), row.names = FALSE)
+  write.csv(hub_df, file.path(outdir, paste0(interestType, "_modules_hub.csv")), row.names = FALSE)
+
+  Result$soft_power <- select_soft_power
+  Result$cell_type <- interestType
+  Result$parameters <- list(
+    minFraction = minFraction, sft_threshold = sft_threshold,
+    ModuleScore = ModuleScore, k = k, max_shared = max_shared,
+    min_cells = min_cells, n_hubs = n_hubs, n_genes_score = n_genes_score
+  )
+
+  send_msg(100, "WGCNA 分析完成")
+  return(Result)
 }

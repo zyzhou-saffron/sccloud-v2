@@ -21,6 +21,7 @@
 
 library(plumber)
 library(jsonlite)
+library(hdWGCNA)
 
 # 全局 JSON 序列化：auto_unbox = TRUE 避免单值被包装为数组
 # R jsonlite 默认将单个字符串/数字包装为 ["value"]，前端需要的是 "value"
@@ -1969,6 +1970,9 @@ function(req) {
   qvalue1 <- params$qvalue1 %||% 1e-5
   reverse <- params$reverse %||% FALSE
 
+  old_wd <- getwd()
+  setwd(project_path)
+
   progress_cb <- function(pct, msg) report(pct, msg)
 
   result <- RunMonocle(pro, group_beam = group_beam, group_traj = group_traj,
@@ -2070,6 +2074,9 @@ function(req) {
   species <- params$species %||% "Human"
   db_use <- params$db_use %||% "Secreted"
   thresh <- params$thresh %||% 0.05
+
+  old_wd <- getwd()
+  setwd(project_path)
 
   progress_cb <- function(pct, msg) report(pct, msg)
 
@@ -2209,6 +2216,9 @@ function(req) {
   outdir <- file.path(project_path, paste0("infercnv_output_", format(Sys.time(), "%Y%m%d%H%M%S")))
   dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 
+  old_wd <- getwd()
+  setwd(outdir)
+
   progress_cb <- function(pct, msg) report(pct, msg)
 
   result <- RunInfercnv(pro, inferDf = inferDf, cutoff_gene = cutoff_gene,
@@ -2249,5 +2259,127 @@ function(req) {
       n_query_types = sum(inferDf$refType != "reference"),
       cutoff = cutoff_gene
     )
+  )
+}
+
+
+#* WGCNA 加权基因共表达网络分析
+#* @post /wgcna
+function(req) {
+  body <- jsonlite::fromJSON(req$postBody)
+  project_path <- body$project_path
+  params <- body$params
+  task_id <- params$task_id
+  report <- create_progress_reporter(task_id)
+
+  report(3, "加载数据...")
+
+  input_path <- file.path(project_path, "seurat_annotated.rds")
+  if (!file.exists(input_path)) stop("请先运行细胞注释步骤")
+  pro <- readRDS(input_path)
+  pro <- sync_celltype_from_json(pro, project_path)
+
+  # 支持单个或批量细胞类型（前端多选传 interest_types 数组）
+  interestTypes <- params$interest_types
+  if (is.null(interestTypes) || length(interestTypes) == 0) {
+    # 兼容旧版单个 interest_type
+    interestType <- params$interest_type %||% NULL
+    if (is.null(interestType) || nchar(trimws(interestType)) == 0) {
+      stop("请指定目标细胞类型")
+    }
+    interestTypes <- list(interestType)
+  }
+  interestType <- interestTypes[[1]]  # 取第一个执行（后续可扩展循环批量）
+
+  minFraction <- params$min_fraction %||% 0.05
+  sft_threshold <- params$sft_threshold %||% 0.8
+  ModuleScore <- params$module_score %||% "Seurat"
+  k <- params$k %||% 25
+  max_shared <- params$max_shared %||% 10
+  min_cells <- params$min_cells %||% 100
+  n_hubs <- params$n_hubs %||% 10
+  n_genes_score <- params$n_genes_score %||% 25
+
+  base_outdir <- file.path(project_path, paste0("wgcna_output_", format(Sys.time(), "%Y%m%d%H%M%S")))
+  dir.create(base_outdir, showWarnings = FALSE, recursive = TRUE)
+
+  all_plot_paths <- list()
+  all_data_paths <- list()
+  all_stats <- list()
+  n_types <- length(interestTypes)
+
+  old_wd <- getwd()
+  progress_cb <- function(pct, msg) report(pct, msg)
+
+  for (idx in seq_along(interestTypes)) {
+    ct <- interestTypes[[idx]]
+    report(0, paste0("WGCNA: [", idx, "/", n_types, "] ", ct))
+
+    outdir <- file.path(base_outdir, gsub("[^a-zA-Z0-9_-]", "_", ct))
+    dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
+    setwd(outdir)
+
+    result <- tryCatch({
+      RunWGCNA(
+        seurat_obj = pro, outdir = outdir,
+        interestType = ct,
+        minFraction = minFraction,
+        sft_threshold = sft_threshold,
+        ModuleScore = ModuleScore,
+        k = k, max_shared = max_shared,
+        min_cells = min_cells,
+        n_hubs = n_hubs,
+        n_genes_score = n_genes_score,
+        progress_callback = function(pct, msg) {
+          report(round(idx/n_types * 100), paste0("[", ct, "] ", msg))
+        }
+      )
+    }, error = function(e) {
+      report(round(idx/n_types * 100), paste0("[", ct, "] FAILED: ", conditionMessage(e)))
+      return(NULL)
+    })
+
+    if (!is.null(result)) {
+      output_files <- list.files(outdir, full.names = TRUE)
+      for (f in output_files) {
+        fname <- paste0(ct, "_", basename(f))
+        if (grepl("\\.png$", fname)) {
+          all_plot_paths[[fname]] <- f
+        } else if (grepl("\\.(csv|rds)$", fname)) {
+          all_data_paths[[fname]] <- f
+        }
+      }
+      all_stats[[ct]] <- list(
+        soft_power = result$soft_power,
+        n_modules = length(setdiff(colnames(result$hMEs), "grey")),
+        n_hub_genes = nrow(result$hub_genes)
+      )
+      obj_name <- make_output_name(project_path, "12", "wgcna", ct, "rds")
+      obj_path <- file.path(project_path, obj_name)
+      tryCatch(saveRDS(result$seurat_obj_scored, obj_path), error = function(e) NULL)
+      all_data_paths[[paste0(ct, "_obj")]] <- obj_path
+    }
+  }
+
+  setwd(old_wd)
+  report(100, paste0("WGCNA 完成: ", sum(sapply(all_stats, function(x) !is.null(x))), "/", n_types))
+
+  result_json <- file.path(project_path, "wgcna_result.json")
+  result_data <- list(
+    status = "success",
+    outdir = base_outdir,
+    plot_paths = all_plot_paths,
+    data_paths = all_data_paths,
+    stats = all_stats
+  )
+  jsonlite::write_json(result_data, result_json, auto_unbox = TRUE, pretty = TRUE)
+
+  list(
+    status = "success",
+    result_path = result_json,
+    outdir = base_outdir,
+    plot_paths = all_plot_paths,
+    data_paths = all_data_paths,
+    stats = all_stats
   )
 }

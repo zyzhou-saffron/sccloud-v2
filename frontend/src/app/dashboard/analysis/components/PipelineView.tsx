@@ -9,6 +9,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getPipeline, resumePipeline, type Pipeline, type PipelineTask } from "../../../lib/pipeline-api";
 import { submitTask } from "../../../lib/api";
+import { apiFetch } from "../../../lib/api";
 import ProgressTracker from "../../../components/ProgressTracker";
 import ResultViewer from "../../../components/ResultViewer";
 import Phase2ParamPage from "./Phase2ParamPage";
@@ -23,10 +24,11 @@ const STEPS = [
   { id: "reduce_cluster", num: 2, label: "降维与聚类", desc: "PCA · Harmony · UMAP", Icon: IconAxis, subSteps: ["reduce", "cluster"] },
   { id: "annotate", num: 3, label: "细胞注释", desc: "SingleR/手动", Icon: IconTag, subSteps: ["annotate"] },
   { id: "markers", num: 4, label: "差异基因", desc: "FindMarkers", Icon: IconTestTube, subSteps: ["markers"] },
-  { id: "enrich", num: 5, label: "通路富集分析", desc: "GO / KEGG / GSEA", Icon: IconPathway, subSteps: ["enrich"] },
-  { id: "monocle", num: 6, label: "拟时序分析", desc: "Monocle 2", Icon: IconBranch, subSteps: ["monocle"] },
-  { id: "cellchat", num: 7, label: "细胞通讯", desc: "CellChat", Icon: IconNetwork, subSteps: ["cellchat"] },
-  { id: "infercnv", num: 8, label: "拷贝数变异", desc: "inferCNV", Icon: IconDNA, subSteps: ["infercnv"] },
+  { id: "wgcna", num: 5, label: "WGCNA分析", desc: "加权基因共表达网络", Icon: IconNetwork, subSteps: ["wgcna"] },
+  { id: "enrich", num: 6, label: "通路富集分析", desc: "GO / KEGG / GSEA", Icon: IconPathway, subSteps: ["enrich"] },
+  { id: "monocle", num: 7, label: "拟时序分析", desc: "Monocle 2", Icon: IconBranch, subSteps: ["monocle"] },
+  { id: "cellchat", num: 8, label: "细胞通讯", desc: "CellChat", Icon: IconNetwork, subSteps: ["cellchat"] },
+  { id: "infercnv", num: 9, label: "拷贝数变异", desc: "inferCNV", Icon: IconDNA, subSteps: ["infercnv"] },
 ];
 
 const STATUS_DOT: Record<string, string> = {
@@ -48,10 +50,34 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
   const [activeStep, setActiveStep] = useState<string>("qc");
   // 用户手动选择步骤后，停止自动跳转到运行中步骤
   const userSelectedRef = useRef(false);
+
+  // 拖拽调整面板宽度
+  const startResize = () => { isResizing.current = true; };
+  const stopResize = () => { isResizing.current = false; };
+  const doResize = (e: MouseEvent) => {
+    if (!isResizing.current) return;
+    const newWidth = e.clientX - 32; // 减去左边距
+    if (newWidth >= 180 && newWidth <= 400) {
+      setSidebarWidth(newWidth);
+    }
+  };
+  useEffect(() => {
+    window.addEventListener("mousemove", doResize);
+    window.addEventListener("mouseup", stopResize);
+    const handleAnnotationUpdate = () => { getPipeline(token, pipelineId).then(setPipeline).catch(() => {}); };
+    window.addEventListener("annotation-updated", handleAnnotationUpdate as any);
+    return () => {
+      window.removeEventListener("mousemove", doResize);
+      window.removeEventListener("mouseup", stopResize);
+    window.removeEventListener("annotation-updated", handleAnnotationUpdate as any);
+    };
+  }, []);
   // 降维与聚类步骤内的子 tab：默认显示聚类结果
   const [reduceClusterTab, setReduceClusterTab] = useState<"cluster" | "reduce">("cluster");
   // Phase 2 参数页显示状态
   const [showPhase2Param, setShowPhase2Param] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(224); // 左侧导航栏宽度，默认 224px (w-56)
+  const isResizing = useRef(false);
   // 步骤失败对话框
   const [showFailDialog, setShowFailDialog] = useState(false);
   const [failStepInfo, setFailStepInfo] = useState<{ stepId: string; stepLabel: string; errorMsg: string; taskParams: Record<string, unknown> } | null>(null);
@@ -144,7 +170,7 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
   }[pipeline.status] || {};
 
   // 构建 taskMap：优先级 running > failed > pending > completed（避免重复任务时 map 被旧状态覆盖）
-  const STATUS_PRIORITY: Record<string, number> = { running: 4, failed: 3, pending: 2, completed: 1 };
+  const STATUS_PRIORITY: Record<string, number> = { running: 4, pending: 3, failed: 2, completed: 1 };
   const taskMap = new Map<string, typeof pipeline.tasks[0]>();
   for (const t of pipeline.tasks) {
     const existing = taskMap.get(t.step);
@@ -156,7 +182,7 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
 
   // Phase 2 步骤是否已配置/执行
   const enabledPhase2 = (pipeline.params?.enabled_steps as string[]) || [];
-  const hasPhase2Tasks = pipeline.tasks.some(t => ["monocle", "cellchat", "infercnv"].includes(t.step));
+  const hasPhase2Tasks = pipeline.tasks.some(t => ["monocle", "cellchat", "infercnv", "wgcna"].includes(t.step));
   // 始终显示所有步骤
   const visibleSteps = STEPS;
 
@@ -199,11 +225,31 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
         >
           ← 返回参数设置
         </button>
-        <div
-          className="px-4 py-1.5 rounded text-sm font-semibold"
-          style={{ background: statusStyle.bg, color: statusStyle.color }}
-        >
-          任务状态: {statusLabel}
+        <div className="flex items-center gap-2">
+          {(pipeline.status === "running" || pipeline.status === "pending") && (
+            <button
+              onClick={async () => {
+                if (!confirm("确定要停止当前分析吗？已完成的步骤结果将保留。")) return;
+                try {
+                  await apiFetch(`/api/pipeline/${pipelineId}/cancel`, { method: "POST" });
+                  const data = await getPipeline(token, pipelineId);
+                  setPipeline(data);
+                } catch (e) {
+                  alert("停止失败: " + (e instanceof Error ? e.message : "未知错误"));
+                }
+              }}
+              className="px-3 py-1 rounded text-xs font-medium"
+              style={{ background: "var(--clr-danger)", color: "#fff", cursor: "pointer", border: "none" }}
+            >
+              停止分析
+            </button>
+          )}
+          <div
+            className="px-4 py-1.5 rounded text-sm font-semibold"
+            style={{ background: statusStyle.bg, color: statusStyle.color }}
+          >
+            任务状态: {statusLabel}
+          </div>
         </div>
       </div>
 
@@ -256,13 +302,13 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
       {/* 双面板布局 */}
       <div className="flex gap-6">
         {/* ── 左侧导航（sticky 固定） ── */}
-        <div className="w-56 shrink-0 space-y-1 sticky top-4 self-start">
+        <div className="shrink-0 space-y-1 sticky top-4 self-start" style={{ width: sidebarWidth }}>
           {visibleSteps.map((step) => {
             const st = getStepStatus(step.id);
             const isActive = activeStep === step.id;
             const dotCls = STATUS_DOT[st] || STATUS_DOT.pending;
             // Phase 2 步骤在 pipeline 暂停时也可点击（用于查看配置状态）
-            const isPhase2 = ["monocle", "cellchat", "infercnv"].includes(step.subSteps[0]);
+            const isPhase2 = ["monocle", "cellchat", "infercnv", "wgcna"].includes(step.subSteps[0]);
             const isClickable = st === "completed" || st === "running" || st === "failed" || (isPhase2 && pipeline.status === "paused");
 
             return (
@@ -288,6 +334,14 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
             );
           })}
         </div>
+
+        {/* 拖拽条 */}
+        <div
+          onMouseDown={startResize}
+          className="w-1 cursor-col-resize shrink-0 self-stretch opacity-0 hover:opacity-100 transition-opacity"
+          style={{ background: "var(--clr-border)" }}
+          title="拖拽调整面板宽度"
+        />
 
         {/* ── 右侧内容区 ── */}
         <div className="flex-1 min-w-0">
@@ -432,10 +486,29 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
                     {subStatus === "running" && subTask && (
                       <ProgressTracker
                         taskId={subTask.id}
-                        onMessage={() => {}}
-                        onProgress={() => {}}
+                        stepLabel={subLabel}
                         onComplete={() => { getPipeline(token, pipelineId).then(setPipeline).catch(() => {}); }}
+                        onError={() => { getPipeline(token, pipelineId).then(setPipeline).catch(() => {}); }}
                       />
+                    )}
+
+                    {/* 运行中但任务记录尚未创建（如 DB 枚举限制导致写入失败） */}
+                    {subStatus === "running" && !subTask && (
+                      <div className="space-y-3 animate-fade-in">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-[#C86019] animate-pulse"></div>
+                            <span className="text-sm font-medium" style={{ color: "var(--clr-dark)" }}>{subLabel}</span>
+                          </div>
+                          <span className="text-xs" style={{ fontFamily: "var(--font-mono)", color: "var(--clr-text-muted)" }}>
+                            0%
+                          </span>
+                        </div>
+                        <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--clr-border)" }}>
+                          <div className="h-full rounded-full bg-gradient-to-r from-[#C86019] to-[#E07828] transition-all duration-500" style={{ width: "2%" }} />
+                        </div>
+                        <p className="text-xs" style={{ color: "var(--clr-text-muted)" }}>正在初始化...</p>
+                      </div>
                     )}
 
                     {/* 已完成 */}
@@ -467,14 +540,20 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
                         <button
                           onClick={async () => {
                             try {
-                              await submitTask({
+                              if (!pipeline.project_id) {
+                                alert("项目ID不存在，无法重新运行");
+                                return;
+                              }
+                              const result = await submitTask({
                                 project_id: pipeline.project_id,
                                 step: subId,
                                 params: subTask.params || {},
                               });
+                              console.log("重新运行成功:", result);
                               const data = await getPipeline(token, pipelineId);
                               setPipeline(data);
                             } catch (e) {
+                              console.error("重新运行失败:", e);
                               alert("重新运行失败: " + (e instanceof Error ? e.message : "未知错误"));
                             }
                           }}
@@ -547,7 +626,7 @@ export default function PipelineView({ pipelineId, token }: PipelineViewProps) {
 
             {/* 错误信息 */}
             <div
-              className="mb-5 px-3 py-2.5 rounded-lg text-sm"
+              className="mb-5 px-3 py-2.5 rounded-lg text-sm break-all"
               style={{
                 background: "rgba(220, 53, 69, 0.05)",
                 border: "1px solid rgba(220, 53, 69, 0.15)",

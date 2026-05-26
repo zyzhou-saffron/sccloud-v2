@@ -41,10 +41,7 @@ services:
       - ./r-engine/data:/app/data
       - ./r-engine/plumber.R:/app/plumber.R:ro
       - ./r-engine/R:/app/R:ro
-    deploy:
-      resources:
-        limits:
-          memory: 64G
+    mem_limit: 64g
 
   # ---- 数据库 (MariaDB) ----
   db:

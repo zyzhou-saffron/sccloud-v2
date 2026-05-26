@@ -245,6 +245,7 @@ export default function AnnotateResult({
         };
       }
       await updateTaskResult(taskId, updatePayload);
+      window.dispatchEvent(new CustomEvent("annotation-updated"));
 
       // 4. 重置合并状态
       setSelectedForMerge(new Set());
@@ -352,6 +353,7 @@ export default function AnnotateResult({
         };
       }
       await updateTaskResult(taskId, updatePayload);
+      window.dispatchEvent(new CustomEvent("annotation-updated"));
     } catch (e) {
       console.error("保存注释结果失败:", e);
     } finally {

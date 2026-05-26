@@ -54,11 +54,13 @@ from app.convert.router import router as convert_router  # noqa: E402
 from app.upload.router import router as upload_router  # noqa: E402
 from app.ws.router import router as ws_router  # noqa: E402
 from app.pipeline.router import router as pipeline_router  # noqa: E402
+from app.admin.router import router as admin_router
 
 app.include_router(auth_router)
 app.include_router(projects_router)
 app.include_router(tasks_router)
 app.include_router(pipeline_router)
+app.include_router(admin_router)
 app.include_router(convert_router)
 app.include_router(upload_router)
 app.include_router(ws_router)

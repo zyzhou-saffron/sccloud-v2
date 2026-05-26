@@ -39,12 +39,42 @@ const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
   cluster: { method: "harmony", resolution: 0.5, n_dims: 30, group_by: "Sample" },
   markers: { cluster: "All", min_pct: 0.1, logfc_threshold: 0.25, p_val_adj: 0.05, test_use: "wilcox", only_pos: true, ntop: 5 },
   annotate: { anno_type: "自动注释", group_by: "Sample", species: "Human", tissue: "Blood" },
+  wgcna: { interest_type: "", min_fraction: 0.05, sft_threshold: 0.8, module_score: "Seurat", k: 25, max_shared: 10, min_cells: 100, n_hubs: 10, n_genes_score: 25 },
 };
 
 const STEP_LABELS: Record<string, string> = {
-  qc: "数据预处理", normalize: "数据标准化", reduce: "降维与聚类",
+  qc: "数据预处理与标准化", normalize: "数据预处理与标准化", reduce: "降维与聚类",
   cluster: "降维与聚类", markers: "差异基因", annotate: "细胞注释",
+  enrich: "通路富集", monocle: "拟时序分析", cellchat: "细胞通讯",
+  infercnv: "拷贝数变异", wgcna: "WGCNA",
 };
+
+/** 合并后的步骤序号映射 */
+const STEP_INDEX: Record<string, number> = {
+  qc: 1, normalize: 1, reduce: 2, cluster: 2, annotate: 3,
+  markers: 4, enrich: 5, monocle: 6, cellchat: 7, infercnv: 8, wgcna: 9,
+};
+
+/** 计算 Pipeline 总步骤数（Phase1 合并后 3 步 + Phase2 步数） */
+// Phase1 固定 4 个执行步骤: qc, normalize, reduce, annotate
+const PHASE1_COUNT = 4;
+const PHASE1_ORDER: Record<string, number> = {
+  qc: 1, normalize: 2, reduce: 3, annotate: 4,
+};
+const PHASE2_STEPS = ["markers", "wgcna", "enrich", "monocle", "cellchat", "infercnv"];
+
+function getTotalSteps(params?: Record<string, unknown>): number {
+  const enabled = (params?.enabled_steps as string[] | undefined) || [];
+  return enabled.length > 0 ? PHASE1_COUNT + enabled.length : PHASE1_COUNT;
+}
+
+function getStepIndex(step: string, params?: Record<string, unknown>): number {
+  if (PHASE1_ORDER[step] !== undefined) return PHASE1_ORDER[step];
+  const enabled = (params?.enabled_steps as string[] | undefined) || [];
+  if (enabled.length === 0) return PHASE2_STEPS.indexOf(step) + PHASE1_COUNT + 1;
+  const pos = enabled.indexOf(step);
+  return pos >= 0 ? PHASE1_COUNT + pos + 1 : 0;
+}
 
 const STATUS_MAP: Record<string, { dot: string; text: string }> = {
   pending:   { dot: "bg-[#999]", text: "text-[#999]" },
@@ -268,7 +298,7 @@ export default function PipelineForm({ projectId, token, onSubmit, uploadedFiles
                         </div>
                       </div>
                       <span className={`text-[10px] font-mono shrink-0 ${style.text}`}>
-                        {p.status === "completed" ? "✓" : p.status === "failed" ? "✗" : p.status === "running" ? `${p.tasks?.filter(t => t.status === "completed").length}/6` : "—"}
+                        {p.status === "completed" ? "✓" : p.status === "failed" ? "✗" : p.status === "running" ? `${p.current_step ? getStepIndex(p.current_step, p.params) : 0}/${getTotalSteps(p.params)}` : "—"}
                       </span>
                     </button>
                   );

@@ -4,7 +4,7 @@ Pipeline 路由 — 全流程分析 API。
 
 import logging
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -43,6 +43,7 @@ class PipelineResponse:
         self.created_at = pipeline.created_at.isoformat() if pipeline.created_at else None
         self.started_at = pipeline.started_at.isoformat() if pipeline.started_at else None
         self.completed_at = pipeline.completed_at.isoformat() if pipeline.completed_at else None
+        self.params = pipeline.params or {}
         # 关联的 task 列表（简化视图）
         self.tasks = [
             {
@@ -64,6 +65,7 @@ class PipelineResponse:
             "user_id": self.user_id,
             "status": self.status,
             "current_step": self.current_step,
+            "params": self.params,
             "error_step": self.error_step,
             "error_msg": self.error_msg,
             "created_at": self.created_at,
@@ -297,3 +299,42 @@ async def list_pipelines(
     pipelines = query.order_by(desc(Pipeline.created_at)).limit(limit).all()
 
     return [PipelineResponse(p).dict() for p in pipelines]
+
+@router.post("/{pipeline_id}/cancel")
+async def cancel_pipeline(
+    pipeline_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    取消正在运行的 pipeline。
+    将 pipeline 状态设为 cancelled，并取消当前正在运行的 task。
+    """
+    pipeline = db.query(Pipeline).filter(Pipeline.id == pipeline_id).first()
+    if not pipeline:
+        raise HTTPException(status_code=404, detail="Pipeline 不存在")
+
+    if pipeline.status not in ("running", "pending"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"当前 pipeline 状态 '{pipeline.status}' 不可取消",
+        )
+
+    # 取消当前正在运行的 task
+    from app.db.models import Task
+    running_task = (
+        db.query(Task)
+        .filter(
+            Task.pipeline_id == pipeline_id,
+            Task.status.in_(["pending", "running"]),
+        )
+        .first()
+    )
+    if running_task:
+        running_task.status = "cancelled"
+        running_task.completed_at = datetime.now(timezone.utc)
+
+    pipeline.status = "cancelled"
+    db.commit()
+
+    return {"status": "cancelled", "pipeline_id": pipeline_id}

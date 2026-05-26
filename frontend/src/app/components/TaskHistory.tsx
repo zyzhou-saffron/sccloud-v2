@@ -13,6 +13,8 @@ interface TaskHistoryProps {
   projectId: number | null;
   /** 仅显示特定步骤 */
   step?: string;
+  /** 排除的步骤 */
+  excludeSteps?: string[];
   /** 点击任务时回调 */
   onSelect?: (task: Task) => void;
 }
@@ -39,6 +41,7 @@ const STATUS_STYLES: Record<string, { dot: string; text: string }> = {
 export default function TaskHistory({
   projectId,
   step,
+  excludeSteps,
   onSelect,
 }: TaskHistoryProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -52,6 +55,9 @@ export default function TaskHistory({
         let filtered = data.tasks;
         if (step) {
           filtered = filtered.filter((t) => t.step === step);
+        }
+        if (excludeSteps && excludeSteps.length > 0) {
+          filtered = filtered.filter((t) => !excludeSteps.includes(t.step));
         }
         // 仅展示最新 20 条（其余由后端自动删除）
         setTasks(filtered.slice(0, 20));

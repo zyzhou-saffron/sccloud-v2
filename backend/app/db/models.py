@@ -78,6 +78,10 @@ class User(Base):
         default="user",
     )
     max_projects = Column(Integer, default=5)
+    projects_created = Column(Integer, default=0)
+    total_quota = Column(Integer, default=10)
+    used_quota = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -139,7 +143,7 @@ class Task(Base):
             "markers", "enrich", "annotate", "convert",
             "markers_pairwise", "plot_markers",
             "subset_cluster", "marker_expr", "merge_celltypes",
-            "monocle", "cellchat", "infercnv",
+            "monocle", "cellchat", "infercnv", "wgcna",
             name="task_step",
         ),
         nullable=False,
