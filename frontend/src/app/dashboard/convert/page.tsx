@@ -78,20 +78,16 @@ export default function ConvertPage() {
     setMergeError(null);
 
     try {
-      const token = localStorage.getItem("access_token");
       const formData = new FormData();
       validSamples.forEach((s) => {
         formData.append("sample_names", s.name);
         formData.append("files", s.file!);
       });
 
-      const res = await fetch("/api/convert/mtx-merge", {
+      const data: MergeResult = await apiFetch("/api/convert/mtx-merge", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
-      if (!res.ok) throw new Error(`整合失败: ${await res.text()}`);
-      const data: MergeResult = await res.json();
       setMergeResult(data);
     } catch (e) {
       setMergeError(e instanceof Error ? e.message : "整合失败");
