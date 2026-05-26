@@ -377,9 +377,12 @@ RunMonocle <- function(pro, group_beam = "CellType", group_traj = "CellType",
   })
   if (monocleOk) {
     send_msg(55, "细胞排序...")
-    cd <- orderCells(cd, reverse = reverse)
-  } else {
-    monocleOk <- FALSE
+    tryCatch({
+      cd <- orderCells(cd, reverse = reverse)
+    }, error = function(e) {
+      message("orderCells failed: ", e$message)
+      monocleOk <<- FALSE
+    })
   }
 
   if (monocleOk) {
