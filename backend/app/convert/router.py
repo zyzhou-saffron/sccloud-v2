@@ -92,6 +92,7 @@ async def upload_for_convert(
         "_convert",
     )
     os.makedirs(upload_dir, exist_ok=True)
+    os.chmod(upload_dir, 0o777)
 
     filename = f"{uuid.uuid4().hex}{ext}"
     filepath = os.path.join(upload_dir, filename)
