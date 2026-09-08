@@ -141,4 +141,4 @@ sh ./start.sh --build      # 强制本地构建（一般用户不需要）
 
 ## License
 
-MIT
+Original application code is released under the [MIT License](LICENSE). Third-party dependencies retain their respective licenses.
